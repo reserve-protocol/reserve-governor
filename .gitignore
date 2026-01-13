@@ -1,0 +1,22 @@
+# Secrets
+.env
+.env.*
+.seed
+
+# Foundry
+cache/
+out/
+artifacts/
+broadcast/
+.gas-snapshot
+lcov.info
+snapshots/
+
+# JS
+node_modules/
+
+# Yarn
+install-state.gz
+
+# Playground
+Playground.*

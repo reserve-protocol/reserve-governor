@@ -1,0 +1,19 @@
+{
+  "name": "@reserve-protocol/reserve-governor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reserve Governor",
+  "license": "MIT",
+  "author": "ABC Labs",
+  "scripts": {
+    "compile": "forge compile",
+    "test": "forge test",
+    "size": "forge compile --sizes"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0",
+    "@openzeppelin/contracts-upgradeable": "^5.4.0",
+    "forge-std": "github:foundry-rs/forge-std#v1.14.0"
+  },
+  "packageManager": "pnpm@10.28.0"
+}
