@@ -4,8 +4,8 @@
 pragma solidity ^0.8.24;
 
 import {IGovernor} from "@openzeppelin/contracts/governance/IGovernor.sol";
-import {GovernorUpgradeable} from "../GovernorUpgradeable.sol";
-import {Initializable} from "../../proxy/utils/Initializable.sol";
+import {GovernorUpgradeable} from "./GovernorUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 /**
  * @dev Extension of {Governor} for settings updatable through governance.

@@ -3,8 +3,8 @@
 
 pragma solidity >=0.8.4;
 
-import {IERC165} from "../interfaces/IERC165.sol";
-import {IERC6372} from "../interfaces/IERC6372.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 
 /**
  * @dev Interface of the {Governor} core.

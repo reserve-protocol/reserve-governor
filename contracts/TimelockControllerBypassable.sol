@@ -1,21 +1,30 @@
 // SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts (last updated v5.4.0) (governance/TimelockController.sol)
 
-pragma solidity ^0.8.20;
+pragma solidity 0.8.33;
 
-import {AccessControlUpgradeable} from "../access/AccessControlUpgradeable.sol";
-import {ERC721HolderUpgradeable} from "../token/ERC721/utils/ERC721HolderUpgradeable.sol";
-import {ERC1155HolderUpgradeable} from "../token/ERC1155/utils/ERC1155HolderUpgradeable.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {Initializable} from "../proxy/utils/Initializable.sol";
+import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {
+    ERC1155HolderUpgradeable
+} from "@openzeppelin/contracts-upgradeable/token/ERC1155/utils/ERC1155HolderUpgradeable.sol";
+import {
+    ERC721HolderUpgradeable
+} from "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
+import { Address } from "@openzeppelin/contracts/utils/Address.sol";
+import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /**
- * @dev Fork of OpenZeppelin's TimelockControllerUpgradeable
- * Changes:
- *   - Addition of executeBatchBypass function
+ * @dev Fork of OZ's TimelockControllerUpgradeable (v5.4.0)
+ *   Only change:
+ *     - Addition of executeBatchBypass()
  */
-contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeable, ERC721HolderUpgradeable, ERC1155HolderUpgradeable {
+contract TimelockControllerBypassable is
+    Initializable,
+    AccessControlUpgradeable,
+    ERC721HolderUpgradeable,
+    ERC1155HolderUpgradeable
+{
     bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
     bytes32 public constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
@@ -27,8 +36,10 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
         uint256 _minDelay;
     }
 
-    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.TimelockController")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant TimelockControllerStorageLocation = 0x9a37c2aa9d186a0969ff8a8267bf4e07e864c2f2768f5040949e28a624fb3600;
+    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.TimelockController")) - 1)) &
+    // ~bytes32(uint256(0xff))
+    bytes32 private constant TimelockControllerStorageLocation =
+        0x9a37c2aa9d186a0969ff8a8267bf4e07e864c2f2768f5040949e28a624fb3600;
 
     function _getTimelockControllerStorage() private pure returns (TimelockControllerStorage storage $) {
         assembly {
@@ -105,9 +116,14 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
      */
     event MinDelayChange(uint256 oldDuration, uint256 newDuration);
 
-    function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin) public virtual initializer {
+    function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
+        public
+        virtual
+        initializer
+    {
         __TimelockController_init(minDelay, proposers, executors, admin);
     }
+
     /**
      * @dev Initializes the contract with the following parameters:
      *
@@ -121,11 +137,21 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
      * administration through timelocked proposals. Previous versions of this contract would assign
      * this admin to the deployer automatically and should be renounced as well.
      */
-    function __TimelockController_init(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin) internal onlyInitializing {
+    function __TimelockController_init(
+        uint256 minDelay,
+        address[] memory proposers,
+        address[] memory executors,
+        address admin
+    ) internal onlyInitializing {
         __TimelockController_init_unchained(minDelay, proposers, executors, admin);
     }
 
-    function __TimelockController_init_unchained(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin) internal onlyInitializing {
+    function __TimelockController_init_unchained(
+        uint256 minDelay,
+        address[] memory proposers,
+        address[] memory executors,
+        address admin
+    ) internal onlyInitializing {
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();
         // self administration
         _grantRole(DEFAULT_ADMIN_ROLE, address(this));
@@ -166,12 +192,16 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
     /**
      * @dev Contract might receive/hold ETH as part of the maintenance process.
      */
-    receive() external payable virtual {}
+    receive() external payable virtual { }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view virtual override(AccessControlUpgradeable, ERC1155HolderUpgradeable) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(AccessControlUpgradeable, ERC1155HolderUpgradeable)
+        returns (bool)
+    {
         return super.supportsInterface(interfaceId);
     }
 
@@ -244,13 +274,12 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
      * @dev Returns the identifier of an operation containing a single
      * transaction.
      */
-    function hashOperation(
-        address target,
-        uint256 value,
-        bytes calldata data,
-        bytes32 predecessor,
-        bytes32 salt
-    ) public pure virtual returns (bytes32) {
+    function hashOperation(address target, uint256 value, bytes calldata data, bytes32 predecessor, bytes32 salt)
+        public
+        pure
+        virtual
+        returns (bytes32)
+    {
         return keccak256(abi.encode(target, value, data, predecessor, salt));
     }
 
@@ -350,8 +379,7 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();
         if (!isOperationPending(id)) {
             revert TimelockUnexpectedOperationState(
-                id,
-                _encodeStateBitmap(OperationState.Waiting) | _encodeStateBitmap(OperationState.Ready)
+                id, _encodeStateBitmap(OperationState.Waiting) | _encodeStateBitmap(OperationState.Ready)
             );
         }
         delete $._timestamps[id];
@@ -371,13 +399,12 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
     // This function can reenter, but it doesn't pose a risk because _afterCall checks that the proposal is pending,
     // thus any modifications to the operation during reentrancy should be caught.
     // slither-disable-next-line reentrancy-eth
-    function execute(
-        address target,
-        uint256 value,
-        bytes calldata payload,
-        bytes32 predecessor,
-        bytes32 salt
-    ) public payable virtual onlyRoleOrOpenRole(EXECUTOR_ROLE) {
+    function execute(address target, uint256 value, bytes calldata payload, bytes32 predecessor, bytes32 salt)
+        public
+        payable
+        virtual
+        onlyRoleOrOpenRole(EXECUTOR_ROLE)
+    {
         bytes32 id = hashOperation(target, value, payload, predecessor, salt);
 
         _beforeCall(id, predecessor);
@@ -426,7 +453,7 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
      * @dev Execute an operation's call.
      */
     function _execute(address target, uint256 value, bytes calldata data) internal virtual {
-        (bool success, bytes memory returndata) = target.call{value: value}(data);
+        (bool success, bytes memory returndata) = target.call{ value: value }(data);
         Address.verifyCallResult(success, returndata);
     }
 
@@ -486,5 +513,27 @@ contract TimelockControllerUpgradeable is Initializable, AccessControlUpgradeabl
      */
     function _encodeStateBitmap(OperationState operationState) internal pure returns (bytes32) {
         return bytes32(1 << uint8(operationState));
+    }
+
+    // === Addition ===
+
+    /// @dev Danger!
+    ///      Execute a batch of operations immediately without waiting out the delay.
+    ///      Caller must have BOTH the PROPOSER_ROLE and EXECUTOR_ROLE.
+    function executeBatchBypass(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] calldata payloads,
+        bytes32 predecessor,
+        bytes32 salt
+    ) public payable onlyRoleOrOpenRole(PROPOSER_ROLE) {
+        bytes32 id = hashOperationBatch(targets, values, payloads, predecessor, salt);
+
+        // mark Ready
+        TimelockControllerStorage storage $ = _getTimelockControllerStorage();
+        $._timestamps[id] = 1;
+
+        // check caller has EXECUTOR_ROLE and execute
+        executeBatch(targets, values, payloads, predecessor, salt);
     }
 }
