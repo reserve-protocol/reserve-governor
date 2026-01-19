@@ -11,9 +11,12 @@ interface IReserveGovernor {
         address[] targets,
         uint256[] values,
         bytes[] calldatas,
+        string description,
         uint256 vetoEnd,
-        string description
+        uint256 vetoThresholdAmt,
+        uint256 slashingPercentage
     );
+    event OptimisticProposalExecuted(uint256 indexed proposalId);
     event OptimisticProposalCanceled(uint256 indexed proposalId);
 
     // === Errors ===

@@ -8,17 +8,20 @@ import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 
-import { GovernorUpgradeable } from "./vendor/GovernorUpgradeable.sol";
+
 import { GovernorCountingSimpleUpgradeable } from "./vendor/GovernorCountingSimpleUpgradeable.sol";
 import { GovernorPreventLateQuorumUpgradeable } from "./vendor/GovernorPreventLateQuorumUpgradeable.sol";
 import { GovernorSettingsUpgradeable } from "./vendor/GovernorSettingsUpgradeable.sol";
 import { GovernorTimelockControlUpgradeable } from "./vendor/GovernorTimelockControlUpgradeable.sol";
+import { GovernorUpgradeable } from "./vendor/GovernorUpgradeable.sol";
 import { GovernorVotesQuorumFractionUpgradeable } from "./vendor/GovernorVotesQuorumFractionUpgradeable.sol";
 import { GovernorVotesUpgradeable } from "./vendor/GovernorVotesUpgradeable.sol";
 
 import { IReserveGovernor } from "./IReserveGovernor.sol";
 import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol";
+
+bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
 
 /**
  * @title ReserveGovernor
@@ -28,11 +31,11 @@ import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol
  *    1. OptimisticProposal: New contract per optimistic proposal to support veto + locking logic
  *    2. ReserveGovernor: Hybrid governor that contains both optimistic and pessimistic governance flows
  *    3. TimelockControllerBypassable: Single timelock that executes both optimistic and pessimistic proposals
- * 
+ *
  *   Intended to be used with a 1-token-per-governance system model, e.g
  *     - vlDTF (index protocol)
  *     - stRSR (yield protocol)
- *   If tokens belong to multiple governance systems, there can be contention for staking to veto. 
+ *   If tokens belong to multiple governance systems, there can be contention for staking to veto.
  */
 contract ReserveGovernor is
     GovernorUpgradeable,
@@ -124,10 +127,6 @@ contract ReserveGovernor is
     ) public onlyOptimisticProposer returns (uint256 proposalId) {
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        require(
-            targets.length == values.length && targets.length == calldatas.length && targets.length == 0,
-            GovernorInvalidProposalLength(targets.length, calldatas.length, values.length)
-        );
         require(address(optimisticProposals[proposalId]) == address(0), ExistingOptimisticProposal(proposalId));
 
         uint256 vetoEnd = block.timestamp + vetoPeriod;
@@ -140,10 +139,14 @@ contract ReserveGovernor is
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
 
         OptimisticProposal optimisticProposal = OptimisticProposal(address(optimisticProposalImpl).clone());
-        optimisticProposals[proposalId] = optimisticProposal;
-        optimisticProposal.initialize(vetoEnd, vetoThresholdAmt, slashingPercentage, address(token()));
+        
+        // prevent `description` field griefing that could otherwise prevent adjudication
+        require(_isValidDescriptionForProposer(address(optimisticProposal), description), GovernorRestrictedProposer(address(optimisticProposal)));
 
-        emit OptimisticProposalCreated(proposalId, targets, values, calldatas, vetoEnd, description);
+        optimisticProposals[proposalId] = optimisticProposal;
+        optimisticProposal.initialize(targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage, address(token()));
+
+        emit OptimisticProposalCreated(proposalId, targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage);
     }
 
     /// Execute an optimistic proposal that has passed through
@@ -155,27 +158,27 @@ contract ReserveGovernor is
     ) public payable onlyOptimisticProposer {
         uint256 proposalId = getProposalId(targets, values, calldatas, descriptionHash);
 
-        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
-        require(optimisticProposal.state() == OptimisticProposal.ProposalState.Succeeded, ProposalNotReady(proposalId));
+        require(optimisticProposals[proposalId].state() == OptimisticProposal.ProposalState.Succeeded, ProposalNotReady(proposalId));
 
         TimelockControllerBypassable(payable(timelock())).executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ descriptionHash
         );
         // salt mirrors GovernorTimelockControlUpgradeable._timelockSalt()
+
+        emit OptimisticProposalExecuted(proposalId);
     }
 
-    /// Allow any optimistic proposer or timelock canceller to cancel an optimistic proposal
+    /// Cancel an optimistic proposal BEFORE it has reached the adjudication stage
     function cancelOptimistic(uint256 proposalId) public {
-        TimelockControllerBypassable timelockController = TimelockControllerBypassable(payable(timelock()));
-
         require(
-            isOptimisticProposer[_msgSender()]
-                || timelockController.hasRole(timelockController.CANCELLER_ROLE(), _msgSender()),
+            proposalSnapshot(proposalId) == 0 && 
+            (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender()) 
+                || isOptimisticProposer[_msgSender()]),
             NotAuthorizedToCancel(_msgSender())
         );
 
         OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
-        optimisticProposal.cancel(); // reverts if already slashed
+        optimisticProposal.cancel();
 
         emit OptimisticProposalCanceled(proposalId);
     }
@@ -227,6 +230,23 @@ contract ReserveGovernor is
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
     }
 
+    function _propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description,
+        address proposer
+    ) internal override returns (uint256 proposalId) {
+        proposalId = super._propose(targets, values, calldatas, description, proposer);
+
+        // prevent duplicates UNLESS the proposer is an OptimisticProposal itself
+        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
+        require(
+            address(optimisticProposal) == address(0) || proposer == address(optimisticProposal),
+            ExistingOptimisticProposal(proposalId)
+        );
+    }
+
     function _queueOperations(
         uint256 proposalId,
         address[] memory targets,
@@ -244,6 +264,11 @@ contract ReserveGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
+        // slash OptimisticProposal if it succeeds during adjudication
+        if (address(optimisticProposals[proposalId]) != address(0)) {
+            optimisticProposals[proposalId].slash();
+        }
+        
         super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
 
@@ -255,10 +280,19 @@ contract ReserveGovernor is
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint256 proposalId) {
         proposalId = super._cancel(targets, values, calldatas, descriptionHash);
 
-        // cancel if has an accompanying optimistic proposal
+        // cancel OptimisticProposal too, if adjudicating
         if (address(optimisticProposals[proposalId]) != address(0)) {
+            // _validateCancel() already checked the caller is a guardian
             optimisticProposals[proposalId].cancel();
         }
+    }
+
+    function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
+        return state(proposalId) == ProposalState.Pending
+            && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, caller) 
+            || caller == proposalProposer(proposalId));
+            
+        // for an adjudication, the proposalProposer is the OptimisticProposal itself
     }
 
     function _executor()
@@ -277,8 +311,5 @@ contract ReserveGovernor is
         super._tallyUpdated(proposalId);
     }
 
-    // TODO: Have OptimisticProposal call back into ReserveGovernor to start a slow proposal
-    //      - Think through how to handle duplicate proposals
-    // TODO: Call OptimisticProposal.slash() when proposal passes
     // TODO: setters for vetoPeriod, vetoThreshold, slashingPercentage
 }

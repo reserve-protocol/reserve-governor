@@ -7,6 +7,8 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
+import { ReserveGovernor } from "./ReserveGovernor.sol";
+
 contract OptimisticProposal is Initializable, ContextUpgradeable {
     using SafeERC20 for IERC20;
 
@@ -30,10 +32,15 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === State ===
 
-    address public owner;
+    ReserveGovernor public owner;
     IERC20 public token;
 
     ProposalState private _state;
+
+    address[] public targets;
+    uint256[] public values;
+    bytes[] public calldatas;
+    string public description;
 
     uint256 public vetoEnd; // {s} inclusive
     uint256 public vetoThreshold; // {tok}
@@ -50,13 +57,25 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     /// @param _vetoEnd {s} Veto end time
     /// @param _vetoThreshold {tok}
     /// @param _slashingPercentage D18{1}
-    function initialize(uint256 _vetoEnd, uint256 _vetoThreshold, uint256 _slashingPercentage, address _token)
+    function initialize(
+        address[] calldata _targets,
+        uint256[] calldata _values,
+        bytes[] calldata _calldatas,
+        string calldata _description,
+        uint256 _vetoEnd, uint256 _vetoThreshold, uint256 _slashingPercentage, address _token)
         public
         initializer
     {
+        require(_targets.length != 0 && _targets.length == _values.length && _targets.length == _calldatas.length, "OptimisticProposal: invalid proposal");
         require(_slashingPercentage <= 1e18, "OptimisticProposal: invalid slashing percentage");
 
-        owner = _msgSender();
+        owner = ReserveGovernor(payable(_msgSender()));
+
+        targets = _targets;
+        values = _values;
+        calldatas = _calldatas;
+        description = _description;
+
         vetoEnd = _vetoEnd;
         vetoThreshold = _vetoThreshold;
         slashingPercentage = _slashingPercentage;
@@ -64,7 +83,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     }
 
     modifier onlyOwner() {
-        require(_msgSender() == owner, "OptimisticProposal: not owner");
+        require(_msgSender() == address(owner), "OptimisticProposal: not owner");
         _;
     }
 
@@ -104,6 +123,9 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         if (token.balanceOf(address(this)) + amount >= vetoThreshold) {
             _state = ProposalState.Locked;
             emit Locked();
+
+            // initiate adjudication via slow proposal
+            owner.propose(targets, values, calldatas, description);
         }
 
         token.safeTransferFrom(_msgSender(), address(this), amount);
