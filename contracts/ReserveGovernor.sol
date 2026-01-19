@@ -28,6 +28,11 @@ import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol
  *    1. OptimisticProposal: New contract per optimistic proposal to support veto + locking logic
  *    2. ReserveGovernor: Hybrid governor that contains both optimistic and pessimistic governance flows
  *    3. TimelockControllerBypassable: Single timelock that executes both optimistic and pessimistic proposals
+ * 
+ *   Intended to be used with a 1-token-per-governance system model, e.g
+ *     - vlDTF (index protocol)
+ *     - stRSR (yield protocol)
+ *   If tokens belong to multiple governance systems, there can be contention for staking to veto. 
  */
 contract ReserveGovernor is
     GovernorUpgradeable,
@@ -123,7 +128,7 @@ contract ReserveGovernor is
             targets.length == values.length && targets.length == calldatas.length && targets.length == 0,
             GovernorInvalidProposalLength(targets.length, calldatas.length, values.length)
         );
-        require(address(optimisticProposals[proposalId]) == address(0), UnexpectedOptimisticProposalState(proposalId));
+        require(address(optimisticProposals[proposalId]) == address(0), ExistingOptimisticProposal(proposalId));
 
         uint256 vetoEnd = block.timestamp + vetoPeriod;
 
@@ -151,8 +156,7 @@ contract ReserveGovernor is
         uint256 proposalId = getProposalId(targets, values, calldatas, descriptionHash);
 
         OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
-
-        require(optimisticProposal.succeeded(), ProposalNotReady(proposalId));
+        require(optimisticProposal.state() == OptimisticProposal.ProposalState.Succeeded, ProposalNotReady(proposalId));
 
         TimelockControllerBypassable(payable(timelock())).executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ descriptionHash
@@ -171,7 +175,7 @@ contract ReserveGovernor is
         );
 
         OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
-        optimisticProposal.cancel(); // reverts if already canceled
+        optimisticProposal.cancel(); // reverts if already slashed
 
         emit OptimisticProposalCanceled(proposalId);
     }

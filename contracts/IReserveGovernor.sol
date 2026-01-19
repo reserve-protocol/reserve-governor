@@ -18,7 +18,7 @@ interface IReserveGovernor {
 
     // === Errors ===
 
-    error UnexpectedOptimisticProposalState(uint256 proposalId);
+    error ExistingOptimisticProposal(uint256 proposalId);
     error InvalidVetoParameters();
     error ProposalDoesNotExist(uint256 proposalId);
     error NotOptimisticProposer(address account);

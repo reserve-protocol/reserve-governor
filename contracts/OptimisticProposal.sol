@@ -10,28 +10,37 @@ import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Co
 contract OptimisticProposal is Initializable, ContextUpgradeable {
     using SafeERC20 for IERC20;
 
-    // TODO events
+    // === Events ===
+
+    event Staked(address indexed staker, uint256 amount);
+    event Withdrawn(address indexed staker, uint256 amount);
+    event Locked();
+    event Slashed(uint256 slashingPercentage);
+    event Canceled();
+
+    // === Enums ===
 
     enum ProposalState {
         Pending,
         Succeeded,
-        Adjudicating,
+        Locked,
         Slashed,
         Canceled
     }
 
+    // === State ===
+
     address public owner;
     IERC20 public token;
 
-    bool public locked;
-    bool public slashed;
-    bool public canceled;
+    ProposalState private _state;
 
     uint256 public vetoEnd; // {s} inclusive
     uint256 public vetoThreshold; // {tok}
     uint256 public slashingPercentage; // D18{1}
 
-    mapping(address staker => uint256 amount) public staked;
+    mapping(address staker => uint256 amount) public staked; // {tok}
+    uint256 public slashing; // D18{1}
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -59,52 +68,58 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         _;
     }
 
-    function succeeded() public view returns (bool) {
-        return block.timestamp > vetoEnd && !locked && !canceled && !slashed;
+    function state() public view returns (ProposalState) {
+        if (_state == ProposalState.Pending && block.timestamp > vetoEnd) {
+            return ProposalState.Succeeded;
+        }
+        return _state;
     }
 
     // === Owner ===
 
     function slash() public onlyOwner {
-        require(locked && !slashed && !canceled, "OptimisticProposal: already slashed");
+        require(state() == ProposalState.Locked, "OptimisticProposal: not locked");
+        _state = ProposalState.Slashed;
 
-        locked = false;
-        slashed = true;
-        // canceled = false;
+        slashing = slashingPercentage;
+        emit Slashed(slashingPercentage);
     }
 
     function cancel() public onlyOwner {
-        require(!slashed && !canceled, "OptimisticProposal: already canceled");
+        require(state() != ProposalState.Slashed, "OptimisticProposal: already slashed");
+        _state = ProposalState.Canceled;
 
-        locked = false;
-        // slashed = false;
-        canceled = true;
+        emit Canceled();
     }
 
     // === User ===
 
     function stake(uint256 amount) external {
-        require(block.timestamp <= vetoEnd && !locked && !slashed && !canceled, "OptimisticProposal: cannot stake");
+        require(state() == ProposalState.Pending, "OptimisticProposal: not pending");
+        require(amount != 0, "OptimisticProposal: zero stake");
 
+        // {tok}
         staked[_msgSender()] += amount;
 
-        token.safeTransferFrom(_msgSender(), address(this), amount);
-
-        if (token.balanceOf(address(this)) >= vetoThreshold) {
-            locked = true;
+        if (token.balanceOf(address(this)) + amount >= vetoThreshold) {
+            _state = ProposalState.Locked;
+            emit Locked();
         }
+
+        token.safeTransferFrom(_msgSender(), address(this), amount);
+        emit Staked(_msgSender(), amount);
     }
 
     function withdraw() external {
-        require(!locked, "OptimisticProposal: cannot withdraw");
+        require(state() != ProposalState.Locked, "OptimisticProposal: not locked");
 
-        uint256 amount = staked[_msgSender()];
+        // {tok} = {tok} * D18{1}
+        uint256 amount = staked[_msgSender()] * (1e18 - slashing) / 1e18;
         delete staked[_msgSender()];
 
-        if (slashed) {
-            amount *= (1e18 - slashingPercentage) / 1e18;
-        }
+        require(amount != 0, "OptimisticProposal: zero withdrawal");
 
         token.safeTransfer(_msgSender(), amount);
+        emit Withdrawn(_msgSender(), amount);
     }
 }
