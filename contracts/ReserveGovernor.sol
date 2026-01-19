@@ -8,7 +8,6 @@ import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 
-
 import { GovernorCountingSimpleUpgradeable } from "./vendor/GovernorCountingSimpleUpgradeable.sol";
 import { GovernorPreventLateQuorumUpgradeable } from "./vendor/GovernorPreventLateQuorumUpgradeable.sol";
 import { GovernorSettingsUpgradeable } from "./vendor/GovernorSettingsUpgradeable.sol";
@@ -139,14 +138,21 @@ contract ReserveGovernor is
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
 
         OptimisticProposal optimisticProposal = OptimisticProposal(address(optimisticProposalImpl).clone());
-        
+
         // prevent `description` field griefing that could otherwise prevent adjudication
-        require(_isValidDescriptionForProposer(address(optimisticProposal), description), GovernorRestrictedProposer(address(optimisticProposal)));
+        require(
+            _isValidDescriptionForProposer(address(optimisticProposal), description),
+            GovernorRestrictedProposer(address(optimisticProposal))
+        );
 
         optimisticProposals[proposalId] = optimisticProposal;
-        optimisticProposal.initialize(targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage, address(token()));
+        optimisticProposal.initialize(
+            targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage, address(token())
+        );
 
-        emit OptimisticProposalCreated(proposalId, targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage);
+        emit OptimisticProposalCreated(
+            proposalId, targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage
+        );
     }
 
     /// Execute an optimistic proposal that has passed through
@@ -158,7 +164,10 @@ contract ReserveGovernor is
     ) public payable onlyOptimisticProposer {
         uint256 proposalId = getProposalId(targets, values, calldatas, descriptionHash);
 
-        require(optimisticProposals[proposalId].state() == OptimisticProposal.ProposalState.Succeeded, ProposalNotReady(proposalId));
+        require(
+            optimisticProposals[proposalId].state() == OptimisticProposal.ProposalState.Succeeded,
+            ProposalNotReady(proposalId)
+        );
 
         TimelockControllerBypassable(payable(timelock())).executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ descriptionHash
@@ -171,9 +180,9 @@ contract ReserveGovernor is
     /// Cancel an optimistic proposal BEFORE it has reached the adjudication stage
     function cancelOptimistic(uint256 proposalId) public {
         require(
-            proposalSnapshot(proposalId) == 0 && 
-            (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender()) 
-                || isOptimisticProposer[_msgSender()]),
+            proposalSnapshot(proposalId) == 0
+                && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender())
+                    || isOptimisticProposer[_msgSender()]),
             NotAuthorizedToCancel(_msgSender())
         );
 
@@ -268,7 +277,7 @@ contract ReserveGovernor is
         if (address(optimisticProposals[proposalId]) != address(0)) {
             optimisticProposals[proposalId].slash();
         }
-        
+
         super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
 
@@ -289,9 +298,9 @@ contract ReserveGovernor is
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
         return state(proposalId) == ProposalState.Pending
-            && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, caller) 
-            || caller == proposalProposer(proposalId));
-            
+            && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, caller)
+                || caller == proposalProposer(proposalId));
+
         // for an adjudication, the proposalProposer is the OptimisticProposal itself
     }
 

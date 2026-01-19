@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.24;
 
-import {IGovernor} from "@openzeppelin/contracts/governance/IGovernor.sol";
-import {GovernorUpgradeable} from "./GovernorUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { GovernorUpgradeable } from "./GovernorUpgradeable.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 
 /**
  * @dev Extension of {Governor} for settings updatable through governance.
@@ -22,7 +22,8 @@ abstract contract GovernorSettingsUpgradeable is Initializable, GovernorUpgradea
     }
 
     // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.GovernorSettings")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant GovernorSettingsStorageLocation = 0x00d7616c8fe29c6c2fbe1d0c5bc8f2faa4c35b43746e70b24b4d532752affd00;
+    bytes32 private constant GovernorSettingsStorageLocation =
+        0x00d7616c8fe29c6c2fbe1d0c5bc8f2faa4c35b43746e70b24b4d532752affd00;
 
     function _getGovernorSettingsStorage() private pure returns (GovernorSettingsStorage storage $) {
         assembly {
@@ -37,11 +38,19 @@ abstract contract GovernorSettingsUpgradeable is Initializable, GovernorUpgradea
     /**
      * @dev Initialize the governance parameters.
      */
-    function __GovernorSettings_init(uint48 initialVotingDelay, uint32 initialVotingPeriod, uint256 initialProposalThreshold) internal onlyInitializing {
+    function __GovernorSettings_init(
+        uint48 initialVotingDelay,
+        uint32 initialVotingPeriod,
+        uint256 initialProposalThreshold
+    ) internal onlyInitializing {
         __GovernorSettings_init_unchained(initialVotingDelay, initialVotingPeriod, initialProposalThreshold);
     }
 
-    function __GovernorSettings_init_unchained(uint48 initialVotingDelay, uint32 initialVotingPeriod, uint256 initialProposalThreshold) internal onlyInitializing {
+    function __GovernorSettings_init_unchained(
+        uint48 initialVotingDelay,
+        uint32 initialVotingPeriod,
+        uint256 initialProposalThreshold
+    ) internal onlyInitializing {
         _setVotingDelay(initialVotingDelay);
         _setVotingPeriod(initialVotingPeriod);
         _setProposalThreshold(initialProposalThreshold);

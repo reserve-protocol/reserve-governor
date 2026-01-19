@@ -3,11 +3,11 @@
 
 pragma solidity ^0.8.24;
 
-import {GovernorUpgradeable} from "./GovernorUpgradeable.sol";
-import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
-import {IERC5805} from "@openzeppelin/contracts/interfaces/IERC5805.sol";
-import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { GovernorUpgradeable } from "./GovernorUpgradeable.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 
 /**
  * @dev Extension of {Governor} for voting weight extraction from an {ERC20Votes} token, or since v4.5 an {ERC721Votes}
@@ -20,7 +20,8 @@ abstract contract GovernorVotesUpgradeable is Initializable, GovernorUpgradeable
     }
 
     // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.GovernorVotes")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant GovernorVotesStorageLocation = 0x3ba4977254e415696610a40ebf2258dbfa0ec6a2ff64e84bfe715ff16977cc00;
+    bytes32 private constant GovernorVotesStorageLocation =
+        0x3ba4977254e415696610a40ebf2258dbfa0ec6a2ff64e84bfe715ff16977cc00;
 
     function _getGovernorVotesStorage() private pure returns (GovernorVotesStorage storage $) {
         assembly {
@@ -76,7 +77,13 @@ abstract contract GovernorVotesUpgradeable is Initializable, GovernorUpgradeable
         address account,
         uint256 timepoint,
         bytes memory /*params*/
-    ) internal view virtual override returns (uint256) {
+    )
+        internal
+        view
+        virtual
+        override
+        returns (uint256)
+    {
         return token().getPastVotes(account, timepoint);
     }
 }

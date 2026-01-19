@@ -3,11 +3,13 @@
 
 pragma solidity ^0.8.24;
 
-import {IGovernor} from "@openzeppelin/contracts/governance/IGovernor.sol";
-import {GovernorUpgradeable} from "./GovernorUpgradeable.sol";
-import {TimelockControllerUpgradeable} from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { GovernorUpgradeable } from "./GovernorUpgradeable.sol";
+import {
+    TimelockControllerUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
+import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @dev Extension of {Governor} that binds the execution process to an instance of {TimelockController}. This adds a
@@ -30,8 +32,10 @@ abstract contract GovernorTimelockControlUpgradeable is Initializable, GovernorU
         mapping(uint256 proposalId => bytes32) _timelockIds;
     }
 
-    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.GovernorTimelockControl")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant GovernorTimelockControlStorageLocation = 0x0d5829787b8befdbc6044ef7457d8a95c2a04bc99235349f1a212c063e59d400;
+    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.GovernorTimelockControl")) - 1)) &
+    // ~bytes32(uint256(0xff))
+    bytes32 private constant GovernorTimelockControlStorageLocation =
+        0x0d5829787b8befdbc6044ef7457d8a95c2a04bc99235349f1a212c063e59d400;
 
     function _getGovernorTimelockControlStorage() private pure returns (GovernorTimelockControlStorage storage $) {
         assembly {
@@ -51,7 +55,10 @@ abstract contract GovernorTimelockControlUpgradeable is Initializable, GovernorU
         __GovernorTimelockControl_init_unchained(timelockAddress);
     }
 
-    function __GovernorTimelockControl_init_unchained(TimelockControllerUpgradeable timelockAddress) internal onlyInitializing {
+    function __GovernorTimelockControl_init_unchained(TimelockControllerUpgradeable timelockAddress)
+        internal
+        onlyInitializing
+    {
         _updateTimelock(timelockAddress);
     }
 
@@ -124,7 +131,7 @@ abstract contract GovernorTimelockControlUpgradeable is Initializable, GovernorU
     ) internal virtual override {
         GovernorTimelockControlStorage storage $ = _getGovernorTimelockControlStorage();
         // execute
-        $._timelock.executeBatch{value: msg.value}(targets, values, calldatas, 0, _timelockSalt(descriptionHash));
+        $._timelock.executeBatch{ value: msg.value }(targets, values, calldatas, 0, _timelockSalt(descriptionHash));
         // cleanup for refund
         delete $._timelockIds[proposalId];
     }

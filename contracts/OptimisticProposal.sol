@@ -62,11 +62,15 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         uint256[] calldata _values,
         bytes[] calldata _calldatas,
         string calldata _description,
-        uint256 _vetoEnd, uint256 _vetoThreshold, uint256 _slashingPercentage, address _token)
-        public
-        initializer
-    {
-        require(_targets.length != 0 && _targets.length == _values.length && _targets.length == _calldatas.length, "OptimisticProposal: invalid proposal");
+        uint256 _vetoEnd,
+        uint256 _vetoThreshold,
+        uint256 _slashingPercentage,
+        address _token
+    ) public initializer {
+        require(
+            _targets.length != 0 && _targets.length == _values.length && _targets.length == _calldatas.length,
+            "OptimisticProposal: invalid proposal"
+        );
         require(_slashingPercentage <= 1e18, "OptimisticProposal: invalid slashing percentage");
 
         owner = ReserveGovernor(payable(_msgSender()));

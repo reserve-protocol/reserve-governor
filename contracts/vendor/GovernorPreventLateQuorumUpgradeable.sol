@@ -3,9 +3,9 @@
 
 pragma solidity ^0.8.24;
 
-import {GovernorUpgradeable} from "./GovernorUpgradeable.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { GovernorUpgradeable } from "./GovernorUpgradeable.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @dev A module that ensures there is a minimum voting period after quorum is reached. This prevents a large voter from
@@ -24,8 +24,10 @@ abstract contract GovernorPreventLateQuorumUpgradeable is Initializable, Governo
         mapping(uint256 proposalId => uint48) _extendedDeadlines;
     }
 
-    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.GovernorPreventLateQuorum")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant GovernorPreventLateQuorumStorageLocation = 0x042f525fd47e44d02e065dd7bb464f47b4f926fbd05b5e087891ebd756adf100;
+    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.GovernorPreventLateQuorum")) - 1)) &
+    // ~bytes32(uint256(0xff))
+    bytes32 private constant GovernorPreventLateQuorumStorageLocation =
+        0x042f525fd47e44d02e065dd7bb464f47b4f926fbd05b5e087891ebd756adf100;
 
     function _getGovernorPreventLateQuorumStorage() private pure returns (GovernorPreventLateQuorumStorage storage $) {
         assembly {
