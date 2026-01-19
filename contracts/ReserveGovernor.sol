@@ -146,13 +146,19 @@ contract ReserveGovernor is
         );
 
         optimisticProposals[proposalId] = optimisticProposal;
-        optimisticProposal.initialize(
-            targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage, address(token())
-        );
 
         emit OptimisticProposalCreated(
             proposalId, targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage
         );
+
+        OptimisticProposal.Proposal memory proposal = OptimisticProposal.Proposal({
+            targets: targets,
+            values: values,
+            calldatas: calldatas,
+            description: description
+        });
+
+        optimisticProposal.initialize(proposal, vetoEnd, vetoThresholdAmt, slashingPercentage, address(token()));
     }
 
     /// Execute an optimistic proposal that has passed through

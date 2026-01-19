@@ -32,15 +32,19 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === State ===
 
+    ProposalState private _state;
+
     ReserveGovernor public owner;
     IERC20 public token;
 
-    ProposalState private _state;
+    struct Proposal {
+        address[] targets;
+        uint256[] values;
+        bytes[] calldatas;
+        string description;
+    }
 
-    address[] public targets;
-    uint256[] public values;
-    bytes[] public calldatas;
-    string public description;
+    Proposal public proposal;
 
     uint256 public vetoEnd; // {s} inclusive
     uint256 public vetoThreshold; // {tok}
@@ -58,28 +62,20 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     /// @param _vetoThreshold {tok}
     /// @param _slashingPercentage D18{1}
     function initialize(
-        address[] calldata _targets,
-        uint256[] calldata _values,
-        bytes[] calldata _calldatas,
-        string calldata _description,
+        Proposal calldata _proposal,
         uint256 _vetoEnd,
         uint256 _vetoThreshold,
         uint256 _slashingPercentage,
         address _token
     ) public initializer {
         require(
-            _targets.length != 0 && _targets.length == _values.length && _targets.length == _calldatas.length,
+            _proposal.targets.length != 0 && _proposal.targets.length == _proposal.values.length && _proposal.targets.length == _proposal.calldatas.length,
             "OptimisticProposal: invalid proposal"
         );
         require(_slashingPercentage <= 1e18, "OptimisticProposal: invalid slashing percentage");
 
         owner = ReserveGovernor(payable(_msgSender()));
-
-        targets = _targets;
-        values = _values;
-        calldatas = _calldatas;
-        description = _description;
-
+        proposal = _proposal;
         vetoEnd = _vetoEnd;
         vetoThreshold = _vetoThreshold;
         slashingPercentage = _slashingPercentage;
@@ -129,7 +125,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             emit Locked();
 
             // initiate adjudication via slow proposal
-            owner.propose(targets, values, calldatas, description);
+            owner.propose(proposal.targets, proposal.values, proposal.calldatas, proposal.description);
         }
 
         token.safeTransferFrom(_msgSender(), address(this), amount);
