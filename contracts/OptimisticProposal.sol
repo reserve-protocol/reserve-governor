@@ -109,6 +109,10 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     // === View ===
 
     function state() public view returns (OptimisticProposalState) {
+        if (canceled) {
+            return OptimisticProposalState.Canceled;
+        }
+
         if (!adjudicationStarted) {
             if (block.timestamp <= vetoEnd) {
                 return OptimisticProposalState.Active;
@@ -128,7 +132,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         }
 
         if (
-            canceled || adjudicationState == IGovernor.ProposalState.Canceled
+            adjudicationState == IGovernor.ProposalState.Canceled
                 || adjudicationState == IGovernor.ProposalState.Expired
         ) {
             return OptimisticProposalState.Canceled;

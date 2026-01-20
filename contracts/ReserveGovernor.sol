@@ -34,12 +34,12 @@ import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol
 
 import {
     CANCELLER_ROLE,
-    OPTIMISTIC_PROPOSER_ROLE,
     IReserveGovernor,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
     MAX_VETO_PERIOD,
     MAX_VETO_THRESHOLD,
-    MIN_VETO_PERIOD
+    MIN_VETO_PERIOD,
+    OPTIMISTIC_PROPOSER_ROLE
 } from "./interfaces/IReserveGovernor.sol";
 
 /**
@@ -116,7 +116,10 @@ contract ReserveGovernor is
     // === Optimistic proposer ===
 
     modifier onlyOptimisticProposer() {
-        require(TimelockControllerBypassable(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()), NotOptimisticProposer(_msgSender()));
+        require(
+            TimelockControllerBypassable(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()),
+            NotOptimisticProposer(_msgSender())
+        );
         _;
     }
 
@@ -146,7 +149,7 @@ contract ReserveGovernor is
 
         require(address(optimisticProposals[proposalId]) == address(0), ExistingOptimisticProposal(proposalId));
         optimisticProposals[proposalId] = optimisticProposal;
-        
+
         optimisticProposalCount++;
         require(optimisticProposalCount <= optimisticParams.numParallelProposals, TooManyParallelOptimisticProposals());
 
@@ -173,8 +176,12 @@ contract ReserveGovernor is
     ) public payable onlyOptimisticProposer {
         uint256 proposalId = getProposalId(targets, values, calldatas, descriptionHash);
 
-        // require no existing standard proposal
-        require(proposalSnapshot(proposalId) == 0, ExistingStandardProposal(proposalId));
+        // require successful optimistic proposal and no existing standard proposal
+        require(
+            optimisticProposals[proposalId].state() == OptimisticProposal.OptimisticProposalState.Succeeded
+                && proposalSnapshot(proposalId) == 0,
+            OptimisticProposalNotReady(proposalId)
+        );
         optimisticProposalCount--;
 
         TimelockControllerBypassable(payable(timelock())).executeBatchBypass{ value: msg.value }(
@@ -194,7 +201,8 @@ contract ReserveGovernor is
         require(
             (proposalSnapshot(proposalId) == 0 || _state == ProposalState.Defeated || _state == ProposalState.Expired)
                 && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender())
-                    || TimelockControllerBypassable(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender())),
+                    || TimelockControllerBypassable(payable(timelock()))
+                        .hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender())),
             NotAuthorizedToCancel(_msgSender())
         );
         optimisticProposalCount--;
