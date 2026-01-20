@@ -529,8 +529,10 @@ contract TimelockControllerBypassable is
     ) public payable onlyRoleOrOpenRole(PROPOSER_ROLE) {
         bytes32 id = hashOperationBatch(targets, values, payloads, predecessor, salt);
 
-        // mark Ready
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();
+
+        // mark Ready
+        require($._timestamps[id] == 0, "TimelockControllerBypassable: conflicting operation");
         $._timestamps[id] = 1;
 
         // check caller has EXECUTOR_ROLE and execute

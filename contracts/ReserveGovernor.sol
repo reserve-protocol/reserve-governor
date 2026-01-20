@@ -34,6 +34,7 @@ import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol
 
 import {
     CANCELLER_ROLE,
+    OPTIMISTIC_PROPOSER_ROLE,
     IReserveGovernor,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
     MAX_VETO_PERIOD,
@@ -71,8 +72,6 @@ contract ReserveGovernor is
 
     OptimisticGovernanceParams public optimisticParams;
 
-    mapping(address role => bool) public isOptimisticProposer; // TODO can move to Timelock to save contract size
-
     mapping(uint256 proposalId => OptimisticProposal) public optimisticProposals;
     uint256 public optimisticProposalCount;
 
@@ -92,7 +91,6 @@ contract ReserveGovernor is
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator 0-100
     function initialize(
-        address[] calldata optimisticProposers,
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         IVotes _token,
@@ -108,10 +106,6 @@ contract ReserveGovernor is
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
 
-        for (uint256 i = 0; i < optimisticProposers.length; i++) {
-            isOptimisticProposer[optimisticProposers[i]] = true;
-        }
-
         _setOptimisticParams(optimisticGovParams);
     }
 
@@ -122,18 +116,8 @@ contract ReserveGovernor is
     // === Optimistic proposer ===
 
     modifier onlyOptimisticProposer() {
-        require(isOptimisticProposer[_msgSender()], NotOptimisticProposer(_msgSender()));
+        require(TimelockControllerBypassable(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()), NotOptimisticProposer(_msgSender()));
         _;
-    }
-
-    function grantOptimisticProposer(address account) public onlyGovernance {
-        isOptimisticProposer[account] = true;
-        emit OptimisticProposerGranted(account);
-    }
-
-    function revokeOptimisticProposer(address account) public onlyGovernance {
-        isOptimisticProposer[account] = false;
-        emit OptimisticProposerRevoked(account);
     }
 
     // === Optimistic flow ===
@@ -210,7 +194,7 @@ contract ReserveGovernor is
         require(
             (proposalSnapshot(proposalId) == 0 || _state == ProposalState.Defeated || _state == ProposalState.Expired)
                 && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender())
-                    || isOptimisticProposer[_msgSender()]),
+                    || TimelockControllerBypassable(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender())),
             NotAuthorizedToCancel(_msgSender())
         );
         optimisticProposalCount--;
@@ -362,8 +346,7 @@ contract ReserveGovernor is
         optimisticParams = params;
     }
 
-    // TODO:
-    //   - contract size
-    //
+    // TODO: contract size
+    // TODO: deployer for the whole system, must remember to setup OPTIMISTIC_PROPOSER_ROLE on the timelock
     // TODO: Add burn() to StakingVault/StRSR
 }
