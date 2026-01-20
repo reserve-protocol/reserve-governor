@@ -140,6 +140,11 @@ contract ReserveGovernor is
         bytes[] calldata calldatas,
         string memory description
     ) public onlyOptimisticProposer returns (uint256 proposalId) {
+        // prevent targeting this contract or the timelock via optimistic proposals
+        for (uint256 i = 0; i < targets.length; i++) {
+            require(targets[i] != address(this) && targets[i] != address(timelock()), NoMetaGovernanceThroughOptimistic());
+        }
+        
         OptimisticProposal optimisticProposal = OptimisticProposal(address(optimisticProposalImpl).clone());
 
         // prevent front-running of someone creating the same proposal in the standard flow
@@ -337,5 +342,4 @@ contract ReserveGovernor is
     //   2. number of parallel optimistic proposals
     //   3. contract size
     //   4. Add burn() to StakingVault/StRSR later
-    //   5. make sure timelock bypass cannot target ReserveGovernor itself
 }

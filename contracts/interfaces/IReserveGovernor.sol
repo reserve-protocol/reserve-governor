@@ -10,6 +10,7 @@ interface IReserveGovernor {
     error ProposalDoesNotExist(uint256 proposalId);
     error NotOptimisticProposer(address account);
     error ProposalAlreadyCanceled(uint256 proposalId);
+    error NoMetaGovernanceThroughOptimistic();
     error ProposalNotReady(uint256 proposalId);
     error NotAuthorizedToCancel(address account);
 
