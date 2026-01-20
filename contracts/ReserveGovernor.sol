@@ -1,21 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
+import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 
-import { GovernorCountingSimpleUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
-import { GovernorPreventLateQuorumUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorPreventLateQuorumUpgradeable.sol";
-import { GovernorSettingsUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorSettingsUpgradeable.sol";
-import { GovernorTimelockControlUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
-import { GovernorVotesQuorumFractionUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesQuorumFractionUpgradeable.sol";
-import { GovernorVotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
+import {
+    GovernorCountingSimpleUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
+import {
+    GovernorPreventLateQuorumUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorPreventLateQuorumUpgradeable.sol";
+import {
+    GovernorSettingsUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorSettingsUpgradeable.sol";
+import {
+    GovernorTimelockControlUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
+import {
+    GovernorVotesQuorumFractionUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesQuorumFractionUpgradeable.sol";
+import {
+    GovernorVotesUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 
 import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol";
@@ -141,7 +153,14 @@ contract ReserveGovernor is
         optimisticProposal.initialize(optimisticParams, proposalId, targets, values, calldatas, description);
 
         emit OptimisticProposalCreated(
-            proposalId, targets, values, calldatas, description, optimisticParams.vetoPeriod, optimisticParams.vetoThreshold, optimisticParams.slashingPercentage
+            proposalId,
+            targets,
+            values,
+            calldatas,
+            description,
+            optimisticParams.vetoPeriod,
+            optimisticParams.vetoThreshold,
+            optimisticParams.slashingPercentage
         );
     }
 
@@ -154,11 +173,8 @@ contract ReserveGovernor is
     ) public payable onlyOptimisticProposer {
         uint256 proposalId = getProposalId(targets, values, calldatas, descriptionHash);
 
-        // OptimisticProposalState.Succeeded ONLY occurs without adjudication
-        require(
-            optimisticProposals[proposalId].state() == OptimisticProposal.OptimisticProposalState.Succeeded,
-            ProposalNotReady(proposalId)
-        );
+        // require no existing standard proposal
+        require(proposalSnapshot(proposalId) == 0, ExistingStandardProposal(proposalId));
 
         TimelockControllerBypassable(payable(timelock())).executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ descriptionHash
@@ -173,7 +189,7 @@ contract ReserveGovernor is
         OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
 
         require(
-            !optimisticProposal.adjudicationStarted() 
+            proposalSnapshot(proposalId) == 0
                 && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender())
                     || isOptimisticProposer[_msgSender()]),
             NotAuthorizedToCancel(_msgSender())
@@ -184,11 +200,7 @@ contract ReserveGovernor is
     }
 
     /// @return The OVERALL state of the proposal, merging both optimistic and standard flows together
-    function metaState(uint256 proposalId)
-        public
-        view
-        returns (MetaProposalState)
-    {
+    function metaState(uint256 proposalId) public view returns (MetaProposalState) {
         if (address(optimisticProposals[proposalId]) != address(0)) {
             OptimisticProposal.OptimisticProposalState optimisticState = optimisticProposals[proposalId].state();
 
@@ -312,7 +324,11 @@ contract ReserveGovernor is
     }
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) internal {
-        require(params.vetoPeriod != 0 && params.vetoThreshold != 0 && params.slashingPercentage != 0 && params.slashingPercentage <= 1e18, InvalidVetoParameters());
+        require(
+            params.vetoPeriod != 0 && params.vetoThreshold != 0 && params.slashingPercentage != 0
+                && params.slashingPercentage <= 1e18,
+            InvalidVetoParameters()
+        );
         optimisticParams = params;
     }
 
@@ -320,6 +336,6 @@ contract ReserveGovernor is
     //   1. extreme bounds
     //   2. number of parallel optimistic proposals
     //   3. contract size
-    //   4. burn() on StakingVault
+    //   4. Add burn() to StakingVault/StRSR later
     //   5. make sure timelock bypass cannot target ReserveGovernor itself
 }

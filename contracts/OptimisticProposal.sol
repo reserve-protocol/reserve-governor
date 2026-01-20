@@ -7,8 +7,8 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
-import { IVetoToken } from "./interfaces/IVetoToken.sol";
 import { ReserveGovernor } from "./ReserveGovernor.sol";
+import { IVetoToken } from "./interfaces/IVetoToken.sol";
 
 /**
  * @title OptimisticProposal
@@ -74,7 +74,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     ) public initializer {
         require(_params.vetoThreshold <= 1e18, "OptimisticProposal: invalid veto threshold");
         require(_params.slashingPercentage <= 1e18, "OptimisticProposal: invalid slashing percentage");
-        
+
         require(
             _targets.length != 0 && _targets.length == _values.length && _targets.length == _calldatas.length,
             "OptimisticProposal: invalid proposal"
@@ -110,7 +110,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     function state() public view returns (OptimisticProposalState) {
         if (!adjudicationStarted) {
-            if (block.timestamp <= vetoEnd)  {
+            if (block.timestamp <= vetoEnd) {
                 return OptimisticProposalState.Active;
             } else {
                 return OptimisticProposalState.Succeeded;
@@ -118,16 +118,19 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         }
 
         IGovernor.ProposalState adjudicationState = governor.state(proposalId);
-        
+
         if (adjudicationState == IGovernor.ProposalState.Defeated) {
             return OptimisticProposalState.Vetoed;
         }
-        
+
         if (adjudicationState == IGovernor.ProposalState.Executed) {
             return OptimisticProposalState.Slashed;
         }
 
-        if (canceled || adjudicationState == IGovernor.ProposalState.Canceled || adjudicationState == IGovernor.ProposalState.Expired) {
+        if (
+            canceled || adjudicationState == IGovernor.ProposalState.Canceled
+                || adjudicationState == IGovernor.ProposalState.Expired
+        ) {
             return OptimisticProposalState.Canceled;
         }
 
@@ -139,7 +142,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     function cancel() external {
         require(_msgSender() == address(governor), "OptimisticProposal: governor only");
         require(!canceled, "OptimisticProposal: already canceled");
-        
+
         canceled = true;
     }
 
@@ -172,7 +175,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         uint256 amount = staked[_msgSender()] * (1e18 - _slashingPercentage(_state)) / 1e18;
         delete staked[_msgSender()];
         // totalStaked unchanged
-        
+
         token.safeTransfer(_msgSender(), amount);
         emit Withdrawn(_msgSender(), amount);
     }

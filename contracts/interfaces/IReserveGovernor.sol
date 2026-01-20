@@ -2,10 +2,10 @@
 pragma solidity 0.8.33;
 
 interface IReserveGovernor {
-    
     // === Errors ===
 
     error ExistingOptimisticProposal(uint256 proposalId);
+    error ExistingStandardProposal(uint256 proposalId);
     error InvalidVetoParameters();
     error ProposalDoesNotExist(uint256 proposalId);
     error NotOptimisticProposer(address account);
