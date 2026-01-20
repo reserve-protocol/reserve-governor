@@ -5,6 +5,7 @@ bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
 uint256 constant MIN_VETO_PERIOD = 1 hours;
 uint256 constant MAX_VETO_PERIOD = 14 days;
 uint256 constant MAX_VETO_THRESHOLD = 0.2e18; // 20%
+uint256 constant MAX_PARALLEL_OPTIMISTIC_PROPOSALS = 3;
 
 interface IReserveGovernor {
     // === Errors ===
@@ -18,6 +19,7 @@ interface IReserveGovernor {
     error NoMetaGovernanceThroughOptimistic();
     error ProposalNotReady(uint256 proposalId);
     error NotAuthorizedToCancel(address account);
+    error TooManyParallelOptimisticProposals();
 
     // === Events ===
 
@@ -57,6 +59,7 @@ interface IReserveGovernor {
         uint256 vetoPeriod; // {s}
         uint256 vetoThreshold; // D18{1}
         uint256 slashingPercentage; // D18{1}
+        uint256 numParallelProposals; // number of proposals that can be running in parallel
     }
 
     struct StandardGovernanceParams {

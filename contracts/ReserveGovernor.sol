@@ -35,6 +35,7 @@ import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol
 import {
     CANCELLER_ROLE,
     IReserveGovernor,
+    MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
     MAX_VETO_PERIOD,
     MAX_VETO_THRESHOLD,
     MIN_VETO_PERIOD
@@ -73,6 +74,7 @@ contract ReserveGovernor is
     mapping(address role => bool) public isOptimisticProposer; // TODO can move to Timelock to save contract size
 
     mapping(uint256 proposalId => OptimisticProposal) public optimisticProposals;
+    uint256 public optimisticProposalCount;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -160,6 +162,9 @@ contract ReserveGovernor is
 
         require(address(optimisticProposals[proposalId]) == address(0), ExistingOptimisticProposal(proposalId));
         optimisticProposals[proposalId] = optimisticProposal;
+        
+        optimisticProposalCount++;
+        require(optimisticProposalCount <= optimisticParams.numParallelProposals, TooManyParallelOptimisticProposals());
 
         optimisticProposal.initialize(optimisticParams, proposalId, targets, values, calldatas, description);
 
@@ -186,6 +191,7 @@ contract ReserveGovernor is
 
         // require no existing standard proposal
         require(proposalSnapshot(proposalId) == 0, ExistingStandardProposal(proposalId));
+        optimisticProposalCount--;
 
         TimelockControllerBypassable(payable(timelock())).executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ descriptionHash
@@ -195,18 +201,21 @@ contract ReserveGovernor is
         emit OptimisticProposalExecuted(proposalId);
     }
 
-    /// Cancel an optimistic proposal BEFORE it has reached the adjudication stage
+    /// Cancel an optimistic proposal while adjudication is not ongoing
     function cancelOptimistic(uint256 proposalId) public {
-        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
+        ProposalState _state = state(proposalId);
 
+        // TODO can we find a better way to clear the optimistic proposal queue? the problem is we don't know
+        // when a slow proposal fails to pass, so we need the optimistic proposers to take an explicit action
         require(
-            proposalSnapshot(proposalId) == 0
+            (proposalSnapshot(proposalId) == 0 || _state == ProposalState.Defeated || _state == ProposalState.Expired)
                 && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender())
                     || isOptimisticProposer[_msgSender()]),
             NotAuthorizedToCancel(_msgSender())
         );
+        optimisticProposalCount--;
 
-        optimisticProposal.cancel();
+        optimisticProposals[proposalId].cancel();
         emit OptimisticProposalCanceled(proposalId);
     }
 
@@ -301,6 +310,10 @@ contract ReserveGovernor is
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
         super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
+
+        if (address(optimisticProposals[proposalId]) != address(0)) {
+            optimisticProposalCount--;
+        }
     }
 
     function _cancel(
@@ -308,8 +321,12 @@ contract ReserveGovernor is
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
-    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint256) {
-        return super._cancel(targets, values, calldatas, descriptionHash);
+    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint256 proposalId) {
+        proposalId = super._cancel(targets, values, calldatas, descriptionHash);
+
+        if (address(optimisticProposals[proposalId]) != address(0)) {
+            optimisticProposalCount--;
+        }
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
@@ -338,15 +355,15 @@ contract ReserveGovernor is
         require(
             params.vetoPeriod != MIN_VETO_PERIOD && params.vetoPeriod <= MAX_VETO_PERIOD && params.vetoThreshold != 0
                 && params.vetoThreshold <= MAX_VETO_THRESHOLD && params.slashingPercentage != 0
-                && params.slashingPercentage <= 1e18,
+                && params.slashingPercentage <= 1e18
+                && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
             InvalidVetoParameters()
         );
         optimisticParams = params;
     }
 
     // TODO:
-    //   2. number of parallel optimistic proposals
-    //   3. contract size
+    //   - contract size
     //
     // TODO: Add burn() to StakingVault/StRSR
 }
