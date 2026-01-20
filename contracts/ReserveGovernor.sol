@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
+import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
+import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 
-import { GovernorCountingSimpleUpgradeable } from "./vendor/GovernorCountingSimpleUpgradeable.sol";
-import { GovernorPreventLateQuorumUpgradeable } from "./vendor/GovernorPreventLateQuorumUpgradeable.sol";
-import { GovernorSettingsUpgradeable } from "./vendor/GovernorSettingsUpgradeable.sol";
-import { GovernorTimelockControlUpgradeable } from "./vendor/GovernorTimelockControlUpgradeable.sol";
-import { GovernorUpgradeable } from "./vendor/GovernorUpgradeable.sol";
-import { GovernorVotesQuorumFractionUpgradeable } from "./vendor/GovernorVotesQuorumFractionUpgradeable.sol";
-import { GovernorVotesUpgradeable } from "./vendor/GovernorVotesUpgradeable.sol";
+import { GovernorCountingSimpleUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
+import { GovernorPreventLateQuorumUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorPreventLateQuorumUpgradeable.sol";
+import { GovernorSettingsUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorSettingsUpgradeable.sol";
+import { GovernorTimelockControlUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
+import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
+import { GovernorVotesQuorumFractionUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesQuorumFractionUpgradeable.sol";
+import { GovernorVotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 
-import { IReserveGovernor } from "./IReserveGovernor.sol";
 import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol";
+
+import { IReserveGovernor } from "./IReserveGovernor.sol";
 
 bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
 
@@ -50,11 +52,9 @@ contract ReserveGovernor is
 
     OptimisticProposal public immutable optimisticProposalImpl;
 
-    uint256 public vetoPeriod; // {s}
-    uint256 public vetoThreshold; // D18{1}
-    uint256 public slashingPercentage; // D18{1}
+    OptimisticGovernanceParams public optimisticParams;
 
-    mapping(address role => bool) public isOptimisticProposer; // TODO move to Timelock?
+    mapping(address role => bool) public isOptimisticProposer; // TODO can move to Timelock to save contract size
 
     mapping(uint256 proposalId => OptimisticProposal) public optimisticProposals;
 
@@ -65,37 +65,40 @@ contract ReserveGovernor is
         optimisticProposalImpl = new OptimisticProposal();
     }
 
-    /// @param optimisticParams.vetoPeriod {s} Veto period
-    /// @param optimisticParams.vetoThreshold D18{1} Fraction of vlToken supply required to start veto adjudication
-    /// @param standardParams.votingDelay {s} Delay before snapshot
-    /// @param standardParams.votingPeriod {s} Voting period
-    /// @param standardParams.proposalThreshold D18{1} Fraction of vlToken supply required to propose
-    /// @param standardParams.voteExtension {s} Time extension for late quorum
-    /// @param standardParams.quorumNumerator 0-100
+    /// @param optimisticGovParams.vetoPeriod {s} Veto period
+    /// @param optimisticGovParams.vetoThreshold D18{1} Fraction of tok supply required to start adjudication
+    /// @param optimisticGovParams.slashingPercentage D18{1} Percentage of staked tokens to be slashed
+    /// @param standardGovParams.votingDelay {s} Delay before snapshot
+    /// @param standardGovParams.votingPeriod {s} Voting period
+    /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
+    /// @param standardGovParams.voteExtension {s} Time extension for late quorum
+    /// @param standardGovParams.quorumNumerator 0-100
     function initialize(
-        OptimisticGovernanceParams calldata optimisticParams,
-        StandardGovernanceParams calldata standardParams,
+        address[] calldata optimisticProposers,
+        OptimisticGovernanceParams calldata optimisticGovParams,
+        StandardGovernanceParams calldata standardGovParams,
         IVotes _token,
         address _timelock
     ) public initializer {
-        require(optimisticParams.vetoPeriod != 0 && optimisticParams.vetoThreshold != 0, InvalidVetoParameters());
-
         __Governor_init("Reserve Governor");
         __GovernorSettings_init(
-            standardParams.votingDelay, standardParams.votingPeriod, standardParams.proposalThreshold
+            standardGovParams.votingDelay, standardGovParams.votingPeriod, standardGovParams.proposalThreshold
         );
-        __GovernorPreventLateQuorum_init(standardParams.voteExtension);
+        __GovernorPreventLateQuorum_init(standardGovParams.voteExtension);
         __GovernorCountingSimple_init();
         __GovernorVotes_init(_token);
-        __GovernorVotesQuorumFraction_init(standardParams.quorumNumerator);
+        __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
 
-        for (uint256 i = 0; i < optimisticParams.optimisticProposers.length; i++) {
-            isOptimisticProposer[optimisticParams.optimisticProposers[i]] = true;
+        for (uint256 i = 0; i < optimisticProposers.length; i++) {
+            isOptimisticProposer[optimisticProposers[i]] = true;
         }
-        vetoPeriod = optimisticParams.vetoPeriod;
-        vetoThreshold = optimisticParams.vetoThreshold;
-        slashingPercentage = optimisticParams.slashingPercentage;
+
+        _setOptimisticParams(optimisticGovParams);
+    }
+
+    function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
+        _setOptimisticParams(params);
     }
 
     // === Optimistic proposer ===
@@ -117,51 +120,32 @@ contract ReserveGovernor is
 
     // === Optimistic flow ===
 
+    /// @param description Exclude `#proposer=0x???` suffix
     /// @return proposalId The ID of the proposed optimistic proposal
     function proposeOptimistic(
         address[] calldata targets,
         uint256[] calldata values,
         bytes[] calldata calldatas,
-        string calldata description
+        string memory description
     ) public onlyOptimisticProposer returns (uint256 proposalId) {
+        OptimisticProposal optimisticProposal = OptimisticProposal(address(optimisticProposalImpl).clone());
+
+        // prevent front-running of someone creating the same proposal in the standard flow
+        description = string.concat(description, "#proposer=", Strings.toHexString(address(optimisticProposal)));
+
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         require(address(optimisticProposals[proposalId]) == address(0), ExistingOptimisticProposal(proposalId));
-
-        uint256 vetoEnd = block.timestamp + vetoPeriod;
-
-        // {vlToken}
-        uint256 supply = token().getPastTotalSupply(clock() - 1);
-
-        // {vlToken}
-        uint256 vetoThresholdAmt = (vetoThreshold * supply + (1e18 - 1)) / 1e18;
-        // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
-
-        OptimisticProposal optimisticProposal = OptimisticProposal(address(optimisticProposalImpl).clone());
-
-        // prevent `description` field griefing that could otherwise prevent adjudication
-        require(
-            _isValidDescriptionForProposer(address(optimisticProposal), description),
-            GovernorRestrictedProposer(address(optimisticProposal))
-        );
-
         optimisticProposals[proposalId] = optimisticProposal;
 
+        optimisticProposal.initialize(optimisticParams, proposalId, targets, values, calldatas, description);
+
         emit OptimisticProposalCreated(
-            proposalId, targets, values, calldatas, description, vetoEnd, vetoThresholdAmt, slashingPercentage
+            proposalId, targets, values, calldatas, description, optimisticParams.vetoPeriod, optimisticParams.vetoThreshold, optimisticParams.slashingPercentage
         );
-
-        OptimisticProposal.Proposal memory proposal = OptimisticProposal.Proposal({
-            targets: targets,
-            values: values,
-            calldatas: calldatas,
-            description: description
-        });
-
-        optimisticProposal.initialize(proposal, vetoEnd, vetoThresholdAmt, slashingPercentage, address(token()));
     }
 
-    /// Execute an optimistic proposal that has passed through
+    /// Execute an optimistic proposal that has passed successfully without going through the adjudication process
     function executeOptimistic(
         address[] calldata targets,
         uint256[] calldata values,
@@ -170,8 +154,9 @@ contract ReserveGovernor is
     ) public payable onlyOptimisticProposer {
         uint256 proposalId = getProposalId(targets, values, calldatas, descriptionHash);
 
+        // OptimisticProposalState.Succeeded ONLY occurs without adjudication
         require(
-            optimisticProposals[proposalId].state() == OptimisticProposal.ProposalState.Succeeded,
+            optimisticProposals[proposalId].state() == OptimisticProposal.OptimisticProposalState.Succeeded,
             ProposalNotReady(proposalId)
         );
 
@@ -185,29 +170,49 @@ contract ReserveGovernor is
 
     /// Cancel an optimistic proposal BEFORE it has reached the adjudication stage
     function cancelOptimistic(uint256 proposalId) public {
+        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
+
         require(
-            proposalSnapshot(proposalId) == 0
+            !optimisticProposal.adjudicationStarted() 
                 && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender())
                     || isOptimisticProposer[_msgSender()]),
             NotAuthorizedToCancel(_msgSender())
         );
 
-        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
         optimisticProposal.cancel();
-
         emit OptimisticProposalCanceled(proposalId);
+    }
+
+    /// @return The OVERALL state of the proposal, merging both optimistic and standard flows together
+    function metaState(uint256 proposalId)
+        public
+        view
+        returns (MetaProposalState)
+    {
+        if (address(optimisticProposals[proposalId]) != address(0)) {
+            OptimisticProposal.OptimisticProposalState optimisticState = optimisticProposals[proposalId].state();
+
+            if (optimisticState == OptimisticProposal.OptimisticProposalState.Active) {
+                return MetaProposalState.Optimistic;
+            }
+
+            if (optimisticState == OptimisticProposal.OptimisticProposalState.Succeeded) {
+                return MetaProposalState.Succeeded;
+            }
+        }
+
+        return MetaProposalState(uint8(state(proposalId)) + 1); // +1 to skip Optimistic state
     }
 
     // === Inheritance overrides ===
 
+    /// @dev As an external consumer of this contract, use metaState() instead
     function state(uint256 proposalId)
         public
         view
         override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
         returns (ProposalState)
     {
-        // TODO map OptimisticProposal state to ProposalState
-
         return super.state(proposalId);
     }
 
@@ -229,7 +234,7 @@ contract ReserveGovernor is
         return super.proposalNeedsQueuing(proposalId);
     }
 
-    /// @return {vlToken} The number of votes required in order for a voter to become a proposer
+    /// @return {tok} The number of votes required in order for a voter to become a proposer
     function proposalThreshold()
         public
         view
@@ -238,7 +243,7 @@ contract ReserveGovernor is
     {
         uint256 proposalThresholdRatio = super.proposalThreshold(); // D18{1}
 
-        // {vlToken}
+        // {tok}
         uint256 supply = token().getPastTotalSupply(clock() - 1);
 
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
@@ -251,15 +256,8 @@ contract ReserveGovernor is
         bytes[] memory calldatas,
         string memory description,
         address proposer
-    ) internal override returns (uint256 proposalId) {
-        proposalId = super._propose(targets, values, calldatas, description, proposer);
-
-        // prevent duplicates UNLESS the proposer is an OptimisticProposal itself
-        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
-        require(
-            address(optimisticProposal) == address(0) || proposer == address(optimisticProposal),
-            ExistingOptimisticProposal(proposalId)
-        );
+    ) internal override returns (uint256) {
+        return super._propose(targets, values, calldatas, description, proposer);
     }
 
     function _queueOperations(
@@ -279,11 +277,6 @@ contract ReserveGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
-        // slash OptimisticProposal if it succeeds during adjudication
-        if (address(optimisticProposals[proposalId]) != address(0)) {
-            optimisticProposals[proposalId].slash();
-        }
-
         super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
 
@@ -292,22 +285,14 @@ contract ReserveGovernor is
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
-    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint256 proposalId) {
-        proposalId = super._cancel(targets, values, calldatas, descriptionHash);
-
-        // cancel OptimisticProposal too, if adjudicating
-        if (address(optimisticProposals[proposalId]) != address(0)) {
-            // _validateCancel() already checked the caller is a guardian
-            optimisticProposals[proposalId].cancel();
-        }
+    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint256) {
+        return super._cancel(targets, values, calldatas, descriptionHash);
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
         return state(proposalId) == ProposalState.Pending
             && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, caller)
                 || caller == proposalProposer(proposalId));
-
-        // for an adjudication, the proposalProposer is the OptimisticProposal itself
     }
 
     function _executor()
@@ -326,5 +311,14 @@ contract ReserveGovernor is
         super._tallyUpdated(proposalId);
     }
 
-    // TODO: setters for vetoPeriod, vetoThreshold, slashingPercentage
+    function _setOptimisticParams(OptimisticGovernanceParams calldata params) internal {
+        require(params.vetoPeriod != 0 && params.vetoThreshold != 0 && params.slashingPercentage != 0 && params.slashingPercentage <= 1e18, InvalidVetoParameters());
+        optimisticParams = params;
+    }
+
+    // TODO:
+    //   1. extreme bounds
+    //   2. number of parallel optimistic proposals
+    //   3. contract size
+    //   4. slashed tokens remain in 
 }

@@ -8,7 +8,7 @@
   "scripts": {
     "compile": "forge compile",
     "test": "forge test",
-    "size": "forge compile --sizes",
+    "size": "forge compile --sizes 2>/dev/null",
     "format": "forge fmt"
   },
   "dependencies": {
