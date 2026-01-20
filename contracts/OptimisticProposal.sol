@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
-import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
-
+import { IVetoToken } from "./interfaces/IVetoToken.sol";
 import { ReserveGovernor } from "./ReserveGovernor.sol";
 
+/**
+ * @title OptimisticProposal
+ *
+ * @dev Not compatible with rebasing tokens
+ *      Do NOT send tokens to this contract directly, call `stake()` instead
+ */
 contract OptimisticProposal is Initializable, ContextUpgradeable {
-    using SafeERC20 for IERC20;
+    using SafeERC20 for IVetoToken;
 
     // === Events ===
 
@@ -34,7 +38,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     // === State ===
 
     ReserveGovernor public governor;
-    address public token;
+    IVetoToken public token;
 
     uint256 public proposalId;
     address[] public targets;
@@ -47,6 +51,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     uint256 public slashingPercentage; // D18{1}
 
     mapping(address staker => uint256 amount) public staked; // {tok}
+    uint256 public totalStaked; // {tok}
 
     bool public adjudicationStarted;
     bool public canceled;
@@ -76,7 +81,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         );
 
         governor = ReserveGovernor(payable(_msgSender()));
-        token = address(governor.token());
+        token = IVetoToken(address(governor.token()));
 
         proposalId = _proposalId;
         targets = _targets;
@@ -88,7 +93,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         vetoEnd = block.timestamp + _params.vetoPeriod;
 
         // {tok}
-        uint256 supply = IVotes(address(token)).getPastTotalSupply(governor.clock() - 1);
+        uint256 supply = IVetoToken(address(token)).getPastTotalSupply(governor.clock() - 1);
 
         // {tok} = D18{1} * {tok} / D18{1}
         vetoThreshold = (_params.vetoThreshold * supply + (1e18 - 1)) / 1e18;
@@ -96,6 +101,9 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
         // D18{1}
         slashingPercentage = _params.slashingPercentage;
+
+        // confirm `token` is burnable
+        token.burn(0);
     }
 
     // === View ===
@@ -119,7 +127,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             return OptimisticProposalState.Slashed;
         }
 
-        // TODO: check that when cancellation happens in the timelock, this state gets triggered
         if (canceled || adjudicationState == IGovernor.ProposalState.Canceled || adjudicationState == IGovernor.ProposalState.Expired) {
             return OptimisticProposalState.Canceled;
         }
@@ -144,15 +151,16 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
         // {tok}
         staked[_msgSender()] += amount;
+        totalStaked += amount;
 
-        if (IERC20(token).balanceOf(address(this)) + amount >= vetoThreshold) {
+        if (totalStaked >= vetoThreshold) {
             adjudicationStarted = true;
 
             // initiate adjudication via slow proposal
             governor.propose(targets, values, calldatas, description);
         }
 
-        IERC20(token).safeTransferFrom(_msgSender(), address(this), amount);
+        token.safeTransferFrom(_msgSender(), address(this), amount);
         emit Staked(_msgSender(), amount);
     }
 
@@ -161,13 +169,26 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         require(_state != OptimisticProposalState.Locked, "OptimisticProposal: locked for adjudication");
 
         // {tok} = {tok} * D18{1}
-        uint256 amount = staked[_msgSender()] * (1e18 - _slashingPercentage(state())) / 1e18;
+        uint256 amount = staked[_msgSender()] * (1e18 - _slashingPercentage(_state)) / 1e18;
         delete staked[_msgSender()];
-
-        require(amount != 0, "OptimisticProposal: zero withdrawal");
-
-        IERC20(token).safeTransfer(_msgSender(), amount);
+        // totalStaked unchanged
+        
+        token.safeTransfer(_msgSender(), amount);
         emit Withdrawn(_msgSender(), amount);
+    }
+
+    /// @dev Relies upon permissionless caller to act independently after proposal flow completes
+    function burnSlashed() external {
+        OptimisticProposalState _state = state();
+        require(_state == OptimisticProposalState.Slashed, "OptimisticProposal: not slashed");
+
+        // TODO confirm CEIL here can never revert even if all withdrawals have been processed
+        uint256 amount = (totalStaked * _slashingPercentage(_state) + 1e18 - 1) / 1e18;
+        totalStaked = 0;
+
+        require(amount != 0, "OptimisticProposal: cannnot burn");
+
+        token.burn(amount);
     }
 
     // === Internal ===

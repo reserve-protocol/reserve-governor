@@ -20,7 +20,7 @@ import { GovernorVotesUpgradeable } from "@openzeppelin/contracts-upgradeable/go
 import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol";
 
-import { IReserveGovernor } from "./IReserveGovernor.sol";
+import { IReserveGovernor } from "./interfaces/IReserveGovernor.sol";
 
 bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
 
@@ -320,5 +320,6 @@ contract ReserveGovernor is
     //   1. extreme bounds
     //   2. number of parallel optimistic proposals
     //   3. contract size
-    //   4. slashed tokens remain in 
+    //   4. burn() on StakingVault
+    //   5. make sure timelock bypass cannot target ReserveGovernor itself
 }
