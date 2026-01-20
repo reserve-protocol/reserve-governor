@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
+bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
+uint256 constant MIN_VETO_PERIOD = 1 hours;
+uint256 constant MAX_VETO_PERIOD = 14 days;
+uint256 constant MAX_VETO_THRESHOLD = 0.2e18; // 20%
+
 interface IReserveGovernor {
     // === Errors ===
 

@@ -32,9 +32,13 @@ import {
 import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol";
 
-import { IReserveGovernor } from "./interfaces/IReserveGovernor.sol";
-
-bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
+import {
+    CANCELLER_ROLE,
+    IReserveGovernor,
+    MAX_VETO_PERIOD,
+    MAX_VETO_THRESHOLD,
+    MIN_VETO_PERIOD
+} from "./interfaces/IReserveGovernor.sol";
 
 /**
  * @title ReserveGovernor
@@ -142,9 +146,11 @@ contract ReserveGovernor is
     ) public onlyOptimisticProposer returns (uint256 proposalId) {
         // prevent targeting this contract or the timelock via optimistic proposals
         for (uint256 i = 0; i < targets.length; i++) {
-            require(targets[i] != address(this) && targets[i] != address(timelock()), NoMetaGovernanceThroughOptimistic());
+            require(
+                targets[i] != address(this) && targets[i] != address(timelock()), NoMetaGovernanceThroughOptimistic()
+            );
         }
-        
+
         OptimisticProposal optimisticProposal = OptimisticProposal(address(optimisticProposalImpl).clone());
 
         // prevent front-running of someone creating the same proposal in the standard flow
@@ -330,7 +336,8 @@ contract ReserveGovernor is
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) internal {
         require(
-            params.vetoPeriod != 0 && params.vetoThreshold != 0 && params.slashingPercentage != 0
+            params.vetoPeriod != MIN_VETO_PERIOD && params.vetoPeriod <= MAX_VETO_PERIOD && params.vetoThreshold != 0
+                && params.vetoThreshold <= MAX_VETO_THRESHOLD && params.slashingPercentage != 0
                 && params.slashingPercentage <= 1e18,
             InvalidVetoParameters()
         );
@@ -341,5 +348,6 @@ contract ReserveGovernor is
     //   1. extreme bounds
     //   2. number of parallel optimistic proposals
     //   3. contract size
-    //   4. Add burn() to StakingVault/StRSR later
+    //
+    // TODO: Add burn() to StakingVault/StRSR
 }
