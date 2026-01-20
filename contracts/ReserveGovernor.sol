@@ -345,7 +345,6 @@ contract ReserveGovernor is
     }
 
     // TODO:
-    //   1. extreme bounds
     //   2. number of parallel optimistic proposals
     //   3. contract size
     //

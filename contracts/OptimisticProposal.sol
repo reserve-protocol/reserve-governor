@@ -176,11 +176,14 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         delete staked[_msgSender()];
         // totalStaked unchanged
 
+        require(amount != 0, "OptimisticProposal: zero withdrawal");
+
         token.safeTransfer(_msgSender(), amount);
         emit Withdrawn(_msgSender(), amount);
     }
 
     /// @dev Relies upon permissionless caller to act independently after proposal flow completes
+    ///      Warning: CAN revert
     function burnSlashed() external {
         OptimisticProposalState _state = state();
         require(_state == OptimisticProposalState.Slashed, "OptimisticProposal: not slashed");
@@ -189,7 +192,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         uint256 amount = (totalStaked * _slashingPercentage(_state) + 1e18 - 1) / 1e18;
         totalStaked = 0;
 
-        require(amount != 0, "OptimisticProposal: cannnot burn");
+        require(amount != 0, "OptimisticProposal: zero burn");
 
         token.burn(amount);
     }
