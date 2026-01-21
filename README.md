@@ -29,7 +29,7 @@ This design enables efficient day-to-day governance while preserving community o
                                │
                                ▼
                ┌───────────────────────────────┐
-               │  TimelockControllerBypassable │
+               │  TimelockControllerOptimistic │
                │                               │
                │  Fast: executeBatchBypass()   │
                │  Slow: scheduleBatch()        │
@@ -65,7 +65,8 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
                                           │  (via bypass) │   ┌──────────┐ ┌────────┐ ┌────────┐
                                           └───────────────┘   │ SLASHED  │ │ VETOED │ │CANCELED│
                                                               │(adjudic. │ │(adjud. │ │(adjud. │
-                                                              │ passed)  │ │ failed)│ │expired)│
+                                                              │ passed)  │ │ failed/│ │canceled│
+                                                              │          │ │expired)│ │        │
                                                               └────┬─────┘ └────────┘ └────────┘
                                                                    │
                                                                    ▼
@@ -84,7 +85,8 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
 | F2 | Early Cancellation | Active → Canceled | Proposal stopped before adjudication; stakers withdraw full amount |
 | F3 | Adjudication Passes | Active → Locked → Slashed → Executed | Vetoers were wrong; slashed, proposal executes via slow vote |
 | F4 | Adjudication Fails (Veto Succeeds) | Active → Locked → Vetoed | Veto succeeds! Proposal blocked, stakers withdraw full amount |
-| F5 | Adjudication Canceled/Expired | Active → Locked → Canceled | Guardian cancels or vote expires; stakers withdraw full amount |
+| F5a | Adjudication Canceled | Active → Locked → Canceled | Guardian cancels adjudication; stakers withdraw full amount |
+| F5b | Adjudication Expired | Active → Locked → Vetoed | Vote expires without execution; stakers withdraw full amount |
 
 ### Slow Proposal Lifecycle
 
@@ -138,13 +140,14 @@ vetoThreshold = ceil((vetoThresholdRatio * tokenSupply) / 1e18)
 When a fast proposal reaches the vetoThreshold (becomes `Locked`):
 
 1. **Slow Vote Initiated**: The `OptimisticProposal` calls `governor.propose()` to start a standard governance vote
-2. **Three Possible Outcomes**:
+2. **Four Possible Outcomes**:
 
 | Adjudication Result | OptimisticProposal State | Proposal Outcome | Staker Outcome |
 |---------------------|--------------------------|------------------|----------------|
 | **Vote Passes** (Executed) | `Slashed` | Proposal executes | Slashed on withdrawal |
 | **Vote Fails** (Defeated) | `Vetoed` | Proposal blocked | Full refund |
-| **Vote Canceled/Expired** | `Canceled` | Proposal blocked | Full refund |
+| **Vote Expired** | `Vetoed` | Proposal blocked | Full refund |
+| **Vote Canceled** | `Canceled` | Proposal blocked | Full refund |
 
 ### Slashing Mechanics
 
@@ -154,7 +157,7 @@ Slashing only applies when the adjudication vote passes (state = `Slashed`):
 withdrawalAmount = stakedAmount * (1e18 - slashingPercentage) / 1e18
 ```
 
-Slashed tokens remain in the `OptimisticProposal` contract.
+Slashed tokens are burned via `token.burn()`.
 
 ## Staker Guide
 
@@ -213,9 +216,11 @@ enum MetaProposalState {
 
 ### OptimisticProposer
 
-- Granted via `grantOptimisticProposer(address)`
-- Revoked via `revokeOptimisticProposer(address)`
-- Checked via `isOptimisticProposer(address)` mapping
+The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessControl:
+
+- Granted via `timelock.grantRole(OPTIMISTIC_PROPOSER_ROLE, address)`
+- Revoked via `timelock.revokeRole(OPTIMISTIC_PROPOSER_ROLE, address)`
+- Checked via `timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, address)`
 
 ## Contract Reference
 
@@ -226,7 +231,7 @@ The main hybrid governor contract.
 **Fast Proposal Functions:**
 - `proposeOptimistic(targets, values, calldatas, description)` - Create a fast proposal
 - `executeOptimistic(targets, values, calldatas, descriptionHash)` - Execute a succeeded fast proposal
-- `cancelOptimistic(proposalId)` - Cancel a fast proposal before adjudication
+- `cancelOptimistic(proposalId)` - Cancel a fast proposal (callable by anyone when Vetoed, or by CANCELLER/OPTIMISTIC_PROPOSER when Active/Succeeded)
 
 **State Query:**
 - `metaState(proposalId)` - Unified state across both flows
@@ -247,12 +252,12 @@ Per-proposal contract handling veto logic. Created as a clone for each fast prop
 **State Query:**
 - `state()` - Returns `OptimisticProposalState`
 - `staked(address)` - Returns amount staked by address
+- `totalStaked` - Total tokens staked against the proposal
 - `vetoEnd` - Timestamp when veto period ends
 - `vetoThreshold` - Token amount needed to trigger adjudication
-- `adjudicationStarted` - Whether adjudication has begun
 - `canceled` - Whether proposal was canceled
 
-### TimelockControllerBypassable
+### TimelockControllerOptimistic
 
 Extended timelock supporting both flows.
 
@@ -268,6 +273,7 @@ Extended timelock supporting both flows.
 | `vetoPeriod` | `uint256` | Duration of veto window in seconds |
 | `vetoThreshold` | `uint256` | Fraction of supply needed to trigger adjudication (D18) |
 | `slashingPercentage` | `uint256` | Fraction of stake slashed on failed veto (D18) |
+| `numParallelProposals` | `uint256` | Maximum number of concurrent optimistic proposals |
 
 ### Standard Governance Parameters
 
@@ -294,16 +300,16 @@ Fast Proposal:
                                             ▼
                                       LOCKED (adjudication)
                                             │
-                            ┌───────────────┼───────────────┐
-                            ▼               ▼               ▼
-                      vote passes      vote fails      canceled/expired
-                            │               │               │
-                            ▼               ▼               ▼
-                        SLASHED          VETOED         CANCELED
-                            │               │               │
-                            ▼               ▼               ▼
-                       executed +      blocked +       blocked +
-                       stakers slashed   full refund     full refund
+                        ┌───────────────────┼───────────────────┐
+                        ▼                   ▼                   ▼
+                  vote passes        vote fails/expired    vote canceled
+                        │                   │                   │
+                        ▼                   ▼                   ▼
+                    SLASHED              VETOED             CANCELED
+                        │                   │                   │
+                        ▼                   ▼                   ▼
+                   executed +          blocked +           blocked +
+                   stakers slashed     full refund         full refund
 
 Slow Proposal:
   propose() → [voting delay] → [voting period] → queue() → [timelock] → execute()
