@@ -6,16 +6,9 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 
 contract TimelockControllerOptimistic is TimelockControllerUpgradeable {
-    function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
-        public
-        virtual
-        override
-        initializer
-    {
-        super.initialize(minDelay, proposers, executors, admin);
-    }
-
-    // === Addition ===
+    // Not used; for ReserveGovernor to re-use AccessControl to avoid wasting contract size
+    // Also keeps all access control in one place
+    bytes32 public constant OPTIMISTIC_PROPOSER_ROLE = keccak256("OPTIMISTIC_PROPOSER_ROLE");
 
     /// @dev Danger!
     ///      Execute a batch of operations immediately without waiting out the delay.

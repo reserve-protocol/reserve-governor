@@ -30,7 +30,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 
 import { OptimisticProposal } from "./OptimisticProposal.sol";
-import { TimelockControllerBypassable } from "./TimelockControllerBypassable.sol";
+import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 
 import {
     CANCELLER_ROLE,
@@ -49,7 +49,7 @@ import {
  * @dev 3 overall components:
  *    1. OptimisticProposal: New contract per optimistic proposal to support staking + slashing
  *    2. ReserveGovernor: Hybrid governor that unifies proposalIds for optimistic/pessimistic flows
- *    3. TimelockControllerBypassable: Single timelock that executes everything, with bypass for optimistic case
+ *    3. TimelockControllerOptimistic: Single timelock that executes everything, with bypass for optimistic case
  *
  *   Intended to be used with a 1-governance-system-per-token model, e.g
  *     - vlDTF (index protocol)
@@ -176,7 +176,7 @@ contract ReserveGovernor is
         );
         optimisticProposalCount--;
 
-        TimelockControllerBypassable(payable(timelock())).executeBatchBypass{ value: msg.value }(
+        TimelockControllerOptimistic(payable(timelock())).executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ descriptionHash
         );
         // salt mirrors GovernorTimelockControlUpgradeable._timelockSalt()
@@ -352,11 +352,11 @@ contract ReserveGovernor is
     }
 
     function _isGuardian(address account) internal view returns (bool) {
-        return TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, account);
+        return TimelockControllerOptimistic(payable(timelock())).hasRole(CANCELLER_ROLE, account);
     }
 
     function _isOptimisticProposer(address account) internal view returns (bool) {
-        return TimelockControllerBypassable(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, account);
+        return TimelockControllerOptimistic(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, account);
     }
 
     // TODO: contract size
