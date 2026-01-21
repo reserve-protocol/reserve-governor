@@ -41,7 +41,7 @@ interface IReserveGovernor {
     // === Structs ===
 
     struct OptimisticGovernanceParams {
-        uint256 vetoPeriod; // {s}
+        uint32 vetoPeriod; // {s}
         uint256 vetoThreshold; // D18{1}
         uint256 slashingPercentage; // D18{1}
         uint256 numParallelProposals; // number of proposals that can be running in parallel

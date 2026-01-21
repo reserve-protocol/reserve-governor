@@ -141,6 +141,8 @@ contract ReserveGovernor is
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
+        optimisticProposal.initialize(optimisticParams, proposalId, targets, values, calldatas, description);
+
         require(address(optimisticProposals[proposalId]) == address(0), ExistingOptimisticProposal(proposalId));
         optimisticProposals[proposalId] = optimisticProposal;
 
@@ -149,8 +151,6 @@ contract ReserveGovernor is
             TooManyParallelOptimisticProposals()
         );
         activeOptimisticProposals.add(address(optimisticProposal));
-
-        optimisticProposal.initialize(optimisticParams, proposalId, targets, values, calldatas, description);
 
         emit OptimisticProposalCreated(
             _msgSender(),
