@@ -122,7 +122,7 @@ contract ReserveGovernor is
         uint256[] calldata values,
         bytes[] calldata calldatas,
         string memory description
-    ) public returns (uint256 proposalId) {
+    ) external returns (uint256 proposalId) {
         require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
 
         OptimisticProposalLib.clearCompletedOptimisticProposals(activeOptimisticProposals);
@@ -166,7 +166,7 @@ contract ReserveGovernor is
     }
 
     /// Execute an optimistic proposal that passed successfully without dispute
-    function executeOptimistic(uint256 proposalId) public payable {
+    function executeOptimistic(uint256 proposalId) external payable {
         require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
 
         OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
