@@ -31,14 +31,19 @@ interface IReserveGovernor {
         uint256 slashingPercentage
     );
 
-    // === Enums ===
+    // === Data ===
 
     enum ProposalType {
         Optimistic,
         Standard
     }
 
-    // === Structs ===
+    struct ProposalData {
+        address[] targets;
+        uint256[] values;
+        bytes[] calldatas;
+        string description;
+    }
 
     struct OptimisticGovernanceParams {
         uint32 vetoPeriod; // {s}

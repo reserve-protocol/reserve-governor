@@ -125,43 +125,13 @@ contract ReserveGovernor is
     ) external returns (uint256 proposalId) {
         require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
 
-        OptimisticProposalLib.clearCompletedOptimisticProposals(activeOptimisticProposals);
-
-        // prevent targeting this contract or the timelock
-        for (uint256 i = 0; i < targets.length; i++) {
-            require(
-                targets[i] != address(this) && targets[i] != address(timelock()), NoMetaGovernanceThroughOptimistic()
-            );
-        }
-
-        OptimisticProposal optimisticProposal = OptimisticProposal(Clones.clone(optimisticProposalImpl));
-
-        // ensure ONLY the OptimisticProposal can create the dispute proposal
-        description = string.concat(description, "#proposer=", Strings.toHexString(address(optimisticProposal)));
-
-        proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
-
-        optimisticProposal.initialize(optimisticParams, proposalId, targets, values, calldatas, description);
-
-        require(address(optimisticProposals[proposalId]) == address(0), ExistingOptimisticProposal(proposalId));
-        optimisticProposals[proposalId] = optimisticProposal;
-
-        require(
-            activeOptimisticProposals.length() < optimisticParams.numParallelProposals,
-            TooManyParallelOptimisticProposals()
-        );
-        activeOptimisticProposals.add(address(optimisticProposal));
-
-        emit OptimisticProposalCreated(
-            _msgSender(),
-            proposalId,
-            targets,
-            values,
-            calldatas,
-            description,
-            optimisticParams.vetoPeriod,
-            optimisticParams.vetoThreshold,
-            optimisticParams.slashingPercentage
+        proposalId = OptimisticProposalLib.createOptimisticProposal(
+            IReserveGovernor.ProposalData(targets, values, calldatas, description),
+            optimisticProposals,
+            activeOptimisticProposals,
+            optimisticParams,
+            optimisticProposalImpl,
+            timelock()
         );
     }
 
