@@ -53,7 +53,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     mapping(address staker => uint256 amount) public staked; // {tok}
     uint256 public totalStaked; // {tok}
 
-    bool public adjudicationStarted;
     bool public canceled;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -113,41 +112,34 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             return OptimisticProposalState.Canceled;
         }
 
-        if (!adjudicationStarted) {
+        try governor.state(proposalId) returns (IGovernor.ProposalState adjudicationState) {
+            // slow proposal exists
+
+            if (
+                adjudicationState == IGovernor.ProposalState.Defeated
+                    || adjudicationState == IGovernor.ProposalState.Expired
+            ) {
+                return OptimisticProposalState.Vetoed;
+            }
+
+            if (adjudicationState == IGovernor.ProposalState.Executed) {
+                return OptimisticProposalState.Slashed;
+            }
+
+            if (adjudicationState == IGovernor.ProposalState.Canceled) {
+                return OptimisticProposalState.Canceled;
+            }
+
+            return OptimisticProposalState.Locked;
+        } catch {
+            // slow proposal does not exist
+
             if (block.timestamp <= vetoEnd) {
                 return OptimisticProposalState.Active;
             } else {
                 return OptimisticProposalState.Succeeded;
             }
         }
-
-        IGovernor.ProposalState adjudicationState = governor.state(proposalId);
-
-        if (adjudicationState == IGovernor.ProposalState.Defeated) {
-            return OptimisticProposalState.Vetoed;
-        }
-
-        if (adjudicationState == IGovernor.ProposalState.Executed) {
-            return OptimisticProposalState.Slashed;
-        }
-
-        if (
-            adjudicationState == IGovernor.ProposalState.Canceled
-                || adjudicationState == IGovernor.ProposalState.Expired
-        ) {
-            return OptimisticProposalState.Canceled;
-        }
-
-        return OptimisticProposalState.Locked;
-    }
-
-    // === Governor ===
-
-    function cancel() external {
-        require(_msgSender() == address(governor), "OptimisticProposal: governor only");
-        require(!canceled, "OptimisticProposal: already canceled");
-
-        canceled = true;
     }
 
     // === User ===
@@ -161,8 +153,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         totalStaked += amount;
 
         if (totalStaked >= vetoThreshold) {
-            adjudicationStarted = true;
-
             // initiate adjudication via slow proposal
             governor.propose(targets, values, calldatas, description);
         }
@@ -186,17 +176,20 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         emit Withdrawn(_msgSender(), amount);
     }
 
-    /// @dev Relies upon permissionless caller to act independently after proposal flow completes
-    ///      Warning: CAN revert
-    function burnSlashed() external {
-        OptimisticProposalState _state = state();
-        require(_state == OptimisticProposalState.Slashed, "OptimisticProposal: not slashed");
+    // === Governor ===
+
+    function cancel() external {
+        require(_msgSender() == address(governor), "OptimisticProposal: not governor");
+
+        canceled = true;
+    }
+
+    function slash() external {
+        require(_msgSender() == address(governor), "OptimisticProposal: not governor");
 
         // TODO confirm CEIL here can never revert even if all withdrawals have been processed
-        uint256 amount = (totalStaked * _slashingPercentage(_state) + 1e18 - 1) / 1e18;
+        uint256 amount = (totalStaked * _slashingPercentage(state()) + 1e18 - 1) / 1e18;
         totalStaked = 0;
-
-        require(amount != 0, "OptimisticProposal: zero burn");
 
         token.burn(amount);
     }

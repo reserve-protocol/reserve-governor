@@ -176,10 +176,8 @@ contract ReserveGovernor is
     ) public payable onlyOptimisticProposer {
         uint256 proposalId = getProposalId(targets, values, calldatas, descriptionHash);
 
-        // require successful optimistic proposal and no existing standard proposal
         require(
-            optimisticProposals[proposalId].state() == OptimisticProposal.OptimisticProposalState.Succeeded
-                && proposalSnapshot(proposalId) == 0,
+            optimisticProposals[proposalId].state() == OptimisticProposal.OptimisticProposalState.Succeeded,
             OptimisticProposalNotReady(proposalId)
         );
         optimisticProposalCount--;
@@ -192,22 +190,26 @@ contract ReserveGovernor is
         emit OptimisticProposalExecuted(proposalId);
     }
 
-    /// Cancel an optimistic proposal while adjudication is not ongoing
+    /// Cancel an optimistic proposal
+    /// @dev MUST be called to release an optimistic proposal if Defeated/Expired
     function cancelOptimistic(uint256 proposalId) public {
-        ProposalState _state = state(proposalId);
+        OptimisticProposal.OptimisticProposalState _state = optimisticProposals[proposalId].state();
 
-        // TODO can we find a better way to clear the optimistic proposal queue? the problem is we don't know
-        // when a slow proposal fails to pass, so we need the optimistic proposers to take an explicit action
+        TimelockControllerBypassable _timelock = TimelockControllerBypassable(payable(timelock()));
+
+        // TODO can we find a better way to clear the proposal count in Defeated/Expired case?
         require(
-            (proposalSnapshot(proposalId) == 0 || _state == ProposalState.Defeated || _state == ProposalState.Expired)
-                && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, _msgSender())
-                    || TimelockControllerBypassable(payable(timelock()))
-                        .hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender())),
+            _state == OptimisticProposal.OptimisticProposalState.Vetoed
+                || ((_timelock.hasRole(CANCELLER_ROLE, _msgSender())
+                        || _timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()))
+                    && ((_state == OptimisticProposal.OptimisticProposalState.Active
+                            || _state == OptimisticProposal.OptimisticProposalState.Succeeded))),
             NotAuthorizedToCancel(_msgSender())
         );
-        optimisticProposalCount--;
 
         optimisticProposals[proposalId].cancel();
+        optimisticProposalCount--;
+
         emit OptimisticProposalCanceled(proposalId);
     }
 
@@ -304,6 +306,7 @@ contract ReserveGovernor is
         super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
 
         if (address(optimisticProposals[proposalId]) != address(0)) {
+            optimisticProposals[proposalId].slash();
             optimisticProposalCount--;
         }
     }
