@@ -35,3 +35,6 @@ bracket_spacing = true
 single_line_statement_blocks = "multi"
 sort_imports = true
 wrap_comments = true
+
+[lint]
+lint_on_build = false
