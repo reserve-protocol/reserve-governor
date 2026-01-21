@@ -187,10 +187,10 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     function slash() external {
         require(_msgSender() == address(governor), "OptimisticProposal: not governor");
 
-        // TODO confirm CEIL here can never revert even if all withdrawals have been processed
         uint256 amount = (totalStaked * _slashingPercentage(state()) + 1e18 - 1) / 1e18;
         totalStaked = 0;
 
+        // TODO confirm this can never revert even if all withdrawals have been processed
         token.burn(amount);
     }
 

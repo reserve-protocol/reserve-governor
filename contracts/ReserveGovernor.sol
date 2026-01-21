@@ -197,7 +197,7 @@ contract ReserveGovernor is
 
         TimelockControllerBypassable _timelock = TimelockControllerBypassable(payable(timelock()));
 
-        // TODO can we find a better way to clear the proposal count in Defeated/Expired case?
+        // TODO can we find a better way to clear the proposal in Vetoed (Defeated/Expired) case?
         require(
             _state == OptimisticProposal.OptimisticProposalState.Vetoed
                 || ((_timelock.hasRole(CANCELLER_ROLE, _msgSender())
