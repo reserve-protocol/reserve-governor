@@ -12,30 +12,25 @@ import { IReserveGovernor } from "../interfaces/IReserveGovernor.sol";
 library OptimisticProposalLib {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    // === External ===
-
-    function clearCompletedOptimisticProposals(EnumerableSet.AddressSet storage set) private {
-        // this is obviously a bad pattern in general, but with a max
-        // of 5 (MAX_PARALLEL_OPTIMISTIC_PROPOSALS) it's fine and saves many callbacks
-
-        while (set.length() > 0) {
-            address optimisticProposal = set.at(0);
-
-            if (_proposalFinished(OptimisticProposal(optimisticProposal).state())) {
-                set.remove(optimisticProposal);
-            }
-        }
+    // stack-too-deep
+    struct ProposalData {
+        address[] targets;
+        uint256[] values;
+        bytes[] calldatas;
+        string description;
     }
 
+    // === External ===
+
     function createOptimisticProposal(
-        IReserveGovernor.ProposalData memory proposal,
+        ProposalData memory proposal,
         mapping(uint256 proposalId => OptimisticProposal) storage optimisticProposals,
         EnumerableSet.AddressSet storage activeOptimisticProposals,
         IReserveGovernor.OptimisticGovernanceParams calldata optimisticParams,
         address optimisticProposalImpl,
         address timelock
     ) external returns (uint256 proposalId) {
-        clearCompletedOptimisticProposals(activeOptimisticProposals);
+        _clearCompletedOptimisticProposals(activeOptimisticProposals);
 
         // prevent targeting this contract or the timelock
         for (uint256 i = 0; i < proposal.targets.length; i++) {
@@ -73,7 +68,7 @@ library OptimisticProposalLib {
         activeOptimisticProposals.add(address(optimisticProposal));
 
         emit IReserveGovernor.OptimisticProposalCreated(
-            msg.sender, // TODO?
+            msg.sender, // TODO do we care this isn't _msgSender()? seems fine
             proposalId,
             proposal.targets,
             proposal.values,
@@ -100,6 +95,19 @@ library OptimisticProposalLib {
     }
 
     // === Private ===
+
+    function _clearCompletedOptimisticProposals(EnumerableSet.AddressSet storage set) private {
+        // this is obviously a bad pattern in general, but with a max
+        // of 5 (MAX_PARALLEL_OPTIMISTIC_PROPOSALS) it's fine and saves many callbacks
+
+        while (set.length() > 0) {
+            address optimisticProposal = set.at(0);
+
+            if (_proposalFinished(OptimisticProposal(optimisticProposal).state())) {
+                set.remove(optimisticProposal);
+            }
+        }
+    }
 
     function _proposalFinished(OptimisticProposal.OptimisticProposalState state) private pure returns (bool) {
         return state == OptimisticProposal.OptimisticProposalState.Vetoed

@@ -38,13 +38,6 @@ interface IReserveGovernor {
         Standard
     }
 
-    struct ProposalData {
-        address[] targets;
-        uint256[] values;
-        bytes[] calldatas;
-        string description;
-    }
-
     struct OptimisticGovernanceParams {
         uint32 vetoPeriod; // {s}
         uint256 vetoThreshold; // D18{1}

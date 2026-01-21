@@ -109,6 +109,11 @@ contract ReserveGovernor is
         _token.burn(0);
     }
 
+    modifier onlyOptimisticProposer() {
+        require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
+        _;
+    }
+
     function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
         _setOptimisticParams(params);
     }
@@ -121,12 +126,10 @@ contract ReserveGovernor is
         address[] calldata targets,
         uint256[] calldata values,
         bytes[] calldata calldatas,
-        string memory description
-    ) external returns (uint256 proposalId) {
-        require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
-
+        string calldata description
+    ) external onlyOptimisticProposer returns (uint256 proposalId) {
         proposalId = OptimisticProposalLib.createOptimisticProposal(
-            IReserveGovernor.ProposalData(targets, values, calldatas, description),
+            OptimisticProposalLib.ProposalData(targets, values, calldatas, description),
             optimisticProposals,
             activeOptimisticProposals,
             optimisticParams,
@@ -136,9 +139,7 @@ contract ReserveGovernor is
     }
 
     /// Execute an optimistic proposal that passed successfully without dispute
-    function executeOptimistic(uint256 proposalId) external payable {
-        require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
-
+    function executeOptimistic(uint256 proposalId) external payable onlyOptimisticProposer {
         OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
 
         require(
