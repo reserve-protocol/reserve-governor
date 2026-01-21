@@ -219,7 +219,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     function slash() external {
         require(_msgSender() == address(governor), "OptimisticProposal: not governor");
-        require(state() == OptimisticProposalState.Slashed, "OptimisticProposal: not locked");
+        require(state() == OptimisticProposalState.Slashed, "OptimisticProposal: not slashed");
 
         uint256 amount = (totalStaked * _slashingPercentage(state())) / 1e18;
         totalStaked = 0;

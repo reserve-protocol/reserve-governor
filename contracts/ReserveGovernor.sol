@@ -285,11 +285,11 @@ contract ReserveGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
-        super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
-
         if (address(optimisticProposals[proposalId]) != address(0)) {
             optimisticProposals[proposalId].slash();
         }
+
+        super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
 
     function _cancel(
