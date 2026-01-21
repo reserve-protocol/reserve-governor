@@ -11,6 +11,9 @@ library OptimisticProposalLib {
     // === External ===
 
     function clearCompletedOptimisticProposals(EnumerableSet.AddressSet storage set) external {
+        // this is obviously a bad pattern in general, but with a max
+        // of 5 (MAX_PARALLEL_OPTIMISTIC_PROPOSALS) it's fine and saves many callbacks
+        
         while (set.length() > 0) {
             address optimisticProposal = set.at(0);
 
