@@ -325,9 +325,12 @@ contract ReserveGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        return state(proposalId) == ProposalState.Pending
-            && (TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, caller)
-                || caller == proposalProposer(proposalId));
+        TimelockControllerBypassable _timelock = TimelockControllerBypassable(payable(timelock()));
+
+        return _timelock.hasRole(CANCELLER_ROLE, caller)
+            || (_timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, caller)
+                && optimisticProposals[proposalId].state() == OptimisticProposal.OptimisticProposalState.Locked)
+            || super._validateCancel(proposalId, caller);
     }
 
     function _executor()
