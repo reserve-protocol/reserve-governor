@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
-// TODO include hash
-bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
-bytes32 constant OPTIMISTIC_PROPOSER_ROLE = keccak256("OPTIMISTIC_PROPOSER_ROLE");
+bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE"); // 0xfd643c72710c63c0180259aba6b2d05451e3591a24e58b62239378085726f783
+bytes32 constant OPTIMISTIC_PROPOSER_ROLE = keccak256("OPTIMISTIC_PROPOSER_ROLE"); // 0x26f49d08685d9cdd4951a7470bc8fbe9dd0f00419c1a44c1b89f845867ae12e0
 uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 1 hours;
 uint256 constant MAX_VETO_THRESHOLD = 0.2e18; // 20%
 uint256 constant MAX_PARALLEL_OPTIMISTIC_PROPOSALS = 5;
@@ -12,7 +11,7 @@ interface IReserveGovernor {
     // === Errors ===
 
     error ExistingOptimisticProposal(uint256 proposalId);
-    error OptimisticProposalNotReady(uint256 proposalId);
+    error OptimisticProposalNotSuccessful(uint256 proposalId);
     error InvalidVetoParameters();
     error NotOptimisticProposer(address account);
     error NoMetaGovernanceThroughOptimistic();

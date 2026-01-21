@@ -173,10 +173,10 @@ contract ReserveGovernor is
 
         require(
             optimisticProposal.state() == OptimisticProposal.OptimisticProposalState.Succeeded,
-            OptimisticProposalNotReady(proposalId)
+            OptimisticProposalNotSuccessful(proposalId)
         );
 
-        // propagate optimistic proposal data to the standard proposal
+        // mark executed (for compatibility with legacy offchain monitoring)
         _getGovernorStorage()._proposals[proposalId].executed = true;
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas, string memory description) =
@@ -190,7 +190,6 @@ contract ReserveGovernor is
         TimelockControllerOptimistic(payable(timelock())).executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ keccak256(bytes(description))
         );
-        // salt mirrors GovernorTimelockControlUpgradeable._timelockSalt()
     }
 
     /// @return The number of active optimistic proposals
@@ -324,9 +323,9 @@ contract ReserveGovernor is
         super._tallyUpdated(proposalId);
     }
 
-    // === Internal ===
+    // === Private ===
 
-    function _setOptimisticParams(OptimisticGovernanceParams calldata params) internal {
+    function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
         require(
             params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
                 && params.vetoThreshold <= MAX_VETO_THRESHOLD && params.slashingPercentage != 0
@@ -337,11 +336,11 @@ contract ReserveGovernor is
         optimisticParams = params;
     }
 
-    function _isGuardian(address account) internal view returns (bool) {
+    function _isGuardian(address account) private view returns (bool) {
         return TimelockControllerOptimistic(payable(timelock())).hasRole(CANCELLER_ROLE, account);
     }
 
-    function _isOptimisticProposer(address account) internal view returns (bool) {
+    function _isOptimisticProposer(address account) private view returns (bool) {
         return TimelockControllerOptimistic(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, account);
     }
 

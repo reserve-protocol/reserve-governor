@@ -30,7 +30,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === Enums ===
 
-    // TODO add Executed
     enum OptimisticProposalState {
         Active,
         Succeeded,
