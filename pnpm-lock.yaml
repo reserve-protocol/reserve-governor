@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@openzeppelin/contracts-upgradeable':
-    hash: 01f3a3e03164338154cbe99af9e835f5007b9b3260cbfb015cedfb5b673489d2
+    hash: 0bffbc4488ca2b60087b08ff462cd91ca320c810d09c6f482aeda3b47280fcb4
     path: patches/@openzeppelin__contracts-upgradeable.patch
 
 importers:
@@ -18,7 +18,7 @@ importers:
         version: 5.4.0
       '@openzeppelin/contracts-upgradeable':
         specifier: ^5.4.0
-        version: 5.4.0(patch_hash=01f3a3e03164338154cbe99af9e835f5007b9b3260cbfb015cedfb5b673489d2)(@openzeppelin/contracts@5.4.0)
+        version: 5.4.0(patch_hash=0bffbc4488ca2b60087b08ff462cd91ca320c810d09c6f482aeda3b47280fcb4)(@openzeppelin/contracts@5.4.0)
       forge-std:
         specifier: github:foundry-rs/forge-std#v1.14.0
         version: https://codeload.github.com/foundry-rs/forge-std/tar.gz/1801b0541f4fda118a10798fd3486bb7051c5dd6
@@ -39,7 +39,7 @@ packages:
 
 snapshots:
 
-  '@openzeppelin/contracts-upgradeable@5.4.0(patch_hash=01f3a3e03164338154cbe99af9e835f5007b9b3260cbfb015cedfb5b673489d2)(@openzeppelin/contracts@5.4.0)':
+  '@openzeppelin/contracts-upgradeable@5.4.0(patch_hash=0bffbc4488ca2b60087b08ff462cd91ca320c810d09c6f482aeda3b47280fcb4)(@openzeppelin/contracts@5.4.0)':
     dependencies:
       '@openzeppelin/contracts': 5.4.0
 
