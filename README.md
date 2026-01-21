@@ -65,16 +65,9 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
                                           │  (via bypass) │   ┌──────────┐ ┌────────┐ ┌────────┐
                                           └───────────────┘   │ SLASHED  │ │ VETOED │ │CANCELED│
                                                               │(dispute  │ │(dispute│ │(dispute│
-                                                              │ passed)  │ │ failed/│ │canceled│
-                                                              │          │ │expired)│ │   )    │
-                                                              └────┬─────┘ └────────┘ └────────┘
-                                                                   │
-                                                                   ▼
-                                                              ┌──────────┐
-                                                              │ EXECUTED │
-                                                              │(via slow │
-                                                              │  vote)   │
-                                                              └──────────┘
+                                                              │ passed;  │ │ failed/│ │canceled│
+                                                              │ executes)│ │expired)│ │   )    │
+                                                              └──────────┘ └────────┘ └────────┘
 ```
 
 ### Fast Proposal Paths
@@ -83,7 +76,7 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
 |------|------|------|---------|
 | F1 | Uncontested Success | Active → Succeeded → Executed | Proposal executes after veto period via `executeOptimistic()` |
 | F2 | Early Cancellation | Active → Canceled | Proposal stopped before dispute; stakers withdraw full amount |
-| F3 | Dispute Passes | Active → Locked → Slashed → Executed | Vetoers were wrong; slashed, proposal executes via slow vote |
+| F3 | Dispute Passes | Active → Locked → Slashed | Vetoers were wrong; slashed, proposal executes via slow vote |
 | F4 | Dispute Fails (Veto Succeeds) | Active → Locked → Vetoed | Veto succeeds! Proposal blocked, stakers withdraw full amount |
 | F5a | Dispute Canceled | Active → Locked → Canceled | Guardian cancels dispute; stakers withdraw full amount |
 | F5b | Dispute Expired | Active → Locked → Vetoed | Vote expires without execution; stakers withdraw full amount |
@@ -271,7 +264,7 @@ Extended timelock supporting both flows.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `vetoPeriod` | `uint256` | Duration of veto window in seconds |
+| `vetoPeriod` | `uint32` | Duration of veto window in seconds |
 | `vetoThreshold` | `uint256` | Fraction of supply needed to trigger dispute (D18) |
 | `slashingPercentage` | `uint256` | Fraction of stake slashed on failed veto (D18) |
 | `numParallelProposals` | `uint256` | Maximum number of concurrent optimistic proposals |
