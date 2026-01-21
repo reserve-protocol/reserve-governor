@@ -6,10 +6,6 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 
 contract TimelockControllerOptimistic is TimelockControllerUpgradeable {
-    // Not used; for ReserveGovernor to re-use AccessControl to avoid wasting contract size
-    // Also keeps all access control in one place
-    bytes32 public constant OPTIMISTIC_PROPOSER_ROLE = keccak256("OPTIMISTIC_PROPOSER_ROLE");
-
     /// @dev Danger!
     ///      Execute a batch of operations immediately without waiting out the delay.
     ///      Caller must have BOTH the PROPOSER_ROLE and EXECUTOR_ROLE.

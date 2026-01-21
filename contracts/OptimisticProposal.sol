@@ -8,6 +8,8 @@ import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/I
 import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
 import { ReserveGovernor } from "./ReserveGovernor.sol";
+import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
+import { CANCELLER_ROLE, IReserveGovernor, OPTIMISTIC_PROPOSER_ROLE } from "./interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "./interfaces/IVetoToken.sol";
 
 /**
@@ -15,6 +17,7 @@ import { IVetoToken } from "./interfaces/IVetoToken.sol";
  *
  * @dev Not compatible with rebasing tokens
  *      Do NOT send tokens to this contract directly, call `stake()` instead
+ *      Token supply should be less than 1e59
  */
 contract OptimisticProposal is Initializable, ContextUpgradeable {
     using SafeERC20 for IVetoToken;
@@ -23,16 +26,19 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     event Staked(address indexed staker, uint256 amount);
     event Withdrawn(address indexed staker, uint256 amount);
+    event Slashed(uint256 amount);
 
     // === Enums ===
 
+    // TODO add Executed
     enum OptimisticProposalState {
         Active,
         Succeeded,
         Locked,
         Vetoed,
         Slashed,
-        Canceled
+        Canceled,
+        Executed
     }
 
     // === State ===
@@ -46,7 +52,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     bytes[] public calldatas;
     string public description;
 
-    uint256 public vetoEnd; // {s} inclusive
+    uint48 public voteEnd; // {s} inclusive
     uint256 public vetoThreshold; // {tok}
     uint256 public slashingPercentage; // D18{1}
 
@@ -55,13 +61,12 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     bool public canceled;
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
 
     /// @param _params.vetoPeriod {s} Veto period
-    /// @param _params.vetoThreshold D18{1} Fraction of token supply required to lock proposal for adjudication
+    /// @param _params.vetoThreshold D18{1} Fraction of token supply required to lock proposal for dispute
     /// @param _params.slashingPercentage D18{1} Fraction of staked tokens to be potentially slashed
     function initialize(
         ReserveGovernor.OptimisticGovernanceParams calldata _params,
@@ -71,6 +76,9 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         bytes[] memory _calldatas,
         string memory _description
     ) public initializer {
+        require(
+            _params.vetoPeriod != 0 && _params.vetoPeriod <= type(uint32).max, "OptimisticProposal: invalid veto period"
+        );
         require(_params.vetoThreshold <= 1e18, "OptimisticProposal: invalid veto threshold");
         require(_params.slashingPercentage <= 1e18, "OptimisticProposal: invalid slashing percentage");
 
@@ -89,7 +97,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         description = _description;
 
         // {s}
-        vetoEnd = block.timestamp + _params.vetoPeriod;
+        voteEnd = uint48(block.timestamp + _params.vetoPeriod);
 
         // {tok}
         uint256 supply = IVetoToken(address(token)).getPastTotalSupply(governor.clock() - 1);
@@ -100,9 +108,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
         // D18{1}
         slashingPercentage = _params.slashingPercentage;
-
-        // confirm `token` is burnable
-        token.burn(0);
     }
 
     // === View ===
@@ -112,39 +117,74 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             return OptimisticProposalState.Canceled;
         }
 
-        try governor.state(proposalId) returns (IGovernor.ProposalState adjudicationState) {
-            // slow proposal exists
+        ReserveGovernor.ProposalType proposalType = governor.proposalType(proposalId);
 
-            if (
-                adjudicationState == IGovernor.ProposalState.Defeated
-                    || adjudicationState == IGovernor.ProposalState.Expired
-            ) {
+        IGovernor.ProposalState governorState = governor.state(proposalId);
+
+        if (proposalType == IReserveGovernor.ProposalType.Optimistic) {
+            if (governorState == IGovernor.ProposalState.Executed) {
+                return OptimisticProposalState.Executed;
+            }
+
+            if (block.timestamp > voteEnd) {
+                return OptimisticProposalState.Succeeded;
+            }
+
+            return OptimisticProposalState.Active;
+        } else {
+            // Proposal under dispute
+
+            if (governorState == IGovernor.ProposalState.Defeated || governorState == IGovernor.ProposalState.Expired) {
                 return OptimisticProposalState.Vetoed;
             }
 
-            if (adjudicationState == IGovernor.ProposalState.Executed) {
+            if (governorState == IGovernor.ProposalState.Executed) {
                 return OptimisticProposalState.Slashed;
             }
 
-            if (adjudicationState == IGovernor.ProposalState.Canceled) {
+            if (governorState == IGovernor.ProposalState.Canceled) {
                 return OptimisticProposalState.Canceled;
             }
 
             return OptimisticProposalState.Locked;
-        } catch {
-            // slow proposal does not exist
-
-            if (block.timestamp <= vetoEnd) {
-                return OptimisticProposalState.Active;
-            } else {
-                return OptimisticProposalState.Succeeded;
-            }
         }
+    }
+
+    function proposalData()
+        external
+        view
+        returns (
+            address[] memory _targets,
+            uint256[] memory _values,
+            bytes[] memory _calldatas,
+            string memory _description
+        )
+    {
+        return (targets, values, calldatas, description);
+    }
+
+    // === Admin ===
+
+    /// Cancel an optimistic proposal WITHOUT a corresponding adjudicating slow proposal
+    /// Caller must have CANCELLER_ROLE or OPTIMISTIC_PROPOSER_ROLE
+    function cancel() external {
+        TimelockControllerOptimistic timelock = TimelockControllerOptimistic(payable(governor.timelock()));
+
+        OptimisticProposalState _state = state();
+
+        require(
+            (timelock.hasRole(CANCELLER_ROLE, _msgSender()) || timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()))
+                && ((_state == OptimisticProposal.OptimisticProposalState.Active
+                        || _state == OptimisticProposal.OptimisticProposalState.Succeeded)),
+            "OptimisticProposal: cannot cancel"
+        );
+
+        canceled = true;
     }
 
     // === User ===
 
-    function stake(uint256 amount) external {
+    function stakeToVeto(uint256 amount) external {
         require(state() == OptimisticProposalState.Active, "OptimisticProposal: not active");
         require(amount != 0, "OptimisticProposal: zero stake");
 
@@ -153,7 +193,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         totalStaked += amount;
 
         if (totalStaked >= vetoThreshold) {
-            // initiate adjudication via slow proposal
+            // initiate dispute process via slow proposal
             governor.propose(targets, values, calldatas, description);
         }
 
@@ -163,7 +203,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     function withdraw() external {
         OptimisticProposalState _state = state();
-        require(_state != OptimisticProposalState.Locked, "OptimisticProposal: locked for adjudication");
+        require(_state != OptimisticProposalState.Locked, "OptimisticProposal: under dispute");
 
         // {tok} = {tok} * D18{1}
         uint256 amount = staked[_msgSender()] * (1e18 - _slashingPercentage(_state)) / 1e18;
@@ -178,20 +218,14 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === Governor ===
 
-    function cancel() external {
-        require(_msgSender() == address(governor), "OptimisticProposal: not governor");
-
-        canceled = true;
-    }
-
     function slash() external {
         require(_msgSender() == address(governor), "OptimisticProposal: not governor");
 
-        uint256 amount = (totalStaked * _slashingPercentage(state()) + 1e18 - 1) / 1e18;
+        uint256 amount = (totalStaked * _slashingPercentage(state())) / 1e18;
         totalStaked = 0;
 
-        // TODO confirm this can never revert even if all withdrawals have been processed
         token.burn(amount);
+        emit Slashed(amount);
     }
 
     // === Internal ===

@@ -21,7 +21,7 @@ This design enables efficient day-to-day governance while preserving community o
 │  │                     │    │                                 │ │
 │  │  proposeOptimistic  │    │  propose / vote / queue         │ │
 │  │  executeOptimistic  │    │  execute                        │ │
-│  │  cancelOptimistic   │    │  cancel                         │ │
+│  │                     │    │  cancel                         │ │
 │  └──────────┬──────────┘    └────────────────┬────────────────┘ │
 │             │                                │                  │
 │             └────────────────┬───────────────┘                  │
@@ -42,7 +42,7 @@ This design enables efficient day-to-day governance while preserving community o
 
 Fast proposals skip voting entirely and execute after a veto period unless community members stake tokens to challenge them.
 
-**OptimisticProposalState enum**: `Active`, `Succeeded`, `Locked`, `Vetoed`, `Slashed`, `Canceled`
+**OptimisticProposalState enum**: `Active`, `Succeeded`, `Locked`, `Vetoed`, `Slashed`, `Canceled`, `Executed`
 
 ```
                                     ┌──────────────────────────────┐
@@ -55,7 +55,7 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
                     ▼                              ▼                              ▼
             ┌───────────────┐             ┌───────────────┐              ┌───────────────┐
             │   CANCELED    │             │   SUCCEEDED   │              │    LOCKED     │
-            │               │             │ (veto period  │              │ (adjudication │
+            │               │             │ (veto period  │              │  (dispute     │
             │ (guardian or  │             │   expired)    │              │   started)    │
             │  proposer)    │             └───────┬───────┘              └───────┬───────┘
             └───────────────┘                     │                              │
@@ -64,9 +64,9 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
                                           │   EXECUTED    │          ▼          ▼          ▼
                                           │  (via bypass) │   ┌──────────┐ ┌────────┐ ┌────────┐
                                           └───────────────┘   │ SLASHED  │ │ VETOED │ │CANCELED│
-                                                              │(adjudic. │ │(adjud. │ │(adjud. │
+                                                              │(dispute  │ │(dispute│ │(dispute│
                                                               │ passed)  │ │ failed/│ │canceled│
-                                                              │          │ │expired)│ │        │
+                                                              │          │ │expired)│ │   )    │
                                                               └────┬─────┘ └────────┘ └────────┘
                                                                    │
                                                                    ▼
@@ -82,11 +82,11 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
 | Path | Name | Flow | Outcome |
 |------|------|------|---------|
 | F1 | Uncontested Success | Active → Succeeded → Executed | Proposal executes after veto period via `executeOptimistic()` |
-| F2 | Early Cancellation | Active → Canceled | Proposal stopped before adjudication; stakers withdraw full amount |
-| F3 | Adjudication Passes | Active → Locked → Slashed → Executed | Vetoers were wrong; slashed, proposal executes via slow vote |
-| F4 | Adjudication Fails (Veto Succeeds) | Active → Locked → Vetoed | Veto succeeds! Proposal blocked, stakers withdraw full amount |
-| F5a | Adjudication Canceled | Active → Locked → Canceled | Guardian cancels adjudication; stakers withdraw full amount |
-| F5b | Adjudication Expired | Active → Locked → Vetoed | Vote expires without execution; stakers withdraw full amount |
+| F2 | Early Cancellation | Active → Canceled | Proposal stopped before dispute; stakers withdraw full amount |
+| F3 | Dispute Passes | Active → Locked → Slashed → Executed | Vetoers were wrong; slashed, proposal executes via slow vote |
+| F4 | Dispute Fails (Veto Succeeds) | Active → Locked → Vetoed | Veto succeeds! Proposal blocked, stakers withdraw full amount |
+| F5a | Dispute Canceled | Active → Locked → Canceled | Guardian cancels dispute; stakers withdraw full amount |
+| F5b | Dispute Expired | Active → Locked → Vetoed | Vote expires without execution; stakers withdraw full amount |
 
 ### Slow Proposal Lifecycle
 
@@ -123,11 +123,11 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting and ti
 
 ### How Veto Works
 
-1. Any token holder can call `stake(amount)` on an `OptimisticProposal` during the veto period
+1. Any token holder can call `stakeToVeto(amount)` on an `OptimisticProposal` during the veto period
 2. Staked tokens are locked in the proposal contract
 3. If total staked tokens reach `vetoThreshold`, the proposal enters `Locked` state
-4. The proposal automatically initiates a slow (adjudication) vote via `governor.propose()`
-5. The adjudication vote determines whether the proposal should execute
+4. The proposal automatically initiates a slow (dispute) vote via `governor.propose()`
+5. The dispute vote determines whether the proposal should execute
 
 ### Veto Threshold
 
@@ -135,14 +135,14 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting and ti
 vetoThreshold = ceil((vetoThresholdRatio * tokenSupply) / 1e18)
 ```
 
-## Adjudication Process
+## Dispute Process
 
 When a fast proposal reaches the vetoThreshold (becomes `Locked`):
 
 1. **Slow Vote Initiated**: The `OptimisticProposal` calls `governor.propose()` to start a standard governance vote
 2. **Four Possible Outcomes**:
 
-| Adjudication Result | OptimisticProposal State | Proposal Outcome | Staker Outcome |
+| Dispute Result | OptimisticProposal State | Proposal Outcome | Staker Outcome |
 |---------------------|--------------------------|------------------|----------------|
 | **Vote Passes** (Executed) | `Slashed` | Proposal executes | Slashed on withdrawal |
 | **Vote Fails** (Defeated) | `Vetoed` | Proposal blocked | Full refund |
@@ -151,7 +151,7 @@ When a fast proposal reaches the vetoThreshold (becomes `Locked`):
 
 ### Slashing Mechanics
 
-Slashing only applies when the adjudication vote passes (state = `Slashed`):
+Slashing only applies when the dispute vote passes (state = `Slashed`):
 
 ```
 withdrawalAmount = stakedAmount * (1e18 - slashingPercentage) / 1e18
@@ -167,10 +167,11 @@ Slashed tokens are burned via `token.burn()`.
 |----------------|---------------|-------------------|---------|
 | Active | Yes | No | Veto period ongoing, can unstake |
 | Succeeded | Yes | No | Veto period ended without challenge |
-| Locked | **No** | N/A | Adjudication in progress |
+| Locked | **No** | N/A | Dispute in progress |
 | Vetoed | Yes | **No** | Veto succeeded! Stakers were right |
 | Slashed | Yes | **Yes** | Vetoers were wrong, penalty applied |
 | Canceled | Yes | No | Proposal canceled, full refund |
+| Executed | Yes | No | Proposal executed without dispute |
 
 ### Risk Assessment
 
@@ -179,31 +180,27 @@ Slashed tokens are burned via `token.burn()`.
 - Proposals where community consensus opposes execution
 
 **High Risk Scenarios:**
-- Staking against legitimate proposals (risk of slashing if adjudication passes)
+- Staking against legitimate proposals (risk of slashing if dispute passes)
 
 ### Key Insight: Vetoed vs Slashed
 
-- **Vetoed**: The community AGREED with the stakers. The adjudication vote failed/was defeated, confirming the proposal should not execute. Stakers get their full stake back as a reward for protecting the protocol.
+- **Vetoed**: The community AGREED with the stakers. The dispute vote failed/was defeated, confirming the proposal should not execute. Stakers get their full stake back as a reward for protecting the protocol.
 
-- **Slashed**: The community DISAGREED with the stakers. The adjudication vote passed, meaning the proposal was legitimate. Stakers are penalized for blocking a valid proposal.
+- **Slashed**: The community DISAGREED with the stakers. The dispute vote passed, meaning the proposal was legitimate. Stakers are penalized for blocking a valid proposal.
 
-## MetaProposalState
+## Proposal Types
 
-The `metaState(proposalId)` function provides a unified view across both proposal flows:
+The `proposalType(proposalId)` function returns the type of a proposal:
 
 ```solidity
-enum MetaProposalState {
-    Optimistic,  // Fast proposal in Active state (veto period)
-    Pending,     // Slow proposal waiting for voting
-    Active,      // Slow proposal voting in progress
-    Canceled,
-    Defeated,
-    Succeeded,   // Fast proposal passed veto period OR slow vote succeeded
-    Queued,
-    Expired,
-    Executed
+enum ProposalType {
+    Optimistic,  // Fast proposal (no voting unless disputed)
+    Standard     // Slow proposal (full voting process)
 }
 ```
+
+- **Optimistic**: Created via `proposeOptimistic()`, uses `OptimisticProposal.state()` for status
+- **Standard**: Created via `propose()` or when dispute is triggered, uses `governor.state()` for status
 
 ## Roles
 
@@ -230,13 +227,13 @@ The main hybrid governor contract.
 
 **Fast Proposal Functions:**
 - `proposeOptimistic(targets, values, calldatas, description)` - Create a fast proposal
-- `executeOptimistic(targets, values, calldatas, descriptionHash)` - Execute a succeeded fast proposal
-- `cancelOptimistic(proposalId)` - Cancel a fast proposal (callable by anyone when Vetoed, or by CANCELLER/OPTIMISTIC_PROPOSER when Active/Succeeded)
+- `executeOptimistic(proposalId)` - Execute a succeeded fast proposal
 
 **State Query:**
-- `metaState(proposalId)` - Unified state across both flows
-- `state(proposalId)` - Standard Governor state (use `metaState()` for external consumers)
+- `proposalType(proposalId)` - Returns `Optimistic` or `Standard`
+- `state(proposalId)` - Standard Governor state (for Standard proposals)
 - `optimisticProposals(proposalId)` - Get the OptimisticProposal contract for a proposal
+- `activeOptimisticProposalsCount()` - Number of active optimistic proposals
 
 **Configuration:**
 - `setOptimisticParams(params)` - Update veto period, threshold, and slashing percentage
@@ -246,16 +243,20 @@ The main hybrid governor contract.
 Per-proposal contract handling veto logic. Created as a clone for each fast proposal.
 
 **User Functions:**
-- `stake(amount)` - Stake tokens against the proposal
+- `stakeToVeto(amount)` - Stake tokens against the proposal
 - `withdraw()` - Withdraw staked tokens (with potential slashing)
+
+**Admin Functions:**
+- `cancel()` - Cancel proposal (requires CANCELLER_ROLE or OPTIMISTIC_PROPOSER_ROLE, only in Active/Succeeded state)
 
 **State Query:**
 - `state()` - Returns `OptimisticProposalState`
 - `staked(address)` - Returns amount staked by address
 - `totalStaked` - Total tokens staked against the proposal
-- `vetoEnd` - Timestamp when veto period ends
-- `vetoThreshold` - Token amount needed to trigger adjudication
+- `voteEnd` - Timestamp when veto period ends (uint48)
+- `vetoThreshold` - Token amount needed to trigger dispute
 - `canceled` - Whether proposal was canceled
+- `proposalData()` - Returns `(targets, values, calldatas, description)`
 
 ### TimelockControllerOptimistic
 
@@ -271,7 +272,7 @@ Extended timelock supporting both flows.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `vetoPeriod` | `uint256` | Duration of veto window in seconds |
-| `vetoThreshold` | `uint256` | Fraction of supply needed to trigger adjudication (D18) |
+| `vetoThreshold` | `uint256` | Fraction of supply needed to trigger dispute (D18) |
 | `slashingPercentage` | `uint256` | Fraction of stake slashed on failed veto (D18) |
 | `numParallelProposals` | `uint256` | Maximum number of concurrent optimistic proposals |
 
@@ -298,7 +299,7 @@ Fast Proposal:
                                 └─► [staking reaches threshold]
                                             │
                                             ▼
-                                      LOCKED (adjudication)
+                                      LOCKED (dispute)
                                             │
                         ┌───────────────────┼───────────────────┐
                         ▼                   ▼                   ▼

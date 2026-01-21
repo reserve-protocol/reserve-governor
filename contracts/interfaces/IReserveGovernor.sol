@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
+// TODO include hash
 bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE");
 bytes32 constant OPTIMISTIC_PROPOSER_ROLE = keccak256("OPTIMISTIC_PROPOSER_ROLE");
-uint256 constant MIN_VETO_PERIOD = 1 hours;
-uint256 constant MAX_VETO_PERIOD = 14 days;
+uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 1 hours;
 uint256 constant MAX_VETO_THRESHOLD = 0.2e18; // 20%
-uint256 constant MAX_PARALLEL_OPTIMISTIC_PROPOSALS = 3;
+uint256 constant MAX_PARALLEL_OPTIMISTIC_PROPOSALS = 5;
 
 interface IReserveGovernor {
     // === Errors ===
@@ -14,19 +14,14 @@ interface IReserveGovernor {
     error ExistingOptimisticProposal(uint256 proposalId);
     error OptimisticProposalNotReady(uint256 proposalId);
     error InvalidVetoParameters();
-    error ProposalDoesNotExist(uint256 proposalId);
     error NotOptimisticProposer(address account);
-    error ProposalAlreadyCanceled(uint256 proposalId);
     error NoMetaGovernanceThroughOptimistic();
-    error ProposalNotReady(uint256 proposalId);
-    error NotAuthorizedToCancel(address account);
     error TooManyParallelOptimisticProposals();
 
     // === Events ===
 
-    event OptimisticProposerGranted(address indexed account);
-    event OptimisticProposerRevoked(address indexed account);
     event OptimisticProposalCreated(
+        address indexed proposer,
         uint256 indexed proposalId,
         address[] targets,
         uint256[] values,
@@ -36,22 +31,12 @@ interface IReserveGovernor {
         uint256 vetoThreshold,
         uint256 slashingPercentage
     );
-    event OptimisticProposalExecuted(uint256 indexed proposalId);
-    event OptimisticProposalCanceled(uint256 indexed proposalId);
 
     // === Enums ===
 
-    /// Union of optimistic and standard proposal states
-    enum MetaProposalState {
+    enum ProposalType {
         Optimistic,
-        Pending,
-        Active,
-        Canceled,
-        Defeated,
-        Succeeded,
-        Queued,
-        Expired,
-        Executed
+        Standard
     }
 
     // === Structs ===
