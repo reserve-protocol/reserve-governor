@@ -142,7 +142,7 @@ contract ReserveGovernor is
 
         OptimisticProposal optimisticProposal = OptimisticProposal(address(optimisticProposalImpl).clone());
 
-        // prevent front-running of someone creating the same proposal in the standard flow
+        // ensure ONLY the OptimisticProposal can create the sibling proposal in the standard flow
         description = string.concat(description, "#proposer=", Strings.toHexString(address(optimisticProposal)));
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
