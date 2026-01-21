@@ -44,17 +44,17 @@ import {
 
 /**
  * @title ReserveGovernor
- * @notice An optimistic-by-default hybrid governor for the Reserve protocol
+ * @notice A hybrid optimistic/pessimistic governor for the Reserve protocol
  *
  * @dev 3 overall components:
- *    1. OptimisticProposal: New contract per optimistic proposal to support veto + locking logic
- *    2. ReserveGovernor: Hybrid governor that contains both optimistic and pessimistic governance flows
- *    3. TimelockControllerBypassable: Single timelock that executes both optimistic and pessimistic proposals
+ *    1. OptimisticProposal: New contract per optimistic proposal to support staking + slashing
+ *    2. ReserveGovernor: Hybrid governor that unifies proposalIds for optimistic/pessimistic flows
+ *    3. TimelockControllerBypassable: Single timelock that executes everything, with bypass for optimistic case
  *
- *   Intended to be used with a 1-token-per-governance system model, e.g
+ *   Intended to be used with a 1-governance-system-per-token model, e.g
  *     - vlDTF (index protocol)
  *     - stRSR (yield protocol)
- *   If tokens belong to multiple governance systems, there can be contention for staking to veto.
+ *   NOT a common vlRSR. If tokens belong to multiple governance systems, there can be overlapping contention.
  */
 contract ReserveGovernor is
     GovernorUpgradeable,
@@ -113,16 +113,6 @@ contract ReserveGovernor is
         _setOptimisticParams(params);
     }
 
-    // === Optimistic proposer ===
-
-    modifier onlyOptimisticProposer() {
-        require(
-            TimelockControllerBypassable(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()),
-            NotOptimisticProposer(_msgSender())
-        );
-        _;
-    }
-
     // === Optimistic flow ===
 
     /// @param description Exclude `#proposer=0x???` suffix
@@ -132,7 +122,9 @@ contract ReserveGovernor is
         uint256[] calldata values,
         bytes[] calldata calldatas,
         string memory description
-    ) public onlyOptimisticProposer returns (uint256 proposalId) {
+    ) public returns (uint256 proposalId) {
+        require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
+
         // prevent targeting this contract or the timelock via optimistic proposals
         for (uint256 i = 0; i < targets.length; i++) {
             require(
@@ -173,7 +165,9 @@ contract ReserveGovernor is
         uint256[] calldata values,
         bytes[] calldata calldatas,
         bytes32 descriptionHash
-    ) public payable onlyOptimisticProposer {
+    ) public payable {
+        require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
+
         uint256 proposalId = getProposalId(targets, values, calldatas, descriptionHash);
 
         require(
@@ -195,13 +189,10 @@ contract ReserveGovernor is
     function cancelOptimistic(uint256 proposalId) public {
         OptimisticProposal.OptimisticProposalState _state = optimisticProposals[proposalId].state();
 
-        TimelockControllerBypassable _timelock = TimelockControllerBypassable(payable(timelock()));
-
         // TODO can we find a better way to clear the proposal in Vetoed (Defeated/Expired) case?
         require(
             _state == OptimisticProposal.OptimisticProposalState.Vetoed
-                || ((_timelock.hasRole(CANCELLER_ROLE, _msgSender())
-                        || _timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()))
+                || ((_isGuardian(_msgSender()) || _isOptimisticProposer(_msgSender()))
                     && ((_state == OptimisticProposal.OptimisticProposalState.Active
                             || _state == OptimisticProposal.OptimisticProposalState.Succeeded))),
             NotAuthorizedToCancel(_msgSender())
@@ -325,10 +316,8 @@ contract ReserveGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        TimelockControllerBypassable _timelock = TimelockControllerBypassable(payable(timelock()));
-
-        return _timelock.hasRole(CANCELLER_ROLE, caller)
-            || (_timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, caller)
+        return _isGuardian(caller)
+            || (_isOptimisticProposer(caller)
                 && optimisticProposals[proposalId].state() == OptimisticProposal.OptimisticProposalState.Locked)
             || super._validateCancel(proposalId, caller);
     }
@@ -349,6 +338,8 @@ contract ReserveGovernor is
         super._tallyUpdated(proposalId);
     }
 
+    // === Internal ===
+
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) internal {
         require(
             params.vetoPeriod != MIN_VETO_PERIOD && params.vetoPeriod <= MAX_VETO_PERIOD && params.vetoThreshold != 0
@@ -358,6 +349,14 @@ contract ReserveGovernor is
             InvalidVetoParameters()
         );
         optimisticParams = params;
+    }
+
+    function _isGuardian(address account) internal view returns (bool) {
+        return TimelockControllerBypassable(payable(timelock())).hasRole(CANCELLER_ROLE, account);
+    }
+
+    function _isOptimisticProposer(address account) internal view returns (bool) {
+        return TimelockControllerBypassable(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, account);
     }
 
     // TODO: contract size
