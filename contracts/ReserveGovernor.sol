@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.33;
 
-import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
-import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {
@@ -215,6 +213,34 @@ contract ReserveGovernor is
 
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
+    }
+
+    function propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) public override returns (uint256 proposalId) {
+        address proposer = _msgSender();
+
+        // check description restriction
+        if (!_isValidDescriptionForProposer(proposer, description)) {
+            revert GovernorRestrictedProposer(proposer);
+        }
+
+        proposalId = _propose(targets, values, calldatas, description, proposer);
+
+        // if not an Optimistic proposal, check proposal threshold
+        if (address(optimisticProposals[proposalId]) == address(0)) {
+            uint256 votesThreshold = proposalThreshold();
+
+            if (votesThreshold > 0) {
+                uint256 proposerVotes = getVotes(proposer, clock() - 1);
+                if (proposerVotes < votesThreshold) {
+                    revert GovernorInsufficientProposerVotes(proposer, proposerVotes, votesThreshold);
+                }
+            }
+        }
     }
 
     function _propose(
