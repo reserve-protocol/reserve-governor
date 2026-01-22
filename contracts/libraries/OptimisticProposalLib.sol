@@ -131,8 +131,9 @@ library OptimisticProposalLib {
         // this is obviously a bad pattern in general, but with a max
         // of 5 (MAX_PARALLEL_OPTIMISTIC_PROPOSALS) it's fine and saves many callbacks
 
-        while (set.length() > 0) {
-            address optimisticProposal = set.at(0);
+        // Iterate backwards to safely remove while iterating
+        for (uint256 i = set.length(); i > 0; i--) {
+            address optimisticProposal = set.at(i - 1);
 
             if (_proposalFinished(OptimisticProposal(optimisticProposal).state())) {
                 set.remove(optimisticProposal);
