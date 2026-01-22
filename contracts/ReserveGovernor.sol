@@ -146,7 +146,7 @@ contract ReserveGovernor is
         ProposalCore storage proposalCore = _getGovernorStorage()._proposals[proposalId];
 
         OptimisticProposalLib.executeOptimisticProposal(
-            proposalId, optimisticProposals[proposalId], proposalCore, TimelockControllerOptimistic(payable(timelock()))
+            proposalId, optimisticProposals[proposalId], proposalCore, timelock()
         );
     }
 

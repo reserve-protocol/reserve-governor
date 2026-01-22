@@ -88,7 +88,7 @@ library OptimisticProposalLib {
         uint256 proposalId,
         OptimisticProposal optimisticProposal,
         GovernorUpgradeable.ProposalCore storage proposalCore,
-        TimelockControllerOptimistic timelock
+        address timelock
     ) external {
         require(
             optimisticProposal.state() == OptimisticProposal.OptimisticProposalState.Succeeded,
@@ -106,7 +106,7 @@ library OptimisticProposalLib {
         );
         emit IGovernor.ProposalExecuted(proposalId);
 
-        timelock.executeBatchBypass{ value: msg.value }(
+        TimelockControllerOptimistic(payable(timelock)).executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ keccak256(bytes(description))
         );
     }
