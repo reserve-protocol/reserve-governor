@@ -4,11 +4,9 @@ pragma solidity ^0.8.33;
 import { Test } from "forge-std/Test.sol";
 
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { IReserveGovernor } from "@interfaces/IReserveGovernor.sol";
-import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "@interfaces/IVetoToken.sol";
 import { Deployer, DeploymentParams } from "@src/Deployer.sol";
 import { OptimisticProposal } from "@src/OptimisticProposal.sol";
@@ -702,5 +700,1206 @@ contract ReserveGovernorTest is Test {
         vm.prank(alice);
         vm.expectRevert("OptimisticProposal: under dispute");
         optProposal.withdraw();
+    }
+
+    // ==================== Negative Tests: #proposer= Suffix Manipulation ====================
+
+    function test_cannotCreateSlowProposalWithOptimisticDescription() public {
+        // Create an optimistic proposal first
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        // Warp to ensure we have a snapshot
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+
+        // Attacker tries to call propose() with the same description that includes #proposer= suffix
+        // This would allow them to create a slow proposal matching the optimistic one
+        string memory attackerDescription = optProposal.description();
+
+        // Should revert because alice is not the OptimisticProposal contract
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorRestrictedProposer.selector, alice));
+        governor.propose(targets, values, calldatas, attackerDescription);
+    }
+
+    function test_proposerSuffixInOriginalDescription() public {
+        // OptimisticProposer includes #proposer= in original description
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        // Description already has a #proposer= suffix
+        string memory description = "Transfer tokens#proposer=0x1234567890123456789012345678901234567890";
+
+        vm.warp(block.timestamp + 1);
+
+        // This should succeed - the system will append another #proposer= suffix
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+
+        // Verify the description has double suffix
+        string memory storedDesc = optProposal.description();
+        assertTrue(
+            bytes(storedDesc).length > bytes(description).length,
+            "Description should have additional suffix appended"
+        );
+    }
+
+    // ==================== Negative Tests: Proposal ID Collision ====================
+
+    function test_canCreateMultipleIdenticalOptimisticProposals() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.startPrank(optimisticProposer);
+
+        // Create first proposal
+        uint256 proposalId1 = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        // Create second with identical params - should succeed with different proposalId
+        uint256 proposalId2 = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        // Create third with identical params - should also succeed
+        uint256 proposalId3 = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        vm.stopPrank();
+
+        // Verify all proposal IDs are unique (due to unique clone addresses in description suffix)
+        assertTrue(proposalId1 != proposalId2, "Proposal IDs 1 and 2 should differ");
+        assertTrue(proposalId2 != proposalId3, "Proposal IDs 2 and 3 should differ");
+        assertTrue(proposalId1 != proposalId3, "Proposal IDs 1 and 3 should differ");
+
+        // Verify each proposal has a unique OptimisticProposal clone
+        OptimisticProposal optProposal1 = governor.optimisticProposals(proposalId1);
+        OptimisticProposal optProposal2 = governor.optimisticProposals(proposalId2);
+        OptimisticProposal optProposal3 = governor.optimisticProposals(proposalId3);
+
+        assertTrue(address(optProposal1) != address(optProposal2), "Clone addresses 1 and 2 should differ");
+        assertTrue(address(optProposal2) != address(optProposal3), "Clone addresses 2 and 3 should differ");
+        assertTrue(address(optProposal1) != address(optProposal3), "Clone addresses 1 and 3 should differ");
+    }
+
+    function test_cannotCreateSlowProposalMatchingOptimistic() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        // Create optimistic proposal
+        vm.prank(optimisticProposer);
+        uint256 optProposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        // Create slow proposal with same targets/values/calldatas but original description (no suffix)
+        // This should succeed because the proposalIds will be different (different description hash)
+        vm.prank(alice);
+        uint256 slowProposalId = governor.propose(targets, values, calldatas, description);
+
+        // Verify they're different proposal IDs
+        assertTrue(optProposalId != slowProposalId, "Proposal IDs should be different");
+    }
+
+    function test_proposalTypeAfterDispute() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        // Initially it's Optimistic
+        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Optimistic));
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Stake to trigger dispute
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        // After dispute triggered, it should be Standard
+        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Standard));
+    }
+
+    // ==================== Negative Tests: Meta-Governance Restrictions ====================
+
+    function test_cannotTargetGovernorViaOptimistic() public {
+        // Optimistic proposal targeting ReserveGovernor
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(
+            governor.setOptimisticParams,
+            (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
+        );
+
+        string memory description = "Malicious governor update";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveGovernor.NoMetaGovernanceThroughOptimistic.selector);
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    function test_cannotTargetTimelockViaOptimistic() public {
+        // Optimistic proposal targeting TimelockControllerOptimistic
+        address[] memory targets = new address[](1);
+        targets[0] = address(timelock);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(timelock.updateDelay, (0));
+
+        string memory description = "Malicious timelock update";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveGovernor.NoMetaGovernanceThroughOptimistic.selector);
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    function test_canTargetGovernorViaSlow() public {
+        // Standard proposal can target governor (meta-governance allowed)
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(
+            governor.setOptimisticParams,
+            (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
+        );
+
+        string memory description = "Legitimate governor update";
+
+        vm.warp(block.timestamp + 1);
+
+        // Should succeed
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_canTargetTimelockViaSlow() public {
+        // Standard proposal can target timelock (meta-governance allowed)
+        address[] memory targets = new address[](1);
+        targets[0] = address(timelock);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(timelock.updateDelay, (1 days));
+
+        string memory description = "Legitimate timelock update";
+
+        vm.warp(block.timestamp + 1);
+
+        // Should succeed
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    // ==================== Negative Tests: Parallel Proposals Limit ====================
+
+    function test_cannotExceedParallelProposals() public {
+        vm.warp(block.timestamp + 1);
+
+        // Create MAX (3) optimistic proposals
+        for (uint256 i = 0; i < NUM_PARALLEL_PROPOSALS; i++) {
+            address[] memory targets = new address[](1);
+            targets[0] = address(underlying);
+
+            uint256[] memory values = new uint256[](1);
+            values[0] = 0;
+
+            bytes[] memory calldatas = new bytes[](1);
+            calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i)); // Different calldata
+
+            string memory description = string(abi.encodePacked("Transfer ", vm.toString(i)));
+
+            vm.prank(optimisticProposer);
+            governor.proposeOptimistic(targets, values, calldatas, description);
+        }
+
+        // Try to create one more - should fail
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 2000e18));
+
+        string memory description = "Transfer overflow";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveGovernor.TooManyParallelOptimisticProposals.selector);
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    function test_parallelLimitClearsAfterExecution() public {
+        underlying.mint(address(timelock), 10000e18);
+
+        vm.warp(block.timestamp + 1);
+
+        uint256[] memory proposalIds = new uint256[](NUM_PARALLEL_PROPOSALS);
+
+        // Create MAX optimistic proposals
+        for (uint256 i = 0; i < NUM_PARALLEL_PROPOSALS; i++) {
+            address[] memory targets = new address[](1);
+            targets[0] = address(underlying);
+
+            uint256[] memory values = new uint256[](1);
+            values[0] = 0;
+
+            bytes[] memory calldatas = new bytes[](1);
+            calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i));
+
+            string memory description = string(abi.encodePacked("Transfer ", vm.toString(i)));
+
+            vm.prank(optimisticProposer);
+            proposalIds[i] = governor.proposeOptimistic(targets, values, calldatas, description);
+        }
+
+        // Execute the first one
+        vm.warp(block.timestamp + VETO_PERIOD + 1);
+
+        vm.prank(optimisticProposer);
+        governor.executeOptimistic(proposalIds[0]);
+
+        // Now we should be able to create another
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 5000e18));
+
+        string memory description = "Transfer after execution";
+
+        vm.prank(optimisticProposer);
+        uint256 newProposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        assertTrue(newProposalId != 0, "Should have created new proposal");
+    }
+
+    function test_parallelLimitClearsAfterVeto() public {
+        vm.warp(block.timestamp + 1);
+
+        uint256[] memory proposalIds = new uint256[](NUM_PARALLEL_PROPOSALS);
+
+        // Create MAX optimistic proposals
+        for (uint256 i = 0; i < NUM_PARALLEL_PROPOSALS; i++) {
+            address[] memory targets = new address[](1);
+            targets[0] = address(underlying);
+
+            uint256[] memory values = new uint256[](1);
+            values[0] = 0;
+
+            bytes[] memory calldatas = new bytes[](1);
+            calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i));
+
+            string memory description = string(abi.encodePacked("Transfer ", vm.toString(i)));
+
+            vm.prank(optimisticProposer);
+            proposalIds[i] = governor.proposeOptimistic(targets, values, calldatas, description);
+        }
+
+        // Veto the first one by staking and then voting against
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalIds[0]);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        // Warp past voting delay and vote against
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalIds[0], 0); // Vote against
+        vm.prank(bob);
+        governor.castVote(proposalIds[0], 0); // Vote against
+
+        // Warp past voting period
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        // Verify vetoed
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Vetoed));
+
+        // Now we should be able to create another
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 5000e18));
+
+        string memory description = "Transfer after veto";
+
+        vm.prank(optimisticProposer);
+        uint256 newProposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        assertTrue(newProposalId != 0, "Should have created new proposal");
+    }
+
+    // ==================== Negative Tests: State Transition Edge Cases ====================
+
+    function test_cannotExecuteOptimisticWhileLocked() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Stake to trigger dispute (locked state)
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
+
+        // Try to execute optimistic - should fail
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.OptimisticProposalNotSuccessful.selector, proposalId));
+        governor.executeOptimistic(proposalId);
+    }
+
+    function test_cannotExecuteOptimisticAfterVetoed() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Stake to trigger dispute
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        // Vote against (veto succeeds)
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 0);
+        vm.prank(bob);
+        governor.castVote(proposalId, 0);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Vetoed));
+
+        // Try to execute optimistic - should fail
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.OptimisticProposalNotSuccessful.selector, proposalId));
+        governor.executeOptimistic(proposalId);
+    }
+
+    function test_cannotExecuteOptimisticAfterSlashed() public {
+        underlying.mint(address(timelock), 10000e18);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Stake to trigger dispute
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        // Vote FOR (dispute passes = slash stakers)
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        // Queue and execute the slow proposal
+        bytes32 descriptionHash = keccak256(bytes(optProposal.description()));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Slashed));
+
+        // Try to execute optimistic - should fail
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.OptimisticProposalNotSuccessful.selector, proposalId));
+        governor.executeOptimistic(proposalId);
+    }
+
+    function test_governorStateRevertsForUndisputedOptimistic() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        // Calling state() on an active (undisputed) optimistic proposal should revert
+        // because there's no slow proposal yet
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorNonexistentProposal.selector, proposalId));
+        governor.state(proposalId);
+    }
+
+    // ==================== Negative Tests: Staking Edge Cases ====================
+
+    function test_cannotStakeZero() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+
+        vm.prank(alice);
+        vm.expectRevert("OptimisticProposal: zero stake");
+        optProposal.stakeToVeto(0);
+    }
+
+    function test_cannotStakeWhenSucceeded() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+
+        // Warp past veto period
+        vm.warp(block.timestamp + VETO_PERIOD + 1);
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Succeeded));
+
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), 1000e18);
+        vm.expectRevert("OptimisticProposal: not active");
+        optProposal.stakeToVeto(1000e18);
+        vm.stopPrank();
+    }
+
+    function test_cannotStakeWhenLocked() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Alice stakes to trigger lock
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
+
+        // Bob tries to stake while locked
+        vm.startPrank(bob);
+        stakingVault.approve(address(optProposal), 1000e18);
+        vm.expectRevert("OptimisticProposal: not active");
+        optProposal.stakeToVeto(1000e18);
+        vm.stopPrank();
+    }
+
+    function test_withdrawRoundsDownWithSlashing() public {
+        underlying.mint(address(timelock), 10000e18);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Stake a tiny amount (1 wei) plus enough to reach threshold
+        uint256 tinyStake = 1;
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold + tinyStake);
+        optProposal.stakeToVeto(vetoThreshold + tinyStake);
+        vm.stopPrank();
+
+        // Vote FOR to slash
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(optProposal.description()));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        // Calculate expected withdrawal
+        uint256 staked = vetoThreshold + tinyStake;
+        uint256 expectedWithdrawal = (staked * (1e18 - SLASHING_PERCENTAGE)) / 1e18;
+
+        uint256 balanceBefore = stakingVault.balanceOf(alice);
+
+        vm.prank(alice);
+        optProposal.withdraw();
+
+        // Verify withdrawal math is correct
+        assertEq(stakingVault.balanceOf(alice), balanceBefore + expectedWithdrawal);
+    }
+
+    function test_multipleStakersThresholdOnce() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Alice stakes just under threshold
+        uint256 aliceStake = vetoThreshold - 1;
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), aliceStake);
+        optProposal.stakeToVeto(aliceStake);
+        vm.stopPrank();
+
+        // Still active
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Active));
+
+        // Bob stakes 2 more to go over threshold
+        vm.startPrank(bob);
+        stakingVault.approve(address(optProposal), 2);
+        optProposal.stakeToVeto(2);
+        vm.stopPrank();
+
+        // Now locked - dispute should have been created exactly once
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
+        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Standard));
+    }
+
+    // ==================== Negative Tests: Cancel Flow ====================
+
+    function test_cannotCancelOptimisticWhenLocked() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Stake to trigger lock
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
+
+        // OptimisticProposer tries to cancel the OptimisticProposal (not the slow proposal)
+        vm.prank(optimisticProposer);
+        vm.expectRevert("OptimisticProposal: cannot cancel");
+        optProposal.cancel();
+    }
+
+    function test_guardianCanCancelDispute() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Stake to trigger dispute
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
+
+        // Guardian cancels the slow (dispute) proposal via governor
+        bytes32 descriptionHash = keccak256(bytes(optProposal.description()));
+
+        vm.prank(guardian);
+        governor.cancel(targets, values, calldatas, descriptionHash);
+
+        // OptimisticProposal should be Canceled
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Canceled));
+    }
+
+    function test_randomUserCannotCancelOptimistic() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+
+        // Random user tries to cancel
+        address randomUser = makeAddr("randomUser");
+        vm.prank(randomUser);
+        vm.expectRevert("OptimisticProposal: cannot cancel");
+        optProposal.cancel();
+    }
+
+    function test_optimisticProposerCanCancelActive() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Active));
+
+        // OptimisticProposer can cancel during Active state
+        vm.prank(optimisticProposer);
+        optProposal.cancel();
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Canceled));
+    }
+
+    // ==================== Negative Tests: Permission Tests ====================
+
+    function test_cannotProposeOptimisticWithoutRole() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        // Alice (not optimistic proposer) tries to propose optimistically
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.NotOptimisticProposer.selector, alice));
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    function test_cannotExecuteOptimisticWithoutRole() public {
+        underlying.mint(address(timelock), 10000e18);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        // Warp past veto period
+        vm.warp(block.timestamp + VETO_PERIOD + 1);
+
+        // Alice (not optimistic proposer) tries to execute
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.NotOptimisticProposer.selector, alice));
+        governor.executeOptimistic(proposalId);
+    }
+
+    // ==================== Negative Tests: Parameter Validation ====================
+
+    function test_cannotSetVetoPeriodBelowMin() public {
+        // Setup a governance proposal to change params
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // vetoPeriod = 1 minute (< 30 minutes minimum)
+        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
+            vetoPeriod: 1 minutes,
+            vetoThreshold: VETO_THRESHOLD,
+            slashingPercentage: SLASHING_PERCENTAGE,
+            numParallelProposals: NUM_PARALLEL_PROPOSALS
+        });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
+
+        string memory description = "Set bad veto period";
+
+        vm.warp(block.timestamp + 1);
+
+        // Create and pass the proposal
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        // Execution should revert
+        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_cannotSetVetoThresholdAboveMax() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // vetoThreshold = 25% (> 20% maximum)
+        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
+            vetoPeriod: VETO_PERIOD,
+            vetoThreshold: 0.25e18,
+            slashingPercentage: SLASHING_PERCENTAGE,
+            numParallelProposals: NUM_PARALLEL_PROPOSALS
+        });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
+
+        string memory description = "Set bad veto threshold";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_cannotSetVetoThresholdZero() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // vetoThreshold = 0
+        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
+            vetoPeriod: VETO_PERIOD,
+            vetoThreshold: 0,
+            slashingPercentage: SLASHING_PERCENTAGE,
+            numParallelProposals: NUM_PARALLEL_PROPOSALS
+        });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
+
+        string memory description = "Set zero veto threshold";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_cannotSetSlashingPercentageZero() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // slashingPercentage = 0
+        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
+            vetoPeriod: VETO_PERIOD,
+            vetoThreshold: VETO_THRESHOLD,
+            slashingPercentage: 0,
+            numParallelProposals: NUM_PARALLEL_PROPOSALS
+        });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
+
+        string memory description = "Set zero slashing percentage";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_cannotSetSlashingAbove100Percent() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // slashingPercentage = 150%
+        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
+            vetoPeriod: VETO_PERIOD,
+            vetoThreshold: VETO_THRESHOLD,
+            slashingPercentage: 1.5e18,
+            numParallelProposals: NUM_PARALLEL_PROPOSALS
+        });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
+
+        string memory description = "Set slashing above 100%";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_cannotSetParallelProposalsAboveMax() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // numParallelProposals = 10 (> 5 maximum)
+        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
+            vetoPeriod: VETO_PERIOD,
+            vetoThreshold: VETO_THRESHOLD,
+            slashingPercentage: SLASHING_PERCENTAGE,
+            numParallelProposals: 10
+        });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
+
+        string memory description = "Set parallel proposals above max";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    // ==================== Negative Tests: Empty/Invalid Proposal Tests ====================
+
+    function test_cannotCreateEmptyOptimisticProposal() public {
+        address[] memory targets = new address[](0);
+        uint256[] memory values = new uint256[](0);
+        bytes[] memory calldatas = new bytes[](0);
+
+        string memory description = "Empty proposal";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert("OptimisticProposal: invalid proposal");
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    function test_cannotCreateMismatchedArraysOptimistic() public {
+        address[] memory targets = new address[](2);
+        targets[0] = address(underlying);
+        targets[1] = address(underlying);
+
+        uint256[] memory values = new uint256[](1); // Mismatched!
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](2);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+        calldatas[1] = abi.encodeCall(IERC20.transfer, (bob, 1000e18));
+
+        string memory description = "Mismatched arrays";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert("OptimisticProposal: invalid proposal");
+        governor.proposeOptimistic(targets, values, calldatas, description);
     }
 }
