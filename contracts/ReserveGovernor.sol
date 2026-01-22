@@ -84,6 +84,7 @@ contract ReserveGovernor is
     /// @param optimisticGovParams.vetoPeriod {s} Veto period
     /// @param optimisticGovParams.vetoThreshold D18{1} Fraction of tok supply required to start dispute process
     /// @param optimisticGovParams.slashingPercentage D18{1} Percentage of staked tokens to be slashed
+    /// @param optimisticGovParams.numParallelProposals Number of optimistic proposals that can be in parallel
     /// @param standardGovParams.votingDelay {s} Delay before snapshot
     /// @param standardGovParams.votingPeriod {s} Voting period
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
@@ -304,6 +305,4 @@ contract ReserveGovernor is
 
     /// @dev Upgrades authorized only through timelock (governance)
     function _authorizeUpgrade(address) internal override onlyGovernance { }
-
-    // TODO: Add burn() to StakingVault/StRSR
 }
