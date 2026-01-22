@@ -1,7 +1,8 @@
 forge-std/=node_modules/forge-std/src/
 @openzeppelin/contracts/=node_modules/@openzeppelin/contracts/
 @openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/
+@prb/math/=node_modules/.pnpm/@prb+math@4.1.0/node_modules/@prb/math/
+@reserve-protocol/reserve-index-dtf/=node_modules/@reserve-protocol/reserve-index-dtf/contracts/
 
 @src/=contracts/
-@utils/=contracts/utils/
 @interfaces/=contracts/interfaces/

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.33;
+pragma solidity ^0.8.33;
 
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -116,36 +116,42 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             return OptimisticProposalState.Canceled;
         }
 
-        IReserveGovernor.ProposalType proposalType = governor.proposalType(proposalId);
+        try governor.state(proposalId) returns (IGovernor.ProposalState governorState) {
+            IReserveGovernor.ProposalType proposalType = governor.proposalType(proposalId);
 
-        IGovernor.ProposalState governorState = governor.state(proposalId);
+            if (proposalType == IReserveGovernor.ProposalType.Optimistic) {
+                // Proposal executed without dispute
 
-        if (proposalType == IReserveGovernor.ProposalType.Optimistic) {
-            if (governorState == IGovernor.ProposalState.Executed) {
+                assert(governorState == IGovernor.ProposalState.Executed); // TODO delete
                 return OptimisticProposalState.Executed;
+            } else {
+                // Proposal under dispute
+
+                if (
+                    governorState == IGovernor.ProposalState.Defeated
+                        || governorState == IGovernor.ProposalState.Expired
+                ) {
+                    return OptimisticProposalState.Vetoed;
+                }
+
+                if (governorState == IGovernor.ProposalState.Executed) {
+                    return OptimisticProposalState.Slashed;
+                }
+
+                if (governorState == IGovernor.ProposalState.Canceled) {
+                    return OptimisticProposalState.Canceled;
+                }
+
+                return OptimisticProposalState.Locked;
             }
+        } catch {
+            // Proposal not under dispute nor executed
 
             if (block.timestamp > voteEnd) {
                 return OptimisticProposalState.Succeeded;
             }
 
             return OptimisticProposalState.Active;
-        } else {
-            // Proposal under dispute
-
-            if (governorState == IGovernor.ProposalState.Defeated || governorState == IGovernor.ProposalState.Expired) {
-                return OptimisticProposalState.Vetoed;
-            }
-
-            if (governorState == IGovernor.ProposalState.Executed) {
-                return OptimisticProposalState.Slashed;
-            }
-
-            if (governorState == IGovernor.ProposalState.Canceled) {
-                return OptimisticProposalState.Canceled;
-            }
-
-            return OptimisticProposalState.Locked;
         }
     }
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.33;
+pragma solidity ^0.8.33;
 
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";

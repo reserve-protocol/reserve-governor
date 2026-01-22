@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.33;
+pragma solidity ^0.8.33;
 
 import {
     TimelockControllerUpgradeable
@@ -42,7 +42,7 @@ contract TimelockControllerOptimistic is TimelockControllerUpgradeable, UUPSUpgr
 
         // mark Ready
         require($._timestamps[id] == 0, "TimelockControllerOptimistic: Operation Conflict");
-        $._timestamps[id] = 1;
+        $._timestamps[id] = block.timestamp;
 
         // check caller has EXECUTOR_ROLE and execute
         executeBatch(targets, values, payloads, predecessor, salt);

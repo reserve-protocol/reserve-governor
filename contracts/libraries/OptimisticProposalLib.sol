@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.33;
+pragma solidity ^0.8.33;
 
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
