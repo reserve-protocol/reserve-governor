@@ -287,7 +287,7 @@ The following enforcement limits apply to optimistic governance parameters:
 |-----------|------------|----------|
 | `vetoPeriod` | >= 30 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
 | `vetoThreshold` | > 0 and <= 20% | `MAX_VETO_THRESHOLD` |
-| `slashingPercentage` | > 0 and <= 100% | Validated in `_setOptimisticParams()` |
+| `slashingPercentage` | >= 0 and <= 100% | Validated in `_setOptimisticParams()` |
 | `numParallelProposals` | <= 5 | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS` |
 
 ## Token Requirements

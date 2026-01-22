@@ -313,8 +313,7 @@ contract ReserveGovernor is
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
         require(
             params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
-                && params.vetoThreshold <= MAX_VETO_THRESHOLD && params.slashingPercentage != 0
-                && params.slashingPercentage <= 1e18
+                && params.vetoThreshold <= MAX_VETO_THRESHOLD && params.slashingPercentage <= 1e18
                 && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
             InvalidVetoParameters()
         );

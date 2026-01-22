@@ -607,7 +607,8 @@ contract ReserveGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
         uint256 aliceStake = vetoThreshold / 2;
-        uint256 bobStake = vetoThreshold - aliceStake + 1; // Just over threshold
+        uint256 remaining = vetoThreshold - aliceStake;
+        uint256 bobAttemptedStake = remaining * 2; // Bob tries to overstake by 2x
 
         // Alice stakes partial amount
         vm.startPrank(alice);
@@ -618,19 +619,23 @@ contract ReserveGovernorTest is Test {
         // Still active
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Active));
 
-        // Bob stakes to reach threshold
+        // Bob stakes to reach threshold (attempts 2x more than needed, but capped)
+        uint256 bobBalanceBefore = stakingVault.balanceOf(bob);
         vm.startPrank(bob);
-        stakingVault.approve(address(optProposal), bobStake);
-        optProposal.stakeToVeto(bobStake);
+        stakingVault.approve(address(optProposal), bobAttemptedStake);
+        optProposal.stakeToVeto(bobAttemptedStake);
         vm.stopPrank();
 
         // Now locked
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
-        // Verify both stakes recorded
+        // Verify stakes recorded (Bob's stake is capped to remaining threshold)
         assertEq(optProposal.staked(alice), aliceStake);
-        assertEq(optProposal.staked(bob), bobStake);
-        assertEq(optProposal.totalStaked(), aliceStake + bobStake);
+        assertEq(optProposal.staked(bob), remaining);
+        assertEq(optProposal.totalStaked(), vetoThreshold);
+
+        // Verify Bob only transferred the capped amount
+        assertEq(stakingVault.balanceOf(bob), bobBalanceBefore - remaining);
     }
 
     function test_cannotStakeAfterVetoPeriod() public {
@@ -760,8 +765,7 @@ contract ReserveGovernorTest is Test {
         // Verify the description has double suffix
         string memory storedDesc = optProposal.description();
         assertTrue(
-            bytes(storedDesc).length > bytes(description).length,
-            "Description should have additional suffix appended"
+            bytes(storedDesc).length > bytes(description).length, "Description should have additional suffix appended"
         );
     }
 
@@ -879,8 +883,7 @@ contract ReserveGovernorTest is Test {
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(
-            governor.setOptimisticParams,
-            (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
+            governor.setOptimisticParams, (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
         );
 
         string memory description = "Malicious governor update";
@@ -918,8 +921,7 @@ contract ReserveGovernorTest is Test {
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(
-            governor.setOptimisticParams,
-            (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
+            governor.setOptimisticParams, (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
         );
 
         string memory description = "Legitimate governor update";
@@ -1432,7 +1434,8 @@ contract ReserveGovernorTest is Test {
         // Still active
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Active));
 
-        // Bob stakes 2 more to go over threshold
+        // Bob tries to stake 2 when only 1 is needed (overstake is capped)
+        uint256 bobBalanceBefore = stakingVault.balanceOf(bob);
         vm.startPrank(bob);
         stakingVault.approve(address(optProposal), 2);
         optProposal.stakeToVeto(2);
@@ -1441,6 +1444,11 @@ contract ReserveGovernorTest is Test {
         // Now locked - dispute should have been created exactly once
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
         assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Standard));
+
+        // Verify Bob's stake was capped to 1 (only what was needed)
+        assertEq(optProposal.staked(bob), 1);
+        assertEq(optProposal.totalStaked(), vetoThreshold);
+        assertEq(stakingVault.balanceOf(bob), bobBalanceBefore - 1);
     }
 
     // ==================== Negative Tests: Cancel Flow ====================
@@ -1744,15 +1752,15 @@ contract ReserveGovernorTest is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
-    function test_cannotSetSlashingPercentageZero() public {
+    function test_zeroSlashingPercentageAllowed() public {
+        // Step 1: Set slashing percentage to 0 via slow proposal
         address[] memory targets = new address[](1);
         targets[0] = address(governor);
 
         uint256[] memory values = new uint256[](1);
         values[0] = 0;
 
-        // slashingPercentage = 0
-        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
+        IReserveGovernor.OptimisticGovernanceParams memory zeroSlashParams = IReserveGovernor.OptimisticGovernanceParams({
             vetoPeriod: VETO_PERIOD,
             vetoThreshold: VETO_THRESHOLD,
             slashingPercentage: 0,
@@ -1760,20 +1768,20 @@ contract ReserveGovernorTest is Test {
         });
 
         bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (zeroSlashParams));
 
         string memory description = "Set zero slashing percentage";
 
         vm.warp(block.timestamp + 1);
 
         vm.prank(alice);
-        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+        uint256 paramProposalId = governor.propose(targets, values, calldatas, description);
 
         vm.warp(block.timestamp + VOTING_DELAY + 1);
         vm.prank(alice);
-        governor.castVote(proposalId, 1);
+        governor.castVote(paramProposalId, 1);
         vm.prank(bob);
-        governor.castVote(proposalId, 1);
+        governor.castVote(paramProposalId, 1);
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
 
@@ -1782,8 +1790,69 @@ contract ReserveGovernorTest is Test {
 
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
-        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        // Execute should succeed with 0% slashing
         governor.execute(targets, values, calldatas, descriptionHash);
+
+        // Verify slashing percentage is now 0
+        (,, uint256 slashingPct,) = governor.optimisticParams();
+        assertEq(slashingPct, 0, "Slashing percentage should be 0");
+
+        // Step 2: Create an optimistic proposal that will be disputed
+        underlying.mint(address(timelock), 1000e18);
+
+        address[] memory optTargets = new address[](1);
+        optTargets[0] = address(underlying);
+
+        uint256[] memory optValues = new uint256[](1);
+        optValues[0] = 0;
+
+        bytes[] memory optCalldatas = new bytes[](1);
+        optCalldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory optDescription = "Transfer tokens - will be disputed with zero slashing";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 optProposalId = governor.proposeOptimistic(optTargets, optValues, optCalldatas, optDescription);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(optProposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Step 3: Alice stakes to veto (triggers dispute)
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
+
+        // Step 4: Dispute passes (vetoers were wrong, they get "slashed")
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+
+        vm.prank(alice);
+        governor.castVote(optProposalId, 1);
+        vm.prank(bob);
+        governor.castVote(optProposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 optDescriptionHash = keccak256(bytes(optProposal.description()));
+        governor.queue(optTargets, optValues, optCalldatas, optDescriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        uint256 aliceStakingBalanceBefore = stakingVault.balanceOf(alice);
+        governor.execute(optTargets, optValues, optCalldatas, optDescriptionHash);
+
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Slashed));
+
+        // Step 5: Alice withdraws - should receive full amount back (0% slashing)
+        vm.prank(alice);
+        optProposal.withdraw();
+
+        // Verify alice got full stake back
+        assertEq(stakingVault.balanceOf(alice), aliceStakingBalanceBefore + vetoThreshold, "Should receive full stake with 0% slashing");
     }
 
     function test_cannotSetSlashingAbove100Percent() public {

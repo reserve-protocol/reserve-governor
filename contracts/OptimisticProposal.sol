@@ -189,9 +189,14 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === User ===
 
+    /// @dev Can stake less than `amount`, if there is excess
     function stakeToVeto(uint256 amount) external {
         require(state() == OptimisticProposalState.Active, "OptimisticProposal: not active");
         require(amount != 0, "OptimisticProposal: zero stake");
+
+        // cap amount at remaining needed
+        uint256 remaining = vetoThreshold - totalStaked;
+        amount = remaining < amount ? remaining : amount;
 
         // {tok}
         staked[_msgSender()] += amount;
