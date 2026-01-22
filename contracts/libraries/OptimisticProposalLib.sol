@@ -119,7 +119,7 @@ library OptimisticProposalLib {
         returns (uint256 count)
     {
         for (uint256 i = 0; i < set.length(); i++) {
-            if (!_proposalFinished(OptimisticProposal(set.at(0)).state())) {
+            if (!_proposalFinished(OptimisticProposal(set.at(i)).state())) {
                 count++;
             }
         }
