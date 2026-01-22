@@ -279,6 +279,53 @@ Extended timelock supporting both flows.
 | `proposalThreshold` | `uint256` | Fraction of supply needed to propose (D18) |
 | `quorumNumerator` | `uint256` | Percentage of supply needed for quorum (0-100) |
 
+### Parameter Constraints
+
+The following enforcement limits apply to optimistic governance parameters:
+
+| Parameter | Constraint | Constant |
+|-----------|------------|----------|
+| `vetoPeriod` | >= 30 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
+| `vetoThreshold` | > 0 and <= 20% | `MAX_VETO_THRESHOLD` |
+| `slashingPercentage` | > 0 and <= 100% | Validated in `_setOptimisticParams()` |
+| `numParallelProposals` | <= 5 | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS` |
+
+## Token Requirements
+
+### IVetoToken Interface
+
+The governance token must implement the `IVetoToken` interface, which extends `IERC20` and `IVotes`:
+
+- **`burn(uint256 amount)`**: Required for slashing mechanics. Must not revert for zero amount.
+- **`getPastTotalSupply(uint256 timepoint)`**: Required for snapshot-based veto threshold calculation.
+
+The burn function is verified at initialization by calling `token.burn(0)`.
+
+### Token Compatibility Warnings
+
+- **Rebasing tokens**: Not compatible with rebasing tokens
+- **Direct transfers**: Do NOT send tokens to OptimisticProposal directly; use `stakeToVeto()` instead
+- **Supply limit**: Token supply should be less than 1e59
+
+## Meta-Governance Restriction
+
+Fast (optimistic) proposals **cannot target**:
+- The `ReserveGovernor` contract
+- The `TimelockControllerOptimistic` contract
+
+This prevents governance takeover via the optimistic path. Attempting to target these contracts reverts with `NoMetaGovernanceThroughOptimistic()`.
+
+Any governance changes to the system itself must go through the slow proposal path with full community voting.
+
+## Upgradeability
+
+Both contracts are UUPS upgradeable:
+
+| Contract | Upgrade Authorization |
+|----------|----------------------|
+| `ReserveGovernor` | Via governance (timelock must call `upgradeToAndCall`) |
+| `TimelockControllerOptimistic` | Self-administered (only the timelock itself can upgrade) |
+
 ## Flow Summary
 
 ```
