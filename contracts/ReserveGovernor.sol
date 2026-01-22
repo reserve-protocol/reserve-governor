@@ -28,6 +28,7 @@ import {
 import {
     GovernorVotesUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
@@ -62,6 +63,7 @@ contract ReserveGovernor is
     GovernorVotesUpgradeable,
     GovernorVotesQuorumFractionUpgradeable,
     GovernorTimelockControlUpgradeable,
+    UUPSUpgradeable,
     IReserveGovernor
 {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -102,6 +104,7 @@ contract ReserveGovernor is
         __GovernorVotes_init(_token);
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
+        __UUPSUpgradeable_init();
 
         _setOptimisticParams(optimisticGovParams);
 
@@ -140,26 +143,10 @@ contract ReserveGovernor is
 
     /// Execute an optimistic proposal that passed successfully without dispute
     function executeOptimistic(uint256 proposalId) external payable onlyOptimisticProposer {
-        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
+        ProposalCore storage proposalCore = _getGovernorStorage()._proposals[proposalId];
 
-        require(
-            optimisticProposal.state() == OptimisticProposal.OptimisticProposalState.Succeeded,
-            OptimisticProposalNotSuccessful(proposalId)
-        );
-
-        // mark executed (for compatibility with legacy offchain monitoring)
-        _getGovernorStorage()._proposals[proposalId].executed = true;
-
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas, string memory description) =
-            optimisticProposal.proposalData();
-
-        emit ProposalCreated(
-            proposalId, _msgSender(), targets, values, new string[](targets.length), calldatas, 0, 0, description
-        );
-        emit ProposalExecuted(proposalId);
-
-        TimelockControllerOptimistic(payable(timelock())).executeBatchBypass{ value: msg.value }(
-            targets, values, calldatas, 0, bytes20(address(this)) ^ keccak256(bytes(description))
+        OptimisticProposalLib.executeOptimisticProposal(
+            proposalId, optimisticProposals[proposalId], proposalCore, TimelockControllerOptimistic(payable(timelock()))
         );
     }
 
@@ -315,7 +302,8 @@ contract ReserveGovernor is
         return TimelockControllerOptimistic(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, account);
     }
 
-    // TODO: contract size
-    // TODO: deployer for the whole system, must remember to setup OPTIMISTIC_PROPOSER_ROLE on the timelock
+    /// @dev Upgrades authorized only through timelock (governance)
+    function _authorizeUpgrade(address) internal override onlyGovernance { }
+
     // TODO: Add burn() to StakingVault/StRSR
 }

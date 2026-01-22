@@ -68,7 +68,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     /// @param _params.vetoThreshold D18{1} Fraction of token supply required to lock proposal for dispute
     /// @param _params.slashingPercentage D18{1} Fraction of staked tokens to be potentially slashed
     function initialize(
-        ReserveGovernor.OptimisticGovernanceParams calldata _params,
+        IReserveGovernor.OptimisticGovernanceParams calldata _params,
         uint256 _proposalId,
         address[] memory _targets,
         uint256[] memory _values,
@@ -116,7 +116,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             return OptimisticProposalState.Canceled;
         }
 
-        ReserveGovernor.ProposalType proposalType = governor.proposalType(proposalId);
+        IReserveGovernor.ProposalType proposalType = governor.proposalType(proposalId);
 
         IGovernor.ProposalState governorState = governor.state(proposalId);
 

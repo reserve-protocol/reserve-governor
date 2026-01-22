@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.33;
 
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
+
 import { OptimisticProposal } from "../OptimisticProposal.sol";
 import { ReserveGovernor } from "../ReserveGovernor.sol";
+import { TimelockControllerOptimistic } from "../TimelockControllerOptimistic.sol";
 import { IReserveGovernor } from "../interfaces/IReserveGovernor.sol";
 
 library OptimisticProposalLib {
@@ -68,7 +72,7 @@ library OptimisticProposalLib {
         activeOptimisticProposals.add(address(optimisticProposal));
 
         emit IReserveGovernor.OptimisticProposalCreated(
-            msg.sender, // TODO do we care this isn't _msgSender()? seems fine
+            msg.sender, // TODO do we care this not being _msgSender()? seems fine
             proposalId,
             proposal.targets,
             proposal.values,
@@ -77,6 +81,33 @@ library OptimisticProposalLib {
             optimisticParams.vetoPeriod,
             optimisticParams.vetoThreshold,
             optimisticParams.slashingPercentage
+        );
+    }
+
+    function executeOptimisticProposal(
+        uint256 proposalId,
+        OptimisticProposal optimisticProposal,
+        GovernorUpgradeable.ProposalCore storage proposalCore,
+        TimelockControllerOptimistic timelock
+    ) external {
+        require(
+            optimisticProposal.state() == OptimisticProposal.OptimisticProposalState.Succeeded,
+            IReserveGovernor.OptimisticProposalNotSuccessful(proposalId)
+        );
+
+        // mark executed in proposal core (for compatibility with legacy offchain monitoring)
+        proposalCore.executed = true;
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas, string memory description) =
+            optimisticProposal.proposalData();
+
+        emit IGovernor.ProposalCreated(
+            proposalId, msg.sender, targets, values, new string[](targets.length), calldatas, 0, 0, description
+        );
+        emit IGovernor.ProposalExecuted(proposalId);
+
+        timelock.executeBatchBypass{ value: msg.value }(
+            targets, values, calldatas, 0, bytes20(address(this)) ^ keccak256(bytes(description))
         );
     }
 
