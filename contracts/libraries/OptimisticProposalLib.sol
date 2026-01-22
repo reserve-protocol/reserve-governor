@@ -118,8 +118,8 @@ library OptimisticProposalLib {
         view
         returns (uint256 count)
     {
-        for (uint256 i = 0; i < set.length(); i++) {
-            if (!_proposalFinished(OptimisticProposal(set.at(i)).state())) {
+        for (uint256 i = set.length(); i > 0; i--) {
+            if (!_proposalFinished(OptimisticProposal(set.at(i - 1)).state())) {
                 count++;
             }
         }
