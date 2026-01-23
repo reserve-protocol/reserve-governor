@@ -202,9 +202,9 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         staked[_msgSender()] += amount;
         totalStaked += amount;
 
-        if (totalStaked >= vetoThreshold) {
+        if (totalStaked == vetoThreshold) {
             // initiate dispute process via slow proposal
-            governor.propose(targets, values, calldatas, description);
+            governor.proposeDispute(targets, values, calldatas, description, vetoThreshold);
         }
 
         token.safeTransferFrom(_msgSender(), address(this), amount);

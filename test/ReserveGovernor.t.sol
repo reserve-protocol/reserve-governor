@@ -324,8 +324,14 @@ contract ReserveGovernorTest is Test {
         // Verify proposal is now locked (dispute started)
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
-        // Verify slow proposal was created (proposalType should now be Standard)
+        // Verify dispute proposal was created with initial AGAINST votes (proposalType should now be Standard)
         assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Standard));
+
+        // Verify initial AGAINST votes equal vetoThreshold
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
+        assertEq(againstVotes, vetoThreshold, "Initial AGAINST votes should equal vetoThreshold");
+        assertEq(forVotes, 0, "Initial FOR votes should be 0");
+        assertEq(abstainVotes, 0, "Initial ABSTAIN votes should be 0");
 
         // Warp past voting delay
         vm.warp(block.timestamp + VOTING_DELAY + 1);
@@ -336,6 +342,11 @@ contract ReserveGovernorTest is Test {
 
         vm.prank(bob);
         governor.castVote(proposalId, 1); // Vote for
+
+        // Verify FOR votes now exceed initial AGAINST votes
+        (againstVotes, forVotes, ) = governor.proposalVotes(proposalId);
+        assertEq(againstVotes, vetoThreshold, "AGAINST votes unchanged");
+        assertGt(forVotes, againstVotes, "FOR votes must exceed AGAINST votes to pass");
 
         // Warp past voting period
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
@@ -521,7 +532,7 @@ contract ReserveGovernorTest is Test {
         // Warp past voting delay
         vm.warp(block.timestamp + VOTING_DELAY + 1);
 
-        // Nobody votes - quorum not reached
+        // No additional votes cast - dispute has only initial AGAINST votes from vetoers
 
         // Warp past voting period
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
@@ -1515,7 +1526,7 @@ contract ReserveGovernorTest is Test {
 
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
-        // Guardian cancels the slow (dispute) proposal via governor
+        // Guardian cancels the dispute proposal via governor
         bytes32 descriptionHash = keccak256(bytes(optProposal.description()));
 
         vm.prank(guardian);
@@ -1852,7 +1863,11 @@ contract ReserveGovernorTest is Test {
         optProposal.withdraw();
 
         // Verify alice got full stake back
-        assertEq(stakingVault.balanceOf(alice), aliceStakingBalanceBefore + vetoThreshold, "Should receive full stake with 0% slashing");
+        assertEq(
+            stakingVault.balanceOf(alice),
+            aliceStakingBalanceBefore + vetoThreshold,
+            "Should receive full stake with 0% slashing"
+        );
     }
 
     function test_cannotSetSlashingAbove100Percent() public {
