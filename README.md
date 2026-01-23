@@ -199,12 +199,12 @@ enum ProposalType {
 
 | Role | Permissions |
 |------|-------------|
-| `OptimisticProposer` | Create and execute fast proposals |
+| `OPTIMISTIC_PROPOSER_ROLE` | Create and execute fast proposals |
 | `PROPOSER_ROLE` | Create slow proposals (via standard Governor) |
 | `EXECUTOR_ROLE` | Execute queued slow proposals |
 | `CANCELLER_ROLE` | Cancel proposals (fast or slow) |
 
-### OptimisticProposer
+#### OPTIMISTIC_PROPOSER_ROLE
 
 The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessControl:
 
