@@ -4,9 +4,12 @@ pragma solidity ^0.8.33;
 import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
-import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 contract TimelockControllerOptimistic is TimelockControllerUpgradeable, UUPSUpgradeable {
+    error TimelockControllerOptimistic__OperationConflict();
+    error TimelockControllerOptimistic__UnauthorizedUpgrade();
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -18,12 +21,11 @@ contract TimelockControllerOptimistic is TimelockControllerUpgradeable, UUPSUpgr
         initializer
     {
         __TimelockController_init(minDelay, proposers, executors, admin);
-        __UUPSUpgradeable_init();
     }
 
     /// @dev Timelock authorizes its own upgrades (self-admin pattern)
     function _authorizeUpgrade(address) internal view override {
-        require(msg.sender == address(this), "TimelockControllerOptimistic: unauthorized upgrade");
+        require(msg.sender == address(this), TimelockControllerOptimistic__UnauthorizedUpgrade());
     }
 
     /// @dev Danger!
@@ -41,7 +43,7 @@ contract TimelockControllerOptimistic is TimelockControllerUpgradeable, UUPSUpgr
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();
 
         // mark Ready
-        require($._timestamps[id] == 0, "TimelockControllerOptimistic: Operation Conflict");
+        require($._timestamps[id] == 0, TimelockControllerOptimistic__OperationConflict());
         $._timestamps[id] = block.timestamp;
 
         // check caller has EXECUTOR_ROLE and execute

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.33;
 
+import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
-
-import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
     GovernorCountingSimpleUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
@@ -26,7 +26,6 @@ import {
 import {
     GovernorVotesUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
-import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
@@ -42,7 +41,7 @@ import { IVetoToken } from "./interfaces/IVetoToken.sol";
 import { OptimisticProposalLib } from "./libraries/OptimisticProposalLib.sol";
 
 /**
- * @title ReserveGovernor
+ * @title Reserve Governor
  * @notice A hybrid optimistic/pessimistic governor for the Reserve protocol
  *
  * @dev 3 overall components:
@@ -103,7 +102,6 @@ contract ReserveGovernor is
         __GovernorVotes_init(_token);
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
-        __UUPSUpgradeable_init();
 
         _setOptimisticParams(optimisticGovParams);
 
@@ -235,7 +233,7 @@ contract ReserveGovernor is
 
         if (address(optimisticProposal) == address(0)) {
             // standard proposal
-            
+
             uint256 votesThreshold = proposalThreshold();
             if (votesThreshold > 0) {
                 uint256 proposerVotes = getVotes(proposer, clock() - 1);
@@ -245,11 +243,12 @@ contract ReserveGovernor is
             }
         } else {
             // dispute proposal
-            
+
             // proposer is the OptimisticProposal due to description restriction
-            
+
             // cast initial AGAINST votes
-            uint256 votedWeight = _countVote(proposalId, proposer, uint8(VoteType.Against), optimisticProposal.totalStaked(), "");
+            uint256 votedWeight =
+                _countVote(proposalId, proposer, uint8(VoteType.Against), optimisticProposal.totalStaked(), "");
             emit VoteCast(proposer, proposalId, uint8(VoteType.Against), votedWeight, "");
         }
     }

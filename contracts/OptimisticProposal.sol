@@ -28,6 +28,20 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     event Withdrawn(address indexed staker, uint256 amount);
     event Slashed(uint256 amount);
 
+    // === Errors ===
+
+    error OptimisticProposal__InvalidVetoPeriod();
+    error OptimisticProposal__InvalidVetoThreshold();
+    error OptimisticProposal__InvalidSlashingPercentage();
+    error OptimisticProposal__InvalidProposal();
+    error OptimisticProposal__CannotCancel();
+    error OptimisticProposal__NotActive();
+    error OptimisticProposal__ZeroStake();
+    error OptimisticProposal__ZeroWithdrawal();
+    error OptimisticProposal__NotGovernor();
+    error OptimisticProposal__NotSlashed();
+    error OptimisticProposal__UnderDispute();
+
     // === Enums ===
 
     enum OptimisticProposalState {
@@ -76,14 +90,14 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         string memory _description
     ) public initializer {
         require(
-            _params.vetoPeriod != 0 && _params.vetoPeriod <= type(uint32).max, "OptimisticProposal: invalid veto period"
+            _params.vetoPeriod != 0 && _params.vetoPeriod <= type(uint32).max, OptimisticProposal__InvalidVetoPeriod()
         );
-        require(_params.vetoThreshold <= 1e18, "OptimisticProposal: invalid veto threshold");
-        require(_params.slashingPercentage <= 1e18, "OptimisticProposal: invalid slashing percentage");
+        require(_params.vetoThreshold <= 1e18, OptimisticProposal__InvalidVetoThreshold());
+        require(_params.slashingPercentage <= 1e18, OptimisticProposal__InvalidSlashingPercentage());
 
         require(
             _targets.length != 0 && _targets.length == _values.length && _targets.length == _calldatas.length,
-            "OptimisticProposal: invalid proposal"
+            OptimisticProposal__InvalidProposal()
         );
 
         governor = ReserveGovernor(payable(_msgSender()));
@@ -181,7 +195,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             (timelock.hasRole(CANCELLER_ROLE, _msgSender()) || timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()))
                 && ((_state == OptimisticProposal.OptimisticProposalState.Active
                         || _state == OptimisticProposal.OptimisticProposalState.Succeeded)),
-            "OptimisticProposal: cannot cancel"
+            OptimisticProposal__CannotCancel()
         );
 
         canceled = true;
@@ -191,8 +205,8 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     /// @dev Can stake less than `amount`, if there is excess
     function stakeToVeto(uint256 amount) external {
-        require(state() == OptimisticProposalState.Active, "OptimisticProposal: not active");
-        require(amount != 0, "OptimisticProposal: zero stake");
+        require(state() == OptimisticProposalState.Active, OptimisticProposal__NotActive());
+        require(amount != 0, OptimisticProposal__ZeroStake());
 
         // cap amount at remaining needed
         uint256 remaining = vetoThreshold - totalStaked;
@@ -213,14 +227,14 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     function withdraw() external {
         OptimisticProposalState _state = state();
-        require(_state != OptimisticProposalState.Locked, "OptimisticProposal: under dispute");
+        require(_state != OptimisticProposalState.Locked, OptimisticProposal__UnderDispute());
 
         // {tok} = {tok} * D18{1}
         uint256 amount = staked[_msgSender()] * (1e18 - _slashingPercentage(_state)) / 1e18;
         delete staked[_msgSender()];
         // totalStaked unchanged
 
-        require(amount != 0, "OptimisticProposal: zero withdrawal");
+        require(amount != 0, OptimisticProposal__ZeroWithdrawal());
 
         token.safeTransfer(_msgSender(), amount);
         emit Withdrawn(_msgSender(), amount);
@@ -229,8 +243,8 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     // === Governor ===
 
     function slash() external {
-        require(_msgSender() == address(governor), "OptimisticProposal: not governor");
-        require(state() == OptimisticProposalState.Slashed, "OptimisticProposal: not slashed");
+        require(_msgSender() == address(governor), OptimisticProposal__NotGovernor());
+        require(state() == OptimisticProposalState.Slashed, OptimisticProposal__NotSlashed());
 
         uint256 amount = (totalStaked * _slashingPercentage(state())) / 1e18;
         totalStaked = 0;
