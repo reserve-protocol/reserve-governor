@@ -676,7 +676,7 @@ contract ReserveGovernorTest is Test {
         // Try to stake - should fail
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), 1000e18);
-        vm.expectRevert("OptimisticProposal: not active");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__NotActive.selector));
         optProposal.stakeToVeto(1000e18);
         vm.stopPrank();
     }
@@ -714,7 +714,7 @@ contract ReserveGovernorTest is Test {
 
         // Try to withdraw - should fail
         vm.prank(alice);
-        vm.expectRevert("OptimisticProposal: under dispute");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__UnderDispute.selector));
         optProposal.withdraw();
     }
 
@@ -1289,7 +1289,7 @@ contract ReserveGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
 
         vm.prank(alice);
-        vm.expectRevert("OptimisticProposal: zero stake");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__ZeroStake.selector));
         optProposal.stakeToVeto(0);
     }
 
@@ -1317,7 +1317,7 @@ contract ReserveGovernorTest is Test {
 
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), 1000e18);
-        vm.expectRevert("OptimisticProposal: not active");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__NotActive.selector));
         optProposal.stakeToVeto(1000e18);
         vm.stopPrank();
     }
@@ -1353,7 +1353,7 @@ contract ReserveGovernorTest is Test {
         // Bob tries to stake while locked
         vm.startPrank(bob);
         stakingVault.approve(address(optProposal), 1000e18);
-        vm.expectRevert("OptimisticProposal: not active");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__NotActive.selector));
         optProposal.stakeToVeto(1000e18);
         vm.stopPrank();
     }
@@ -1494,7 +1494,7 @@ contract ReserveGovernorTest is Test {
 
         // OptimisticProposer tries to cancel the OptimisticProposal (not the slow proposal)
         vm.prank(optimisticProposer);
-        vm.expectRevert("OptimisticProposal: cannot cancel");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__CannotCancel.selector));
         optProposal.cancel();
     }
 
@@ -1556,7 +1556,7 @@ contract ReserveGovernorTest is Test {
         // Random user tries to cancel
         address randomUser = makeAddr("randomUser");
         vm.prank(randomUser);
-        vm.expectRevert("OptimisticProposal: cannot cancel");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__CannotCancel.selector));
         optProposal.cancel();
     }
 
@@ -1964,7 +1964,7 @@ contract ReserveGovernorTest is Test {
         string memory description = "Empty proposal";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert("OptimisticProposal: invalid proposal");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__InvalidProposal.selector));
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
@@ -1983,7 +1983,7 @@ contract ReserveGovernorTest is Test {
         string memory description = "Mismatched arrays";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert("OptimisticProposal: invalid proposal");
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__InvalidProposal.selector));
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 }
