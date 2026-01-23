@@ -344,7 +344,7 @@ contract ReserveGovernorTest is Test {
         governor.castVote(proposalId, 1); // Vote for
 
         // Verify FOR votes now exceed initial AGAINST votes
-        (againstVotes, forVotes, ) = governor.proposalVotes(proposalId);
+        (againstVotes, forVotes,) = governor.proposalVotes(proposalId);
         assertEq(againstVotes, vetoThreshold, "AGAINST votes unchanged");
         assertGt(forVotes, againstVotes, "FOR votes must exceed AGAINST votes to pass");
 
@@ -1534,6 +1534,56 @@ contract ReserveGovernorTest is Test {
 
         // OptimisticProposal should be Canceled
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Canceled));
+    }
+
+    function test_optimisticProposerCanCancelDispute() public {
+        // Verify optimisticProposer is NOT the guardian
+        assertTrue(optimisticProposer != guardian, "optimisticProposer must not be guardian for this test");
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens - proposer cancels dispute";
+
+        vm.warp(block.timestamp + 1);
+
+        // optimisticProposer creates the optimistic proposal
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+
+        // Alice stakes to trigger dispute
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
+        vm.stopPrank();
+
+        // Verify proposal is now in Locked (dispute) state
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
+
+        // The original optimisticProposer cancels the dispute proposal via governor
+        // This works because proposeDispute() sets the proposer as the initialProposer
+        bytes32 descriptionHash = keccak256(bytes(optProposal.description()));
+
+        vm.prank(optimisticProposer);
+        governor.cancel(targets, values, calldatas, descriptionHash);
+
+        // OptimisticProposal should be Canceled
+        assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Canceled));
+
+        // Verify stakers can withdraw their full stake
+        uint256 aliceStakingBalanceBefore = stakingVault.balanceOf(alice);
+        vm.prank(alice);
+        optProposal.withdraw();
+        assertEq(stakingVault.balanceOf(alice), aliceStakingBalanceBefore + vetoThreshold);
     }
 
     function test_randomUserCannotCancelOptimistic() public {

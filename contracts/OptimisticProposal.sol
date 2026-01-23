@@ -59,6 +59,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     ReserveGovernor public governor;
     IVetoToken public token;
 
+    address public proposer;
     uint256 public proposalId;
     address[] public targets;
     uint256[] public values;
@@ -83,6 +84,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     /// @param _params.slashingPercentage D18{1} Fraction of staked tokens to be potentially slashed
     function initialize(
         IReserveGovernor.OptimisticGovernanceParams calldata _params,
+        address _proposer,
         uint256 _proposalId,
         address[] memory _targets,
         uint256[] memory _values,
@@ -103,6 +105,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         governor = ReserveGovernor(payable(_msgSender()));
         token = IVetoToken(address(governor.token()));
 
+        proposer = _proposer;
         proposalId = _proposalId;
         targets = _targets;
         values = _values;
@@ -203,14 +206,15 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === User ===
 
-    /// @dev Can stake less than `amount`, if there is excess
-    function stakeToVeto(uint256 amount) external {
+    /// @dev Can stake less than `maxAmount` if there is excess
+    function stakeToVeto(uint256 maxAmount) external {
         require(state() == OptimisticProposalState.Active, OptimisticProposal__NotActive());
-        require(amount != 0, OptimisticProposal__ZeroStake());
 
         // cap amount at remaining needed
         uint256 remaining = vetoThreshold - totalStaked;
-        amount = remaining < amount ? remaining : amount;
+        uint256 amount = remaining < maxAmount ? remaining : maxAmount;
+
+        require(amount != 0, OptimisticProposal__ZeroStake());
 
         // {tok}
         staked[_msgSender()] += amount;
@@ -218,7 +222,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
         if (totalStaked == vetoThreshold) {
             // initiate dispute process via slow proposal
-            governor.propose(targets, values, calldatas, description);
+            governor.proposeDispute(targets, values, calldatas, description, proposer, totalStaked);
         }
 
         token.safeTransferFrom(_msgSender(), address(this), amount);

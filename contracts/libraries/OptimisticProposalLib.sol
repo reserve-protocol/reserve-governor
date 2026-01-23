@@ -56,7 +56,13 @@ library OptimisticProposalLib {
             );
 
         optimisticProposal.initialize(
-            optimisticParams, proposalId, proposal.targets, proposal.values, proposal.calldatas, proposal.description
+            optimisticParams,
+            msg.sender,
+            proposalId,
+            proposal.targets,
+            proposal.values,
+            proposal.calldatas,
+            proposal.description
         );
 
         require(
@@ -72,7 +78,7 @@ library OptimisticProposalLib {
         activeOptimisticProposals.add(address(optimisticProposal));
 
         emit IReserveGovernor.OptimisticProposalCreated(
-            msg.sender, // TODO do we care this not being _msgSender()? seems fine
+            msg.sender,
             proposalId,
             proposal.targets,
             proposal.values,

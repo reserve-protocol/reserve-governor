@@ -119,7 +119,7 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting and ti
 1. Any token holder can call `stakeToVeto(amount)` on an `OptimisticProposal` during the veto period
 2. Staked tokens are locked in the proposal contract
 3. If total staked tokens reach `vetoThreshold`, the proposal enters `Locked` state
-4. The proposal automatically initiates a slow (dispute) vote via `governor.propose()`
+4. The proposal automatically initiates a slow (dispute) vote via `governor.proposeDispute()`, which casts the staked tokens as initial AGAINST votes
 5. The dispute vote determines whether the proposal should execute
 
 ### Veto Threshold
@@ -132,7 +132,7 @@ vetoThreshold = ceil((vetoThresholdRatio * tokenSupply) / 1e18)
 
 When a fast proposal reaches the vetoThreshold (becomes `Locked`):
 
-1. **Slow Vote Initiated**: The `OptimisticProposal` calls `governor.propose()` to start a standard governance vote
+1. **Slow Vote Initiated**: The `OptimisticProposal` calls `governor.proposeDispute()` to start a standard governance vote with staked tokens counted as initial AGAINST votes
 2. **Four Possible Outcomes**:
 
 | Dispute Result | OptimisticProposal State | Proposal Outcome | Staker Outcome |
@@ -221,6 +221,7 @@ The main hybrid governor contract.
 **Fast Proposal Functions:**
 - `proposeOptimistic(targets, values, calldatas, description)` - Create a fast proposal
 - `executeOptimistic(proposalId)` - Execute a succeeded fast proposal
+- `proposeDispute(targets, values, calldatas, description, initialVotesAgainst)` - Create a dispute proposal (only callable by OptimisticProposal contracts)
 
 **State Query:**
 - `proposalType(proposalId)` - Returns `Optimistic` or `Standard`

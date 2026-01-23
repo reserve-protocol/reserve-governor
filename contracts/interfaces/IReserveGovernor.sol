@@ -14,6 +14,7 @@ interface IReserveGovernor {
     error OptimisticProposalNotSuccessful(uint256 proposalId);
     error InvalidVetoParameters();
     error NotOptimisticProposer(address account);
+    error NotOptimisticProposal(address account);
     error NoMetaGovernanceThroughOptimistic();
     error TooManyParallelOptimisticProposals();
 

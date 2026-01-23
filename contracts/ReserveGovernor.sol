@@ -214,43 +214,23 @@ contract ReserveGovernor is
     }
 
     /// Propose a dispute proposal, only callable by an OptimisticProposal
-    function propose(
+    function proposeDispute(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
-        string memory description
-    ) public override returns (uint256 proposalId) {
-        address proposer = _msgSender();
+        string memory description,
+        address initialProposer,
+        uint256 initialVotesAgainst
+    ) public returns (uint256 proposalId) {
+        address caller = _msgSender();
 
-        // check description restriction
-        if (!_isValidDescriptionForProposer(proposer, description)) {
-            revert GovernorRestrictedProposer(proposer);
-        }
+        proposalId = _propose(targets, values, calldatas, description, initialProposer);
 
-        proposalId = _propose(targets, values, calldatas, description, proposer);
+        require(caller == address(optimisticProposals[proposalId]), NotOptimisticProposal(caller));
 
-        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
-
-        if (address(optimisticProposal) == address(0)) {
-            // standard proposal
-
-            uint256 votesThreshold = proposalThreshold();
-            if (votesThreshold > 0) {
-                uint256 proposerVotes = getVotes(proposer, clock() - 1);
-                if (proposerVotes < votesThreshold) {
-                    revert GovernorInsufficientProposerVotes(proposer, proposerVotes, votesThreshold);
-                }
-            }
-        } else {
-            // dispute proposal
-
-            // proposer is the OptimisticProposal due to description restriction
-
-            // cast initial AGAINST votes
-            uint256 votedWeight =
-                _countVote(proposalId, proposer, uint8(VoteType.Against), optimisticProposal.totalStaked(), "");
-            emit VoteCast(proposer, proposalId, uint8(VoteType.Against), votedWeight, "");
-        }
+        // cast initial AGAINST votes
+        uint256 votedWeight = _countVote(proposalId, caller, uint8(VoteType.Against), initialVotesAgainst, "Veto Optimistic");
+        emit VoteCast(caller, proposalId, uint8(VoteType.Against), votedWeight, "Veto Optimistic");
     }
 
     function _propose(
@@ -297,9 +277,7 @@ contract ReserveGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        return _isGuardian(caller)
-            || (_isOptimisticProposer(caller) && address(optimisticProposals[proposalId]) != address(0))
-            || super._validateCancel(proposalId, caller);
+        return _isGuardian(caller) || super._validateCancel(proposalId, caller);
     }
 
     function _executor()
