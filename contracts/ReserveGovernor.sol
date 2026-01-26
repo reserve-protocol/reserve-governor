@@ -229,7 +229,8 @@ contract ReserveGovernor is
         require(caller == address(optimisticProposals[proposalId]), NotOptimisticProposal(caller));
 
         // cast initial AGAINST votes
-        uint256 votedWeight = _countVote(proposalId, caller, uint8(VoteType.Against), initialVotesAgainst, "Veto Optimistic");
+        uint256 votedWeight =
+            _countVote(proposalId, caller, uint8(VoteType.Against), initialVotesAgainst, "Veto Optimistic");
         emit VoteCast(caller, proposalId, uint8(VoteType.Against), votedWeight, "Veto Optimistic");
     }
 
