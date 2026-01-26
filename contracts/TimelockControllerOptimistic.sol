@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.33;
 
-import { AccessControlEnumerableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
+import {
+    AccessControlEnumerableUpgradeable,
+    AccessControlUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
 import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
-
-import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-contract TimelockControllerOptimistic is TimelockControllerUpgradeable, AccessControlEnumerableUpgradeable, UUPSUpgradeable {
+contract TimelockControllerOptimistic is
+    TimelockControllerUpgradeable,
+    AccessControlEnumerableUpgradeable,
+    UUPSUpgradeable
+{
     error TimelockControllerOptimistic__OperationConflict();
     error TimelockControllerOptimistic__UnauthorizedUpgrade();
 
@@ -26,15 +31,31 @@ contract TimelockControllerOptimistic is TimelockControllerUpgradeable, AccessCo
         __TimelockController_init(minDelay, proposers, executors, admin);
     }
 
-    function supportsInterface(bytes4 interfaceId) public view virtual override(TimelockControllerUpgradeable, AccessControlEnumerableUpgradeable) returns (bool) {
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(TimelockControllerUpgradeable, AccessControlEnumerableUpgradeable)
+        returns (bool)
+    {
         return super.supportsInterface(interfaceId);
     }
 
-    function _grantRole(bytes32 role, address account) internal virtual override(AccessControlUpgradeable, AccessControlEnumerableUpgradeable) returns (bool) {
+    function _grantRole(bytes32 role, address account)
+        internal
+        virtual
+        override(AccessControlUpgradeable, AccessControlEnumerableUpgradeable)
+        returns (bool)
+    {
         return super._grantRole(role, account);
     }
 
-    function _revokeRole(bytes32 role, address account) internal virtual override(AccessControlUpgradeable, AccessControlEnumerableUpgradeable) returns (bool) {
+    function _revokeRole(bytes32 role, address account)
+        internal
+        virtual
+        override(AccessControlUpgradeable, AccessControlEnumerableUpgradeable)
+        returns (bool)
+    {
         return super._revokeRole(role, account);
     }
 
