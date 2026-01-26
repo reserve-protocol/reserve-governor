@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.33;
 
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import { ReserveGovernor } from "./ReserveGovernor.sol";
+import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
+import { SelectorRegistry } from "./SelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 import { CANCELLER_ROLE, IReserveGovernor, OPTIMISTIC_PROPOSER_ROLE } from "./interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "./interfaces/IVetoToken.sol";
@@ -12,13 +14,16 @@ struct DeploymentParams {
     IReserveGovernor.OptimisticGovernanceParams optimisticParams;
     IReserveGovernor.StandardGovernanceParams standardParams;
     IVetoToken token;
+    SelectorRegistry.SelectorData[] selectors;
     address[] optimisticProposers;
     address[] guardians;
     uint256 timelockDelay;
 }
 
 contract Deployer {
-    event GovernorSystemDeployed(address indexed governor, address indexed timelock, address indexed token);
+    event ReserveGovernorSystemDeployed(
+        address indexed governor, address indexed timelock, address indexed token, address selectorRegistry
+    );
 
     address public immutable governorImpl;
     address public immutable timelockImpl;
@@ -31,7 +36,10 @@ contract Deployer {
     /// @notice Deploy a complete Reserve Governor system with UUPS proxies
     /// @return governor The deployed Governor proxy address
     /// @return timelock The deployed Timelock proxy address
-    function deploy(DeploymentParams calldata params) external returns (address governor, address timelock) {
+    function deploy(DeploymentParams calldata params)
+        external
+        returns (address governor, address timelock, address selectorRegistry)
+    {
         // Step 1: Deploy Timelock proxy with Deployer as temporary admin
         bytes memory timelockInitData = abi.encodeCall(
             TimelockControllerOptimistic.initialize,
@@ -40,14 +48,18 @@ contract Deployer {
 
         timelock = address(new ERC1967Proxy(timelockImpl, timelockInitData));
 
-        // Step 2: Deploy Governor proxy with the known timelock address
+        // Step 2: Deploy SelectorRegistry proxy with Timelock as owner
+        selectorRegistry = address(new SelectorRegistry(timelock, params.selectors));
+
+        // Step 3: Deploy Governor proxy with the known timelock address
         bytes memory governorInitData = abi.encodeCall(
-            ReserveGovernor.initialize, (params.optimisticParams, params.standardParams, params.token, timelock)
+            ReserveOptimisticGovernor.initialize,
+            (params.optimisticParams, params.standardParams, params.token, timelock, selectorRegistry)
         );
 
         governor = address(new ERC1967Proxy(governorImpl, governorInitData));
 
-        // Step 3: Configure timelock roles
+        // Step 4: Configure timelock roles
         TimelockControllerOptimistic _timelock = TimelockControllerOptimistic(payable(timelock));
 
         // Grant Governor the PROPOSER_ROLE
@@ -66,9 +78,9 @@ contract Deployer {
             _timelock.grantRole(OPTIMISTIC_PROPOSER_ROLE, params.optimisticProposers[i]);
         }
 
-        // Step 4: Renounce admin role
+        // Step 5: Renounce admin role
         _timelock.renounceRole(_timelock.DEFAULT_ADMIN_ROLE(), address(this));
 
-        emit GovernorSystemDeployed(governor, timelock, address(params.token));
+        emit ReserveGovernorSystemDeployed(governor, timelock, address(params.token), selectorRegistry);
     }
 }
