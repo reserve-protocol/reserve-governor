@@ -80,6 +80,11 @@ contract ReserveOptimisticGovernor is
         optimisticProposalImpl = address(new OptimisticProposal());
     }
 
+    modifier onlyOptimisticProposer() {
+        _requireOptimisticProposer(_msgSender());
+        _;
+    }
+
     /// @param optimisticGovParams.vetoPeriod {s} Veto period
     /// @param optimisticGovParams.vetoThreshold D18{1} Fraction of tok supply required to start dispute process
     /// @param optimisticGovParams.slashingPercentage D18{1} Percentage of staked tokens to be slashed
@@ -129,9 +134,7 @@ contract ReserveOptimisticGovernor is
         uint256[] calldata values,
         bytes[] calldata calldatas,
         string calldata description
-    ) external returns (uint256 proposalId) {
-        _requireOptimisticProposer(_msgSender());
-
+    ) external onlyOptimisticProposer returns (uint256 proposalId) {
         proposalId = OptimisticProposalLib.createOptimisticProposal(
             OptimisticProposalLib.ProposalData(targets, values, calldatas, description),
             optimisticProposals,
@@ -143,9 +146,7 @@ contract ReserveOptimisticGovernor is
     }
 
     /// Execute an optimistic proposal that passed successfully without dispute
-    function executeOptimistic(uint256 proposalId) external payable {
-        _requireOptimisticProposer(_msgSender());
-
+    function executeOptimistic(uint256 proposalId) external onlyOptimisticProposer payable {
         OptimisticProposalLib.executeOptimisticProposal(proposalId, optimisticProposals, _getGovernorStorage());
     }
 
