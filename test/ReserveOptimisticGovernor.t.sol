@@ -1949,7 +1949,7 @@ contract ReserveOptimisticGovernorTest is Test {
         string memory description = "Empty proposal";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__InvalidProposal.selector));
+        vm.expectRevert(IReserveGovernor.InvalidProposalLengths.selector);
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
@@ -2102,7 +2102,7 @@ contract ReserveOptimisticGovernorTest is Test {
         string memory description = "Mismatched arrays";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__InvalidProposal.selector));
+        vm.expectRevert(IReserveGovernor.InvalidProposalLengths.selector);
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 }
