@@ -13,7 +13,7 @@ import { IVetoToken } from "@interfaces/IVetoToken.sol";
 import { Deployer, DeploymentParams } from "@src/Deployer.sol";
 import { OptimisticProposal } from "@src/OptimisticProposal.sol";
 import { ReserveOptimisticGovernor } from "@src/ReserveOptimisticGovernor.sol";
-import { SelectorRegistry } from "@src/SelectorRegistry.sol";
+import { OptimisticSelectorRegistry } from "@src/OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "@src/TimelockControllerOptimistic.sol";
 
 import { StakingVault } from "@reserve-protocol/reserve-index-dtf/staking/StakingVault.sol";
@@ -24,7 +24,7 @@ contract ReserveOptimisticGovernorTest is Test {
     // Contracts
     MockERC20 public underlying;
     StakingVault public stakingVault;
-    SelectorRegistry public registry;
+    OptimisticSelectorRegistry public registry;
     Deployer public deployer;
     ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
@@ -84,8 +84,12 @@ contract ReserveOptimisticGovernorTest is Test {
         address[] memory guardians = new address[](1);
         guardians[0] = guardian;
 
-        SelectorRegistry.SelectorData[] memory selectors = new SelectorRegistry.SelectorData[](1);
-        selectors[0] = SelectorRegistry.SelectorData(address(underlying), IERC20.transfer.selector);
+        bytes4[] memory transferSelectors = new bytes4[](1);
+        transferSelectors[0] = IERC20.transfer.selector;
+
+        OptimisticSelectorRegistry.SelectorDataQuery[] memory queries =
+            new OptimisticSelectorRegistry.SelectorDataQuery[](1);
+        queries[0] = OptimisticSelectorRegistry.SelectorDataQuery(address(underlying), transferSelectors);
 
         DeploymentParams memory params = DeploymentParams({
             optimisticParams: IReserveGovernor.OptimisticGovernanceParams({
@@ -102,7 +106,7 @@ contract ReserveOptimisticGovernorTest is Test {
                 quorumNumerator: QUORUM_NUMERATOR
             }),
             token: IVetoToken(address(stakingVault)),
-            selectors: selectors,
+            queries: queries,
             optimisticProposers: optimisticProposers,
             guardians: guardians,
             timelockDelay: TIMELOCK_DELAY
@@ -112,7 +116,7 @@ contract ReserveOptimisticGovernorTest is Test {
         (address governorAddr, address timelockAddr, address selectorRegistryAddr) = deployer.deploy(params);
         governor = ReserveOptimisticGovernor(payable(governorAddr));
         timelock = TimelockControllerOptimistic(payable(timelockAddr));
-        registry = SelectorRegistry(selectorRegistryAddr);
+        registry = OptimisticSelectorRegistry(selectorRegistryAddr);
 
         // Mint tokens to test users and have them deposit into StakingVault
         _setupVoter(alice, INITIAL_SUPPLY / 2);
@@ -120,17 +124,23 @@ contract ReserveOptimisticGovernorTest is Test {
     }
 
     function _allowSelector(address target, bytes4 selector) internal {
-        SelectorRegistry.SelectorData[] memory data = new SelectorRegistry.SelectorData[](1);
-        data[0] = SelectorRegistry.SelectorData(target, selector);
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = selector;
+        OptimisticSelectorRegistry.SelectorDataQuery[] memory queries =
+            new OptimisticSelectorRegistry.SelectorDataQuery[](1);
+        queries[0] = OptimisticSelectorRegistry.SelectorDataQuery(target, selectors);
         vm.prank(address(timelock));
-        registry.registerSelectors(data);
+        registry.registerSelectors(queries);
     }
 
     function _disallowSelector(address target, bytes4 selector) internal {
-        SelectorRegistry.SelectorData[] memory data = new SelectorRegistry.SelectorData[](1);
-        data[0] = SelectorRegistry.SelectorData(target, selector);
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = selector;
+        OptimisticSelectorRegistry.SelectorDataQuery[] memory queries =
+            new OptimisticSelectorRegistry.SelectorDataQuery[](1);
+        queries[0] = OptimisticSelectorRegistry.SelectorDataQuery(target, selectors);
         vm.prank(address(timelock));
-        registry.unregisterSelectors(data);
+        registry.unregisterSelectors(queries);
     }
 
     function _setupVoter(address voter, uint256 amount) internal {
@@ -1956,30 +1966,39 @@ contract ReserveOptimisticGovernorTest is Test {
     // ==================== Registry Tests ====================
 
     function test_registry_cannotAddSelfAsTarget() public {
-        SelectorRegistry.SelectorData[] memory data = new SelectorRegistry.SelectorData[](1);
-        data[0] = SelectorRegistry.SelectorData(address(registry), IERC20.transfer.selector);
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = IERC20.transfer.selector;
+        OptimisticSelectorRegistry.SelectorDataQuery[] memory queries =
+            new OptimisticSelectorRegistry.SelectorDataQuery[](1);
+        queries[0] = OptimisticSelectorRegistry.SelectorDataQuery(address(registry), selectors);
 
         vm.prank(address(timelock));
-        vm.expectRevert(SelectorRegistry.SelfAsTarget.selector);
-        registry.registerSelectors(data);
+        vm.expectRevert(OptimisticSelectorRegistry.SelfAsTarget.selector);
+        registry.registerSelectors(queries);
     }
 
     function test_registry_onlyOwnerCanRegister() public {
-        SelectorRegistry.SelectorData[] memory data = new SelectorRegistry.SelectorData[](1);
-        data[0] = SelectorRegistry.SelectorData(address(underlying), IERC20.approve.selector);
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = IERC20.approve.selector;
+        OptimisticSelectorRegistry.SelectorDataQuery[] memory queries =
+            new OptimisticSelectorRegistry.SelectorDataQuery[](1);
+        queries[0] = OptimisticSelectorRegistry.SelectorDataQuery(address(underlying), selectors);
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
-        registry.registerSelectors(data);
+        registry.registerSelectors(queries);
     }
 
     function test_registry_onlyOwnerCanUnregister() public {
-        SelectorRegistry.SelectorData[] memory data = new SelectorRegistry.SelectorData[](1);
-        data[0] = SelectorRegistry.SelectorData(address(underlying), IERC20.transfer.selector);
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = IERC20.transfer.selector;
+        OptimisticSelectorRegistry.SelectorDataQuery[] memory queries =
+            new OptimisticSelectorRegistry.SelectorDataQuery[](1);
+        queries[0] = OptimisticSelectorRegistry.SelectorDataQuery(address(underlying), selectors);
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
-        registry.unregisterSelectors(data);
+        registry.unregisterSelectors(queries);
     }
 
     function test_registry_isAllowed() public view {
