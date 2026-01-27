@@ -139,7 +139,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             if (proposalType == IReserveGovernor.ProposalType.Optimistic) {
                 // Proposal executed without dispute
 
-                assert(governorState == IGovernor.ProposalState.Executed); // TODO delete
                 return OptimisticProposalState.Executed;
             } else {
                 // Proposal under dispute
