@@ -9,8 +9,8 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 
 import { OptimisticProposal } from "../OptimisticProposal.sol";
+import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "../ReserveOptimisticGovernor.sol";
-import { SelectorRegistry } from "../SelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "../TimelockControllerOptimistic.sol";
 import { IReserveGovernor } from "../interfaces/IReserveGovernor.sol";
 
@@ -33,7 +33,7 @@ library OptimisticProposalLib {
         EnumerableSet.AddressSet storage activeOptimisticProposals,
         IReserveGovernor.OptimisticGovernanceParams calldata optimisticParams,
         address optimisticProposalImpl,
-        SelectorRegistry selectorRegistry
+        OptimisticSelectorRegistry selectorRegistry
     ) external returns (uint256 proposalId) {
         _clearCompletedOptimisticProposals(activeOptimisticProposals);
 

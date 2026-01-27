@@ -28,7 +28,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 
 import { OptimisticProposal } from "./OptimisticProposal.sol";
-import { SelectorRegistry } from "./SelectorRegistry.sol";
+import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 import {
     CANCELLER_ROLE,
@@ -47,7 +47,7 @@ import { OptimisticProposalLib } from "./libraries/OptimisticProposalLib.sol";
  *
  * @dev 4 overall components:
  *    1. ReserveGovernor: Hybrid governor that unifies proposalIds for optimistic/pessimistic flows
- *    2. SelectorRegistry: Registry of allowed selectors for optimistic proposals
+ *    2. OptimisticSelectorRegistry: Registry of allowed selectors for optimistic proposals
  *    3. TimelockControllerOptimistic: Single timelock that executes everything, with bypass for optimistic case
  *    4. OptimisticProposal: One-off contract per optimistic proposal to support staking + slashing
  *
@@ -72,7 +72,7 @@ contract ReserveOptimisticGovernor is
     mapping(uint256 proposalId => OptimisticProposal) public optimisticProposals;
     EnumerableSet.AddressSet private activeOptimisticProposals;
 
-    SelectorRegistry public selectorRegistry;
+    OptimisticSelectorRegistry public selectorRegistry;
 
     constructor() {
         _disableInitializers();
@@ -114,8 +114,8 @@ contract ReserveOptimisticGovernor is
         _setOptimisticParams(optimisticGovParams);
 
         // confirm selector registry is callable
-        SelectorRegistry(payable(_selectorRegistry)).isAllowed(address(1), IVetoToken.burn.selector);
-        selectorRegistry = SelectorRegistry(payable(_selectorRegistry));
+        OptimisticSelectorRegistry(payable(_selectorRegistry)).isAllowed(address(1), IVetoToken.burn.selector);
+        selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
 
         // confirm token is burnable
         _token.burn(0);
@@ -146,7 +146,7 @@ contract ReserveOptimisticGovernor is
     }
 
     /// Execute an optimistic proposal that passed successfully without dispute
-    function executeOptimistic(uint256 proposalId) external onlyOptimisticProposer payable {
+    function executeOptimistic(uint256 proposalId) external payable onlyOptimisticProposer {
         OptimisticProposalLib.executeOptimisticProposal(proposalId, optimisticProposals, _getGovernorStorage());
     }
 

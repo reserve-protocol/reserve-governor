@@ -4,8 +4,8 @@ pragma solidity ^0.8.33;
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
+import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
-import { SelectorRegistry } from "./SelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 import { CANCELLER_ROLE, IReserveGovernor, OPTIMISTIC_PROPOSER_ROLE } from "./interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "./interfaces/IVetoToken.sol";
@@ -14,7 +14,7 @@ struct DeploymentParams {
     IReserveGovernor.OptimisticGovernanceParams optimisticParams;
     IReserveGovernor.StandardGovernanceParams standardParams;
     IVetoToken token;
-    SelectorRegistry.SelectorData[] selectors;
+    OptimisticSelectorRegistry.SelectorDataQuery[] queries;
     address[] optimisticProposers;
     address[] guardians;
     uint256 timelockDelay;
@@ -22,7 +22,7 @@ struct DeploymentParams {
 
 contract Deployer {
     event ReserveGovernorSystemDeployed(
-        address indexed governor, address indexed timelock, address indexed token, address selectorRegistry
+        address indexed governor, address indexed timelock, address indexed token, address OptimisticSelectorRegistry
     );
 
     address public immutable governorImpl;
@@ -48,8 +48,8 @@ contract Deployer {
 
         timelock = address(new ERC1967Proxy(timelockImpl, timelockInitData));
 
-        // Step 2: Deploy SelectorRegistry proxy with Timelock as owner
-        selectorRegistry = address(new SelectorRegistry(timelock, params.selectors));
+        // Step 2: Deploy OptimisticSelectorRegistry proxy with Timelock as owner
+        selectorRegistry = address(new OptimisticSelectorRegistry(timelock, params.queries));
 
         // Step 3: Deploy Governor proxy with the known timelock address
         bytes memory governorInitData = abi.encodeCall(
