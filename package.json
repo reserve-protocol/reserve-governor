@@ -10,12 +10,12 @@
     "test": "forge test",
     "size": "forge compile --sizes",
     "format": "forge fmt",
-    "selectors:upload": "forge selectors upload --all"
+    "postinstall": "bash script/catalogue.sh"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.4.0",
-    "@reserve-protocol/reserve-index-dtf": "github:reserve-protocol/reserve-index-dtf#907e80f979a48b5d665a6565d97baa43138eb6c8",
+    "@prb/math": "^4.1.0",
     "forge-std": "github:foundry-rs/forge-std#v1.14.0"
   },
   "packageManager": "pnpm@10.28.0"

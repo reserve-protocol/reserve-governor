@@ -13,7 +13,7 @@ import { OptimisticProposal } from "@src/OptimisticProposal.sol";
 import { ReserveGovernor } from "@src/ReserveGovernor.sol";
 import { TimelockControllerOptimistic } from "@src/TimelockControllerOptimistic.sol";
 
-import { StakingVault } from "@reserve-protocol/reserve-index-dtf/staking/StakingVault.sol";
+import { StakingVault } from "./catalogue/StakingVault.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 

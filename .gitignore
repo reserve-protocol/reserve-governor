@@ -23,3 +23,6 @@ Playground.*
 
 # Claude
 .claude/*local*
+
+# Catalogue
+test/catalogue/
