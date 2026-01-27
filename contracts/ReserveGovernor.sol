@@ -86,7 +86,7 @@ contract ReserveGovernor is
     /// @param standardGovParams.votingPeriod {s} Voting period
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
-    /// @param standardGovParams.quorumNumerator 0-100
+    /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
@@ -177,6 +177,10 @@ contract ReserveGovernor is
         returns (ProposalState)
     {
         return super.state(proposalId);
+    }
+
+    function quorumDenominator() public pure override returns (uint256) {
+        return 1e18;
     }
 
     function proposalDeadline(uint256 proposalId)

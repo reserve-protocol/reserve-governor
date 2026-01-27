@@ -53,6 +53,6 @@ interface IReserveGovernor {
         uint32 votingPeriod; // {s}
         uint48 voteExtension; // {s}
         uint256 proposalThreshold; // D18{1}
-        uint256 quorumNumerator; // 0-100
+        uint256 quorumNumerator; // D18{1}
     }
 }
