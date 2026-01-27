@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.33;
 
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract OptimisticSelectorRegistry is Ownable {
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
+import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
+
+contract OptimisticSelectorRegistry is Initializable {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
@@ -15,39 +18,53 @@ contract OptimisticSelectorRegistry is Ownable {
 
     // === Errors ===
 
+    error OnlyOwner();
     error SelfAsTarget();
 
     // === Structs ===
 
-    struct SelectorDataQuery {
+    struct SelectorData {
         address target;
         bytes4[] selectors;
     }
 
     // === State ===
 
+    ReserveOptimisticGovernor public governor;
+
     EnumerableSet.AddressSet private _targets;
     mapping(address target => EnumerableSet.Bytes32Set) private _allowedSelectors;
 
-    // === Constructor ===
+    // === Initialization ===
 
-    constructor(address _owner, SelectorDataQuery[] memory queries) Ownable(_owner) {
-        for (uint256 i = 0; i < queries.length; i++) {
-            _add(queries[i].target, queries[i].selectors);
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _governor, SelectorData[] memory selectorData) public initializer {
+        governor = ReserveOptimisticGovernor(payable(_governor));
+
+        for (uint256 i = 0; i < selectorData.length; i++) {
+            _add(selectorData[i].target, selectorData[i].selectors);
         }
     }
 
     // === External ===
 
-    function registerSelectors(SelectorDataQuery[] calldata queries) external onlyOwner {
-        for (uint256 i = 0; i < queries.length; i++) {
-            _add(queries[i].target, queries[i].selectors);
+    modifier onlyTimelock() {
+        require(msg.sender == governor.timelock(), OnlyOwner());
+        _;
+    }
+
+    function registerSelectors(SelectorData[] calldata selectorData) external onlyTimelock {
+        for (uint256 i = 0; i < selectorData.length; i++) {
+            _add(selectorData[i].target, selectorData[i].selectors);
         }
     }
 
-    function unregisterSelectors(SelectorDataQuery[] calldata queries) external onlyOwner {
-        for (uint256 i = 0; i < queries.length; i++) {
-            _remove(queries[i].target, queries[i].selectors);
+    function unregisterSelectors(SelectorData[] calldata selectorData) external onlyTimelock {
+        for (uint256 i = 0; i < selectorData.length; i++) {
+            _remove(selectorData[i].target, selectorData[i].selectors);
         }
     }
 
