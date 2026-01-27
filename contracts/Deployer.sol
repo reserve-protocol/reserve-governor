@@ -5,7 +5,7 @@ import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy
 
 import { ReserveGovernor } from "./ReserveGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
-import { CANCELLER_ROLE, IReserveGovernor, OPTIMISTIC_PROPOSER_ROLE } from "./interfaces/IReserveGovernor.sol";
+import { CANCELLER_ROLE, IReserveGovernor, OPTIMISTIC_PROPOSER_ROLE, PROPOSER_ROLE, EXECUTOR_ROLE } from "./interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "./interfaces/IVetoToken.sol";
 
 struct DeploymentParams {
@@ -51,10 +51,13 @@ contract Deployer {
         TimelockControllerOptimistic _timelock = TimelockControllerOptimistic(payable(timelock));
 
         // Grant Governor the PROPOSER_ROLE
-        _timelock.grantRole(_timelock.PROPOSER_ROLE(), governor);
+        _timelock.grantRole(PROPOSER_ROLE, governor);
 
         // Grant Governor the EXECUTOR_ROLE
-        _timelock.grantRole(_timelock.EXECUTOR_ROLE(), governor);
+        _timelock.grantRole(EXECUTOR_ROLE, governor);
+
+        // Grant Governor the CANCELLER_ROLE
+        _timelock.grantRole(CANCELLER_ROLE, governor);
 
         // Grant CANCELLER_ROLE to all guardians
         for (uint256 i = 0; i < params.guardians.length; ++i) {
