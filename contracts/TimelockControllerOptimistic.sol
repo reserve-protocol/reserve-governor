@@ -2,11 +2,19 @@
 pragma solidity ^0.8.33;
 
 import {
+    AccessControlEnumerableUpgradeable,
+    AccessControlUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
+import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-contract TimelockControllerOptimistic is TimelockControllerUpgradeable, UUPSUpgradeable {
+contract TimelockControllerOptimistic is
+    TimelockControllerUpgradeable,
+    AccessControlEnumerableUpgradeable,
+    UUPSUpgradeable
+{
     error TimelockControllerOptimistic__OperationConflict();
     error TimelockControllerOptimistic__UnauthorizedUpgrade();
 
@@ -23,9 +31,32 @@ contract TimelockControllerOptimistic is TimelockControllerUpgradeable, UUPSUpgr
         __TimelockController_init(minDelay, proposers, executors, admin);
     }
 
-    /// @dev Timelock authorizes its own upgrades (self-admin pattern)
-    function _authorizeUpgrade(address) internal view override {
-        require(msg.sender == address(this), TimelockControllerOptimistic__UnauthorizedUpgrade());
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        virtual
+        override(TimelockControllerUpgradeable, AccessControlEnumerableUpgradeable)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    function _grantRole(bytes32 role, address account)
+        internal
+        virtual
+        override(AccessControlUpgradeable, AccessControlEnumerableUpgradeable)
+        returns (bool)
+    {
+        return super._grantRole(role, account);
+    }
+
+    function _revokeRole(bytes32 role, address account)
+        internal
+        virtual
+        override(AccessControlUpgradeable, AccessControlEnumerableUpgradeable)
+        returns (bool)
+    {
+        return super._revokeRole(role, account);
     }
 
     /// @dev Danger!
@@ -48,5 +79,10 @@ contract TimelockControllerOptimistic is TimelockControllerUpgradeable, UUPSUpgr
 
         // check caller has EXECUTOR_ROLE and execute
         executeBatch(targets, values, payloads, predecessor, salt);
+    }
+
+    /// @dev Timelock authorizes its own upgrades (self-admin pattern)
+    function _authorizeUpgrade(address) internal view override {
+        require(msg.sender == address(this), TimelockControllerOptimistic__UnauthorizedUpgrade());
     }
 }
