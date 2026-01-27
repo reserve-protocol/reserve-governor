@@ -200,12 +200,15 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     function cancel() external {
         TimelockControllerOptimistic timelock = TimelockControllerOptimistic(payable(governor.timelock()));
 
+        require(
+            timelock.hasRole(CANCELLER_ROLE, _msgSender()) || _msgSender() == proposer,
+            OptimisticProposal__CannotCancel()
+        );
+
         OptimisticProposalState _state = state();
 
         require(
-            (timelock.hasRole(CANCELLER_ROLE, _msgSender()) || timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()))
-                && ((_state == OptimisticProposal.OptimisticProposalState.Active
-                        || _state == OptimisticProposal.OptimisticProposalState.Succeeded)),
+            _state == OptimisticProposalState.Active || _state == OptimisticProposalState.Succeeded,
             OptimisticProposal__CannotCancel()
         );
 

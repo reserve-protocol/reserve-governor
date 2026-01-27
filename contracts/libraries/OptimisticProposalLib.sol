@@ -37,9 +37,9 @@ library OptimisticProposalLib {
     ) external returns (uint256 proposalId) {
         _clearCompletedOptimisticProposals(activeOptimisticProposals);
 
+        require(proposal.targets.length != 0, IReserveGovernor.InvalidProposalLengths());
         require(
-            proposal.targets.length != 0 && proposal.targets.length == proposal.values.length
-                && proposal.targets.length == proposal.calldatas.length,
+            proposal.targets.length == proposal.values.length && proposal.targets.length == proposal.calldatas.length,
             IReserveGovernor.InvalidProposalLengths()
         );
 
