@@ -7,7 +7,13 @@ import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
-import { CANCELLER_ROLE, IReserveGovernor, OPTIMISTIC_PROPOSER_ROLE, PROPOSER_ROLE, EXECUTOR_ROLE } from "./interfaces/IReserveGovernor.sol";
+import {
+    CANCELLER_ROLE,
+    EXECUTOR_ROLE,
+    IReserveGovernor,
+    OPTIMISTIC_PROPOSER_ROLE,
+    PROPOSER_ROLE
+} from "./interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "./interfaces/IVetoToken.sol";
 
 struct DeploymentParams {

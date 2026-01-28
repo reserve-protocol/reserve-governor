@@ -249,7 +249,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         delete staked[_msgSender()];
         // totalStaked unchanged
 
-
         require(amount != 0, OptimisticProposal__ZeroWithdrawal());
 
         token.safeTransfer(_msgSender(), amount);
