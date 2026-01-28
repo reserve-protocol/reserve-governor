@@ -72,12 +72,12 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
                                                   ▼                   ┌──────────┼──────────┐
                                           ┌───────────────┐          │          │          │
                                           │   EXECUTED    │          ▼          ▼          ▼
-                                          │  (via bypass) │   ┌──────────┐ ┌────────┐ ┌────────┐
-                                          └───────────────┘   │ SLASHED  │ │ VETOED │ │CANCELED│
-                                                              │(dispute  │ │(dispute│ │(dispute│
-                                                              │ passed;  │ │ failed/│ │canceled│
-                                                              │ executes)│ │expired)│ │   )    │
-                                                              └──────────┘ └────────┘ └────────┘
+                                          │  (via bypass) │   ┌──────────┐ ┌────────-┐ ┌────────-┐
+                                          └───────────────┘   │ SLASHED  │ │ VETOED  │ │CANCELED │
+                                                              │(dispute  │ │(dispute │ │(dispute │
+                                                              │ passed;  │ │ failed) │ │canceled)│
+                                                              │ executes)│ |         | |         |
+                                                              └──────────┘ └────────-┘ └──────── ┘
 ```
 
 ### Fast Proposal Paths
@@ -88,39 +88,37 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
 | F2 | Early Cancellation | Active → Canceled | Proposal stopped before dispute; stakers withdraw full amount |
 | F3 | Dispute Passes | Active → Locked → Slashed | Vetoers were wrong; slashed, proposal executes via slow vote |
 | F4 | Dispute Fails (Veto Succeeds) | Active → Locked → Vetoed | Veto succeeds! Proposal blocked, stakers withdraw full amount |
-| F5a | Dispute Canceled | Active → Locked → Canceled | Guardian cancels dispute; stakers withdraw full amount |
-| F5b | Dispute Expired | Active → Locked → Vetoed | Vote expires without execution; stakers withdraw full amount |
+| F5 | Dispute Canceled | Active → Locked → Canceled | Guardian cancels dispute; stakers withdraw full amount |
 
 ### Slow Proposal Lifecycle
 
 Slow proposals follow the standard OpenZeppelin Governor flow with voting and timelock queuing.
 
-**ProposalState enum** (from OZ Governor): `Pending`, `Active`, `Canceled`, `Defeated`, `Succeeded`, `Queued`, `Expired`, `Executed`
+**ProposalState enum** (from OZ Governor): `Pending`, `Active`, `Canceled`, `Defeated`, `Succeeded`, `Queued`, `Executed`
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   PENDING   │────▶│   ACTIVE    │────▶│  SUCCEEDED  │────▶│   QUEUED    │────▶│  EXECUTED   │
 │ (voting     │     │  (voting    │     │  (quorum    │     │ (timelock   │     │             │
 │  delay)     │     │   open)     │     │   met)      │     │  delay)     │     │             │
-└──────┬──────┘     └──────┬──────┘     └─────────────┘     └──────┬──────┘     └─────────────┘
-       │                   │                                       │
-       ▼                   ▼                                       ▼
-┌─────────────┐     ┌─────────────┐                         ┌─────────────┐
-│  CANCELED   │     │  DEFEATED   │                         │   EXPIRED   │
-│             │     │ (quorum not │                         │ (not exec'd │
-│             │     │ met or vote │                         │  in time)   │
-│             │     │  against)   │                         │             │
-└─────────────┘     └─────────────┘                         └─────────────┘
+└──────┬──────┘     └──────┬──────┘     └─────────────┘     └─────────────┘     └─────────────┘
+       │                   │
+       ▼                   ▼
+┌─────────────┐     ┌─────────────┐
+│  CANCELED   │     │  DEFEATED   │
+│             │     │ (quorum not │
+│             │     │ met or vote │
+│             │     │  against)   │
+└─────────────┘     └─────────────┘
 ```
 
 ### Slow Proposal Paths
 
 | Path | Name | Flow | Outcome |
 |------|------|------|---------|
-| S1 | Standard Success | Pending → Active → Succeeded → Queued → Executed | Normal governance execution |
+| S1 | Success | Pending → Active → Succeeded → Queued → Executed | Normal governance execution |
 | S2 | Voting Defeated | Pending → Active → Defeated | Proposal rejected by voters |
 | S3 | Early Cancellation | Pending → Canceled | Canceled before voting starts |
-| S4 | Timeout/Expiry | Pending → Active → Succeeded → Queued → Expired | Queued but never executed in time |
 
 ## Veto Mechanism
 
@@ -149,7 +147,6 @@ When a fast proposal reaches the vetoThreshold (becomes `Locked`):
 |---------------------|--------------------------|------------------|----------------|
 | **Vote Passes** (Executed) | `Slashed` | Proposal executes | Slashed on withdrawal |
 | **Vote Fails** (Defeated) | `Vetoed` | Proposal blocked | Full refund |
-| **Vote Expired** | `Vetoed` | Proposal blocked | Full refund |
 | **Vote Canceled** | `Canceled` | Proposal blocked | Full refund |
 
 ### Slashing Mechanics
@@ -254,7 +251,7 @@ Per-proposal contract handling veto logic. Created as a clone for each fast prop
 - `withdraw()` - Withdraw staked tokens (with potential slashing)
 
 **Admin Functions:**
-- `cancel()` - Cancel proposal (requires CANCELLER_ROLE or OPTIMISTIC_PROPOSER_ROLE, only in Active/Succeeded state)
+- `cancel()` - Cancel proposal (requires CANCELLER_ROLE or be the proposer, only in Active/Succeeded state)
 
 **State Query:**
 - `state()` - Returns `OptimisticProposalState`
@@ -384,7 +381,7 @@ Fast Proposal:
                                             │
                         ┌───────────────────┼───────────────────┐
                         ▼                   ▼                   ▼
-                  vote passes        vote fails/expired    vote canceled
+                  vote passes        vote fails    vote canceled
                         │                   │                   │
                         ▼                   ▼                   ▼
                     SLASHED              VETOED             CANCELED
@@ -395,10 +392,10 @@ Fast Proposal:
 
 Slow Proposal:
   propose() → [voting delay] → [voting period] → queue() → [timelock] → execute()
-                   │                  │                         │
-                   ▼                  ▼                         ▼
+                   │                  │
+                   ▼                  ▼
                PENDING → ACTIVE → SUCCEEDED → QUEUED → EXECUTED
-                   │                  │                         │
-                   ▼                  ▼                         ▼
-               CANCELED           DEFEATED                  EXPIRED
+                   │                  │
+                   ▼                  ▼
+               CANCELED           DEFEATED
 ```
