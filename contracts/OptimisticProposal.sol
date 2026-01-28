@@ -147,7 +147,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             if (proposalType == IReserveGovernor.ProposalType.Optimistic) {
                 // Proposal executed without dispute
 
-                assert(governorState == IGovernor.ProposalState.Executed); // TODO delete
                 return OptimisticProposalState.Executed;
             } else {
                 // Proposal under dispute
@@ -244,10 +243,12 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         OptimisticProposalState _state = state();
         require(_state != OptimisticProposalState.Locked, OptimisticProposal__UnderDispute());
 
+        // can leave dust behind equal to total number of deposits
         // {tok} = {tok} * D18{1}
         uint256 amount = staked[_msgSender()] * (1e18 - _slashingPercentage(_state)) / 1e18;
         delete staked[_msgSender()];
         // totalStaked unchanged
+
 
         require(amount != 0, OptimisticProposal__ZeroWithdrawal());
 
@@ -261,6 +262,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         require(_msgSender() == address(governor), OptimisticProposal__NotGovernor());
         require(state() == OptimisticProposalState.Slashed, OptimisticProposal__NotSlashed());
 
+        // {tok} = {tok} * D18{1}
         uint256 amount = (totalStaked * _slashingPercentage(state())) / 1e18;
         totalStaked = 0;
 

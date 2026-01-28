@@ -45,7 +45,7 @@ contract ReserveOptimisticGovernorTest is Test {
     uint32 constant VOTING_PERIOD = 1 weeks;
     uint48 constant VOTE_EXTENSION = 1 days;
     uint256 constant PROPOSAL_THRESHOLD = 0.01e18; // 1%
-    uint256 constant QUORUM_NUMERATOR = 10; // 10%
+    uint256 constant QUORUM_NUMERATOR = 0.1e18; // 10%
 
     uint256 constant TIMELOCK_DELAY = 2 days;
 
