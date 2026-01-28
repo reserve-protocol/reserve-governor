@@ -7,9 +7,15 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
-import { ReserveGovernor } from "./ReserveGovernor.sol";
+import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
-import { CANCELLER_ROLE, IReserveGovernor, OPTIMISTIC_PROPOSER_ROLE } from "./interfaces/IReserveGovernor.sol";
+import {
+    CANCELLER_ROLE,
+    IReserveGovernor,
+    MAX_VETO_THRESHOLD,
+    MIN_OPTIMISTIC_VETO_PERIOD,
+    OPTIMISTIC_PROPOSER_ROLE
+} from "./interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "./interfaces/IVetoToken.sol";
 
 /**
@@ -24,6 +30,15 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === Events ===
 
+    event Initialized(
+        address indexed governor,
+        address indexed proposer,
+        uint256 indexed proposalId,
+        address token,
+        uint48 voteEnd,
+        uint256 vetoThreshold,
+        uint256 slashingPercentage
+    );
     event Staked(address indexed staker, uint256 amount);
     event Withdrawn(address indexed staker, uint256 amount);
     event Slashed(uint256 amount);
@@ -56,7 +71,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === State ===
 
-    ReserveGovernor public governor;
+    ReserveOptimisticGovernor public governor;
     IVetoToken public token;
 
     address public proposer;
@@ -84,25 +99,14 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     /// @param _params.slashingPercentage D18{1} Fraction of staked tokens to be potentially slashed
     function initialize(
         IReserveGovernor.OptimisticGovernanceParams calldata _params,
-        address _proposer,
         uint256 _proposalId,
+        address _proposer,
         address[] memory _targets,
         uint256[] memory _values,
         bytes[] memory _calldatas,
         string memory _description
     ) public initializer {
-        require(
-            _params.vetoPeriod != 0 && _params.vetoPeriod <= type(uint32).max, OptimisticProposal__InvalidVetoPeriod()
-        );
-        require(_params.vetoThreshold <= 1e18, OptimisticProposal__InvalidVetoThreshold());
-        require(_params.slashingPercentage <= 1e18, OptimisticProposal__InvalidSlashingPercentage());
-
-        require(
-            _targets.length != 0 && _targets.length == _values.length && _targets.length == _calldatas.length,
-            OptimisticProposal__InvalidProposal()
-        );
-
-        governor = ReserveGovernor(payable(_msgSender()));
+        governor = ReserveOptimisticGovernor(payable(_msgSender()));
         token = IVetoToken(address(governor.token()));
 
         proposer = _proposer;
@@ -124,6 +128,10 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
         // D18{1}
         slashingPercentage = _params.slashingPercentage;
+
+        emit Initialized(
+            address(governor), _proposer, _proposalId, address(token), voteEnd, vetoThreshold, slashingPercentage
+        );
     }
 
     // === View ===
@@ -191,12 +199,15 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     function cancel() external {
         TimelockControllerOptimistic timelock = TimelockControllerOptimistic(payable(governor.timelock()));
 
+        require(
+            timelock.hasRole(CANCELLER_ROLE, _msgSender()) || _msgSender() == proposer,
+            OptimisticProposal__CannotCancel()
+        );
+
         OptimisticProposalState _state = state();
 
         require(
-            (timelock.hasRole(CANCELLER_ROLE, _msgSender()) || timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, _msgSender()))
-                && ((_state == OptimisticProposal.OptimisticProposalState.Active
-                        || _state == OptimisticProposal.OptimisticProposalState.Succeeded)),
+            _state == OptimisticProposalState.Active || _state == OptimisticProposalState.Succeeded,
             OptimisticProposal__CannotCancel()
         );
 

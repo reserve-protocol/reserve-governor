@@ -13,9 +13,16 @@ This design enables efficient day-to-day governance while preserving community o
 
 ## Architecture
 
+The system consists of four components:
+
+1. **ReserveOptimisticGovernor** — Hybrid governor unifying optimistic/standard proposal flows
+2. **SelectorRegistry** — Whitelist of allowed `(target, selector)` pairs for optimistic proposals
+3. **TimelockControllerOptimistic** — Single timelock for execution, with bypass for the optimistic path
+4. **OptimisticProposal** — Per-proposal clone contract supporting veto staking and slashing
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      ReserveGovernor                            │
+│                  ReserveOptimisticGovernor                       │
 │  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
 │  │   Fast (Optimistic) │    │        Slow (Standard)          │ │
 │  │                     │    │                                 │ │
@@ -26,15 +33,18 @@ This design enables efficient day-to-day governance while preserving community o
 │             │                                │                  │
 │             └────────────────┬───────────────┘                  │
 └──────────────────────────────┼──────────────────────────────────┘
-                               │
-                               ▼
-               ┌───────────────────────────────┐
-               │  TimelockControllerOptimistic │
-               │                               │
-               │  Fast: executeBatchBypass()   │
-               │  Slow: scheduleBatch()        │
-               └───────────────────────────────┘
+               ┌───────────────┤
+               │               │
+               ▼               ▼
+┌──────────────────────┐  ┌───────────────────────────────┐
+│   SelectorRegistry   │  │  TimelockControllerOptimistic │
+│                      │  │                               │
+│  Allowed (target,    │  │  Fast: executeBatchBypass()   │
+│   selector) pairs    │  │  Slow: scheduleBatch()        │
+└──────────────────────┘  └───────────────────────────────┘
 ```
+
+The governor checks each call in an optimistic proposal against the `SelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
 
 ## Governance Flows
 
@@ -197,12 +207,14 @@ enum ProposalType {
 
 ## Roles
 
-| Role | Permissions |
-|------|-------------|
-| `OPTIMISTIC_PROPOSER_ROLE` | Create and execute fast proposals |
-| `PROPOSER_ROLE` | Create slow proposals (via standard Governor) |
-| `EXECUTOR_ROLE` | Execute queued slow proposals |
-| `CANCELLER_ROLE` | Cancel proposals (fast or slow) |
+| Role | Held By | Permissions |
+|------|---------|-------------|
+| `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs | Create and execute fast proposals |
+| `PROPOSER_ROLE` | Governor contract | Schedule operations on the timelock (granted automatically by Deployer) |
+| `EXECUTOR_ROLE` | Governor contract | Execute queued slow proposals via the timelock |
+| `CANCELLER_ROLE` | Guardian addresses | Cancel proposals (fast or slow) |
+
+> **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself — it allows the governor to schedule operations, not individual users to create proposals.
 
 #### OPTIMISTIC_PROPOSER_ROLE
 
@@ -214,20 +226,21 @@ The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessCon
 
 ## Contract Reference
 
-### ReserveGovernor
+### ReserveOptimisticGovernor
 
 The main hybrid governor contract.
 
 **Fast Proposal Functions:**
 - `proposeOptimistic(targets, values, calldatas, description)` - Create a fast proposal
 - `executeOptimistic(proposalId)` - Execute a succeeded fast proposal
-- `proposeDispute(targets, values, calldatas, description, initialVotesAgainst)` - Create a dispute proposal (only callable by OptimisticProposal contracts)
+- `proposeDispute(targets, values, calldatas, description, initialProposer, initialVotesAgainst)` - Create a dispute proposal (only callable by OptimisticProposal contracts)
 
 **State Query:**
 - `proposalType(proposalId)` - Returns `Optimistic` or `Standard`
 - `state(proposalId)` - Standard Governor state (for Standard proposals)
 - `optimisticProposals(proposalId)` - Get the OptimisticProposal contract for a proposal
 - `activeOptimisticProposalsCount()` - Number of active optimistic proposals
+- `selectorRegistry()` - The SelectorRegistry contract address
 
 **Configuration:**
 - `setOptimisticParams(params)` - Update veto period, threshold, and slashing percentage
@@ -251,6 +264,30 @@ Per-proposal contract handling veto logic. Created as a clone for each fast prop
 - `vetoThreshold` - Token amount needed to trigger dispute
 - `canceled` - Whether proposal was canceled
 - `proposalData()` - Returns `(targets, values, calldatas, description)`
+
+### SelectorRegistry
+
+Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Owned by the timelock (governance-controlled).
+
+**Management (onlyOwner):**
+- `registerSelectors(SelectorData[])` - Add allowed `(target, selector)` pairs
+- `unregisterSelectors(SelectorData[])` - Remove allowed pairs
+
+**Query:**
+- `isAllowed(target, selector)` - Check if a `(target, selector)` pair is whitelisted
+- `targets()` - List all targets that have at least one registered selector
+- `selectorsAllowed(target)` - List all allowed selectors for a given target
+
+**Constraints:**
+- Cannot register itself as a target (reverts with `SelfAsTarget`)
+- The governor and timelock are additionally blocked as targets in `OptimisticProposalLib` (hardcoded)
+
+### Deployer
+
+Deploys the complete Reserve Governor system: timelock proxy, selector registry, and governor proxy.
+
+- `deploy(DeploymentParams)` - Returns `(governor, timelock, selectorRegistry)`
+- Configures all timelock roles (`PROPOSER_ROLE`, `EXECUTOR_ROLE` → governor; `CANCELLER_ROLE` → guardians; `OPTIMISTIC_PROPOSER_ROLE` → proposers) and renounces admin
 
 ### TimelockControllerOptimistic
 
@@ -308,13 +345,16 @@ The burn function is verified at initialization by calling `token.burn(0)`.
 - **Direct transfers**: Do NOT send tokens to OptimisticProposal directly; use `stakeToVeto()` instead
 - **Supply limit**: Token supply should be less than 1e59
 
-## Meta-Governance Restriction
+## Optimistic Call Restrictions
 
-Fast (optimistic) proposals **cannot target**:
-- The `ReserveGovernor` contract
-- The `TimelockControllerOptimistic` contract
+Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `SelectorRegistry`. In addition, two targets are **always** blocked regardless of the registry:
 
-This prevents governance takeover via the optimistic path. Attempting to target these contracts reverts with `NoMetaGovernanceThroughOptimistic()`.
+- The `ReserveOptimisticGovernor` contract (hardcoded in `OptimisticProposalLib`)
+- The `TimelockControllerOptimistic` contract (hardcoded in `OptimisticProposalLib`)
+
+The `SelectorRegistry` also cannot be registered as a target within itself (reverts with `SelfAsTarget`).
+
+Attempting a disallowed call reverts with `InvalidFunctionCall(target, selector)`.
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.
 
@@ -324,7 +364,7 @@ Both contracts are UUPS upgradeable:
 
 | Contract | Upgrade Authorization |
 |----------|----------------------|
-| `ReserveGovernor` | Via governance (timelock must call `upgradeToAndCall`) |
+| `ReserveOptimisticGovernor` | Via governance (timelock must call `upgradeToAndCall`) |
 | `TimelockControllerOptimistic` | Self-administered (only the timelock itself can upgrade) |
 
 ## Flow Summary

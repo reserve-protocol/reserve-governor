@@ -9,7 +9,8 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 
 import { OptimisticProposal } from "../OptimisticProposal.sol";
-import { ReserveGovernor } from "../ReserveGovernor.sol";
+import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "../ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "../TimelockControllerOptimistic.sol";
 import { IReserveGovernor } from "../interfaces/IReserveGovernor.sol";
 
@@ -32,16 +33,30 @@ library OptimisticProposalLib {
         EnumerableSet.AddressSet storage activeOptimisticProposals,
         IReserveGovernor.OptimisticGovernanceParams calldata optimisticParams,
         address optimisticProposalImpl,
-        address timelock
+        OptimisticSelectorRegistry selectorRegistry
     ) external returns (uint256 proposalId) {
         _clearCompletedOptimisticProposals(activeOptimisticProposals);
 
-        // prevent targeting this contract or the timelock
-        for (uint256 i = 0; i < proposal.targets.length; i++) {
-            require(
-                proposal.targets[i] != address(this) && proposal.targets[i] != address(timelock),
-                IReserveGovernor.NoMetaGovernanceThroughOptimistic()
-            );
+        require(proposal.targets.length != 0, IReserveGovernor.InvalidProposalLengths());
+        require(
+            proposal.targets.length == proposal.values.length && proposal.targets.length == proposal.calldatas.length,
+            IReserveGovernor.InvalidProposalLengths()
+        );
+
+        // ensure all calls are allowed
+        {
+            address timelock = address(_timelock());
+
+            for (uint256 i = 0; i < proposal.targets.length; i++) {
+                address target = proposal.targets[i];
+                bytes4 selector = bytes4(proposal.calldatas[i]);
+
+                // never target ReserveOptimisticGovernor or TimelockControllerOptimistic
+                require(
+                    target != address(this) && target != timelock && selectorRegistry.isAllowed(target, selector),
+                    IReserveGovernor.InvalidFunctionCall(target, selector)
+                );
+            }
         }
 
         OptimisticProposal optimisticProposal = OptimisticProposal(Clones.clone(optimisticProposalImpl));
@@ -50,15 +65,15 @@ library OptimisticProposalLib {
         proposal.description =
             string.concat(proposal.description, "#proposer=", Strings.toHexString(address(optimisticProposal)));
 
-        proposalId = ReserveGovernor(payable(address(this)))
+        proposalId = ReserveOptimisticGovernor(payable(address(this)))
             .getProposalId(
                 proposal.targets, proposal.values, proposal.calldatas, keccak256(bytes(proposal.description))
             );
 
         optimisticProposal.initialize(
             optimisticParams,
-            msg.sender,
             proposalId,
+            msg.sender,
             proposal.targets,
             proposal.values,
             proposal.calldatas,
@@ -92,17 +107,18 @@ library OptimisticProposalLib {
 
     function executeOptimisticProposal(
         uint256 proposalId,
-        OptimisticProposal optimisticProposal,
-        GovernorUpgradeable.ProposalCore storage proposalCore,
-        address timelock
+        mapping(uint256 proposalId => OptimisticProposal) storage optimisticProposals,
+        GovernorUpgradeable.GovernorStorage storage governorStorage
     ) external {
+        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
+
         require(
             optimisticProposal.state() == OptimisticProposal.OptimisticProposalState.Succeeded,
             IReserveGovernor.OptimisticProposalNotSuccessful(proposalId)
         );
 
         // mark executed in proposal core (for compatibility with legacy offchain monitoring)
-        proposalCore.executed = true;
+        governorStorage._proposals[proposalId].executed = true;
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas, string memory description) =
             optimisticProposal.proposalData();
@@ -112,7 +128,7 @@ library OptimisticProposalLib {
         );
         emit IGovernor.ProposalExecuted(proposalId);
 
-        TimelockControllerOptimistic(payable(timelock)).executeBatchBypass{ value: msg.value }(
+        _timelock().executeBatchBypass{ value: msg.value }(
             targets, values, calldatas, 0, bytes20(address(this)) ^ keccak256(bytes(description))
         );
     }
@@ -152,5 +168,9 @@ library OptimisticProposalLib {
             || state == OptimisticProposal.OptimisticProposalState.Slashed
             || state == OptimisticProposal.OptimisticProposalState.Canceled
             || state == OptimisticProposal.OptimisticProposalState.Executed;
+    }
+
+    function _timelock() private view returns (TimelockControllerOptimistic) {
+        return TimelockControllerOptimistic(payable(ReserveOptimisticGovernor(payable(address(this))).timelock()));
     }
 }

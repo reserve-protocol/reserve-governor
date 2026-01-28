@@ -6,23 +6,27 @@ import { Test } from "forge-std/Test.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+
 import { IReserveGovernor } from "@interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "@interfaces/IVetoToken.sol";
 import { Deployer, DeploymentParams } from "@src/Deployer.sol";
 import { OptimisticProposal } from "@src/OptimisticProposal.sol";
-import { ReserveGovernor } from "@src/ReserveGovernor.sol";
+import { OptimisticSelectorRegistry } from "@src/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@src/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "@src/TimelockControllerOptimistic.sol";
 
 import { StakingVault } from "@reserve-protocol/reserve-index-dtf/staking/StakingVault.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 
-contract ReserveGovernorTest is Test {
+contract ReserveOptimisticGovernorTest is Test {
     // Contracts
     MockERC20 public underlying;
     StakingVault public stakingVault;
+    OptimisticSelectorRegistry public registry;
     Deployer public deployer;
-    ReserveGovernor public governor;
+    ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
 
     // Test accounts
@@ -67,11 +71,12 @@ contract ReserveGovernorTest is Test {
         );
 
         // Deploy implementations
-        ReserveGovernor governorImpl = new ReserveGovernor();
+        ReserveOptimisticGovernor governorImpl = new ReserveOptimisticGovernor();
         TimelockControllerOptimistic timelockImpl = new TimelockControllerOptimistic();
+        OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
 
         // Deploy Deployer
-        deployer = new Deployer(address(governorImpl), address(timelockImpl));
+        deployer = new Deployer(address(governorImpl), address(timelockImpl), address(registryImpl));
 
         // Prepare deployment parameters
         address[] memory optimisticProposers = new address[](1);
@@ -79,6 +84,12 @@ contract ReserveGovernorTest is Test {
 
         address[] memory guardians = new address[](1);
         guardians[0] = guardian;
+
+        bytes4[] memory transferSelectors = new bytes4[](1);
+        transferSelectors[0] = IERC20.transfer.selector;
+
+        OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
+        selectorData[0] = OptimisticSelectorRegistry.SelectorData(address(underlying), transferSelectors);
 
         DeploymentParams memory params = DeploymentParams({
             optimisticParams: IReserveGovernor.OptimisticGovernanceParams({
@@ -95,19 +106,39 @@ contract ReserveGovernorTest is Test {
                 quorumNumerator: QUORUM_NUMERATOR
             }),
             token: IVetoToken(address(stakingVault)),
+            selectorData: selectorData,
             optimisticProposers: optimisticProposers,
             guardians: guardians,
             timelockDelay: TIMELOCK_DELAY
         });
 
         // Deploy governance system
-        (address governorAddr, address timelockAddr) = deployer.deploy(params);
-        governor = ReserveGovernor(payable(governorAddr));
+        (address governorAddr, address timelockAddr, address selectorRegistryAddr) = deployer.deploy(params);
+        governor = ReserveOptimisticGovernor(payable(governorAddr));
         timelock = TimelockControllerOptimistic(payable(timelockAddr));
+        registry = OptimisticSelectorRegistry(selectorRegistryAddr);
 
         // Mint tokens to test users and have them deposit into StakingVault
         _setupVoter(alice, INITIAL_SUPPLY / 2);
         _setupVoter(bob, INITIAL_SUPPLY / 2);
+    }
+
+    function _allowSelector(address target, bytes4 selector) internal {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = selector;
+        OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
+        selectorData[0] = OptimisticSelectorRegistry.SelectorData(target, selectors);
+        vm.prank(address(timelock));
+        registry.registerSelectors(selectorData);
+    }
+
+    function _disallowSelector(address target, bytes4 selector) internal {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = selector;
+        OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
+        selectorData[0] = OptimisticSelectorRegistry.SelectorData(target, selectors);
+        vm.prank(address(timelock));
+        registry.unregisterSelectors(selectorData);
     }
 
     function _setupVoter(address voter, uint256 amount) internal {
@@ -882,92 +913,6 @@ contract ReserveGovernorTest is Test {
         assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Standard));
     }
 
-    // ==================== Negative Tests: Meta-Governance Restrictions ====================
-
-    function test_cannotTargetGovernorViaOptimistic() public {
-        // Optimistic proposal targeting ReserveGovernor
-        address[] memory targets = new address[](1);
-        targets[0] = address(governor);
-
-        uint256[] memory values = new uint256[](1);
-        values[0] = 0;
-
-        bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeCall(
-            governor.setOptimisticParams, (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
-        );
-
-        string memory description = "Malicious governor update";
-
-        vm.prank(optimisticProposer);
-        vm.expectRevert(IReserveGovernor.NoMetaGovernanceThroughOptimistic.selector);
-        governor.proposeOptimistic(targets, values, calldatas, description);
-    }
-
-    function test_cannotTargetTimelockViaOptimistic() public {
-        // Optimistic proposal targeting TimelockControllerOptimistic
-        address[] memory targets = new address[](1);
-        targets[0] = address(timelock);
-
-        uint256[] memory values = new uint256[](1);
-        values[0] = 0;
-
-        bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeCall(timelock.updateDelay, (0));
-
-        string memory description = "Malicious timelock update";
-
-        vm.prank(optimisticProposer);
-        vm.expectRevert(IReserveGovernor.NoMetaGovernanceThroughOptimistic.selector);
-        governor.proposeOptimistic(targets, values, calldatas, description);
-    }
-
-    function test_canTargetGovernorViaSlow() public {
-        // Standard proposal can target governor (meta-governance allowed)
-        address[] memory targets = new address[](1);
-        targets[0] = address(governor);
-
-        uint256[] memory values = new uint256[](1);
-        values[0] = 0;
-
-        bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeCall(
-            governor.setOptimisticParams, (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
-        );
-
-        string memory description = "Legitimate governor update";
-
-        vm.warp(block.timestamp + 1);
-
-        // Should succeed
-        vm.prank(alice);
-        uint256 proposalId = governor.propose(targets, values, calldatas, description);
-
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
-    }
-
-    function test_canTargetTimelockViaSlow() public {
-        // Standard proposal can target timelock (meta-governance allowed)
-        address[] memory targets = new address[](1);
-        targets[0] = address(timelock);
-
-        uint256[] memory values = new uint256[](1);
-        values[0] = 0;
-
-        bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = abi.encodeCall(timelock.updateDelay, (1 days));
-
-        string memory description = "Legitimate timelock update";
-
-        vm.warp(block.timestamp + 1);
-
-        // Should succeed
-        vm.prank(alice);
-        uint256 proposalId = governor.propose(targets, values, calldatas, description);
-
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
-    }
-
     // ==================== Negative Tests: Parallel Proposals Limit ====================
 
     function test_cannotExceedParallelProposals() public {
@@ -975,19 +920,19 @@ contract ReserveGovernorTest is Test {
 
         // Create MAX (3) optimistic proposals
         for (uint256 i = 0; i < NUM_PARALLEL_PROPOSALS; i++) {
-            address[] memory targets = new address[](1);
-            targets[0] = address(underlying);
+            address[] memory loopTargets = new address[](1);
+            loopTargets[0] = address(underlying);
 
-            uint256[] memory values = new uint256[](1);
-            values[0] = 0;
+            uint256[] memory loopValues = new uint256[](1);
+            loopValues[0] = 0;
 
-            bytes[] memory calldatas = new bytes[](1);
-            calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i)); // Different calldata
+            bytes[] memory loopCalldatas = new bytes[](1);
+            loopCalldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i)); // Different calldata
 
-            string memory description = string(abi.encodePacked("Transfer ", vm.toString(i)));
+            string memory loopDescription = string(abi.encodePacked("Transfer ", vm.toString(i)));
 
             vm.prank(optimisticProposer);
-            governor.proposeOptimistic(targets, values, calldatas, description);
+            governor.proposeOptimistic(loopTargets, loopValues, loopCalldatas, loopDescription);
         }
 
         // Try to create one more - should fail
@@ -1016,19 +961,19 @@ contract ReserveGovernorTest is Test {
 
         // Create MAX optimistic proposals
         for (uint256 i = 0; i < NUM_PARALLEL_PROPOSALS; i++) {
-            address[] memory targets = new address[](1);
-            targets[0] = address(underlying);
+            address[] memory loopTargets = new address[](1);
+            loopTargets[0] = address(underlying);
 
-            uint256[] memory values = new uint256[](1);
-            values[0] = 0;
+            uint256[] memory loopValues = new uint256[](1);
+            loopValues[0] = 0;
 
-            bytes[] memory calldatas = new bytes[](1);
-            calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i));
+            bytes[] memory loopCalldatas = new bytes[](1);
+            loopCalldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i));
 
-            string memory description = string(abi.encodePacked("Transfer ", vm.toString(i)));
+            string memory loopDescription = string(abi.encodePacked("Transfer ", vm.toString(i)));
 
             vm.prank(optimisticProposer);
-            proposalIds[i] = governor.proposeOptimistic(targets, values, calldatas, description);
+            proposalIds[i] = governor.proposeOptimistic(loopTargets, loopValues, loopCalldatas, loopDescription);
         }
 
         // Execute the first one
@@ -1062,19 +1007,19 @@ contract ReserveGovernorTest is Test {
 
         // Create MAX optimistic proposals
         for (uint256 i = 0; i < NUM_PARALLEL_PROPOSALS; i++) {
-            address[] memory targets = new address[](1);
-            targets[0] = address(underlying);
+            address[] memory loopTargets = new address[](1);
+            loopTargets[0] = address(underlying);
 
-            uint256[] memory values = new uint256[](1);
-            values[0] = 0;
+            uint256[] memory loopValues = new uint256[](1);
+            loopValues[0] = 0;
 
-            bytes[] memory calldatas = new bytes[](1);
-            calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i));
+            bytes[] memory loopCalldatas = new bytes[](1);
+            loopCalldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18 + i));
 
-            string memory description = string(abi.encodePacked("Transfer ", vm.toString(i)));
+            string memory loopDescription = string(abi.encodePacked("Transfer ", vm.toString(i)));
 
             vm.prank(optimisticProposer);
-            proposalIds[i] = governor.proposeOptimistic(targets, values, calldatas, description);
+            proposalIds[i] = governor.proposeOptimistic(loopTargets, loopValues, loopCalldatas, loopDescription);
         }
 
         // Veto the first one by staking and then voting against
@@ -1380,11 +1325,9 @@ contract ReserveGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Stake a tiny amount (1 wei) plus enough to reach threshold
-        uint256 tinyStake = 1;
         vm.startPrank(alice);
-        stakingVault.approve(address(optProposal), vetoThreshold + tinyStake);
-        optProposal.stakeToVeto(vetoThreshold + tinyStake);
+        stakingVault.approve(address(optProposal), vetoThreshold);
+        optProposal.stakeToVeto(vetoThreshold);
         vm.stopPrank();
 
         // Vote FOR to slash
@@ -1403,7 +1346,7 @@ contract ReserveGovernorTest is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
 
         // Calculate expected withdrawal
-        uint256 staked = vetoThreshold + tinyStake;
+        uint256 staked = vetoThreshold;
         uint256 expectedWithdrawal = (staked * (1e18 - SLASHING_PERCENTAGE)) / 1e18;
 
         uint256 balanceBefore = stakingVault.balanceOf(alice);
@@ -2014,7 +1957,7 @@ contract ReserveGovernorTest is Test {
         string memory description = "Empty proposal";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__InvalidProposal.selector));
+        vm.expectRevert(IReserveGovernor.InvalidProposalLengths.selector);
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
@@ -2033,7 +1976,141 @@ contract ReserveGovernorTest is Test {
         string memory description = "Mismatched arrays";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__InvalidProposal.selector));
+        vm.expectRevert(IReserveGovernor.InvalidProposalLengths.selector);
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    // ==================== Negative Tests: Registry Tests ====================
+
+    function test_registry_cannotAddSelfAsTarget() public {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = IERC20.transfer.selector;
+        OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
+        selectorData[0] = OptimisticSelectorRegistry.SelectorData(address(registry), selectors);
+
+        vm.prank(address(timelock));
+        vm.expectRevert(OptimisticSelectorRegistry.SelfAsTarget.selector);
+        registry.registerSelectors(selectorData);
+    }
+
+    function test_registry_onlyTimelockCanRegister() public {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = IERC20.approve.selector;
+        OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
+        selectorData[0] = OptimisticSelectorRegistry.SelectorData(address(underlying), selectors);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(OptimisticSelectorRegistry.OnlyOwner.selector, alice));
+        registry.registerSelectors(selectorData);
+    }
+
+    function test_registry_onlyTimelockCanUnregister() public {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = IERC20.transfer.selector;
+        OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
+        selectorData[0] = OptimisticSelectorRegistry.SelectorData(address(underlying), selectors);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(OptimisticSelectorRegistry.OnlyOwner.selector, alice));
+        registry.unregisterSelectors(selectorData);
+    }
+
+    function test_registry_isAllowed() public view {
+        assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
+        assertFalse(registry.isAllowed(address(underlying), IERC20.approve.selector));
+    }
+
+    function test_registry_selectorsAllowed() public view {
+        bytes4[] memory selectors = registry.selectorsAllowed(address(underlying));
+        assertEq(selectors.length, 1);
+        assertEq(selectors[0], IERC20.transfer.selector);
+    }
+
+    function test_registry_targets() public view {
+        address[] memory t = registry.targets();
+        assertEq(t.length, 1);
+        assertEq(t[0], address(underlying));
+    }
+
+    function test_registry_registerAndUnregister() public {
+        _allowSelector(address(underlying), IERC20.approve.selector);
+        assertTrue(registry.isAllowed(address(underlying), IERC20.approve.selector));
+
+        _disallowSelector(address(underlying), IERC20.approve.selector);
+        assertFalse(registry.isAllowed(address(underlying), IERC20.approve.selector));
+    }
+
+    function test_registry_unregisterRemovesTarget() public {
+        _disallowSelector(address(underlying), IERC20.transfer.selector);
+        assertEq(registry.targets().length, 0);
+    }
+
+    function test_registry_optimisticProposalRevertsWithDisallowedSelector() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.approve, (alice, 1000e18));
+
+        string memory description = "Approve tokens - not allowed";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IReserveGovernor.InvalidFunctionCall.selector, address(underlying), IERC20.approve.selector
+            )
+        );
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    function test_registry_cannotTargetGovernorOptimistically() public {
+        _allowSelector(address(governor), governor.setOptimisticParams.selector);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(
+            governor.setOptimisticParams, (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
+        );
+
+        string memory description = "Try governor via optimistic";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IReserveGovernor.InvalidFunctionCall.selector, address(governor), governor.setOptimisticParams.selector
+            )
+        );
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    function test_registry_cannotTargetTimelockOptimistically() public {
+        _allowSelector(address(timelock), timelock.updateDelay.selector);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(timelock);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(timelock.updateDelay, (1 days));
+
+        string memory description = "Try timelock via optimistic";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IReserveGovernor.InvalidFunctionCall.selector, address(timelock), timelock.updateDelay.selector
+            )
+        );
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 }

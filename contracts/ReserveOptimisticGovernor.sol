@@ -28,6 +28,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 
 import { OptimisticProposal } from "./OptimisticProposal.sol";
+import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 import {
     CANCELLER_ROLE,
@@ -41,18 +42,19 @@ import { IVetoToken } from "./interfaces/IVetoToken.sol";
 import { OptimisticProposalLib } from "./libraries/OptimisticProposalLib.sol";
 
 /**
- * @title Reserve Governor
+ * @title Reserve Optimistic Governor
  * @notice A hybrid optimistic/pessimistic governor for the Reserve protocol
  *
- * @dev 3 overall components:
- *    1. OptimisticProposal: New contract per optimistic proposal to support staking + slashing
- *    2. ReserveGovernor: Hybrid governor that unifies proposalIds for optimistic/pessimistic flows
+ * @dev 4 overall components:
+ *    1. ReserveGovernor: Hybrid governor that unifies proposalIds for optimistic/pessimistic flows
+ *    2. OptimisticSelectorRegistry: Registry of allowed selectors for optimistic proposals
  *    3. TimelockControllerOptimistic: Single timelock that executes everything, with bypass for optimistic case
+ *    4. OptimisticProposal: One-off contract per optimistic proposal to support staking + slashing
  *
  *   Intended to be used with a 1-governance-system-per-token model, NOT shared.
  *   If tokens belong to multiple governance systems there can be contention for veto staking.
  */
-contract ReserveGovernor is
+contract ReserveOptimisticGovernor is
     GovernorUpgradeable,
     GovernorSettingsUpgradeable,
     GovernorPreventLateQuorumUpgradeable,
@@ -63,8 +65,6 @@ contract ReserveGovernor is
     UUPSUpgradeable,
     IReserveGovernor
 {
-    using EnumerableSet for EnumerableSet.AddressSet;
-
     address public immutable optimisticProposalImpl;
 
     OptimisticGovernanceParams public optimisticParams;
@@ -72,10 +72,17 @@ contract ReserveGovernor is
     mapping(uint256 proposalId => OptimisticProposal) public optimisticProposals;
     EnumerableSet.AddressSet private activeOptimisticProposals;
 
+    OptimisticSelectorRegistry public selectorRegistry;
+
     constructor() {
         _disableInitializers();
 
         optimisticProposalImpl = address(new OptimisticProposal());
+    }
+
+    modifier onlyOptimisticProposer() {
+        _requireOptimisticProposer(_msgSender());
+        _;
     }
 
     /// @param optimisticGovParams.vetoPeriod {s} Veto period
@@ -91,9 +98,10 @@ contract ReserveGovernor is
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         IVetoToken _token,
-        address _timelock
+        address _timelock,
+        address _selectorRegistry
     ) public initializer {
-        __Governor_init("Reserve Governor");
+        __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
             standardGovParams.votingDelay, standardGovParams.votingPeriod, standardGovParams.proposalThreshold
         );
@@ -105,13 +113,12 @@ contract ReserveGovernor is
 
         _setOptimisticParams(optimisticGovParams);
 
-        // confirm `_token` is burnable
-        _token.burn(0);
-    }
+        // confirm selector registry is callable
+        OptimisticSelectorRegistry(payable(_selectorRegistry)).isAllowed(address(1), IVetoToken.burn.selector);
+        selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
 
-    modifier onlyOptimisticProposer() {
-        require(_isOptimisticProposer(_msgSender()), NotOptimisticProposer(_msgSender()));
-        _;
+        // confirm token is burnable
+        _token.burn(0);
     }
 
     function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
@@ -120,7 +127,7 @@ contract ReserveGovernor is
 
     // === Optimistic flow ===
 
-    /// @param description Exclude `#proposer=0x???` suffix
+    /// @param description Exclude `#proposer=0x???` suffix, it will be ignored
     /// @return proposalId The ID of the proposed optimistic proposal
     function proposeOptimistic(
         address[] calldata targets,
@@ -134,17 +141,13 @@ contract ReserveGovernor is
             activeOptimisticProposals,
             optimisticParams,
             optimisticProposalImpl,
-            timelock()
+            selectorRegistry
         );
     }
 
     /// Execute an optimistic proposal that passed successfully without dispute
     function executeOptimistic(uint256 proposalId) external payable onlyOptimisticProposer {
-        ProposalCore storage proposalCore = _getGovernorStorage()._proposals[proposalId];
-
-        OptimisticProposalLib.executeOptimisticProposal(
-            proposalId, optimisticProposals[proposalId], proposalCore, timelock()
-        );
+        OptimisticProposalLib.executeOptimisticProposal(proposalId, optimisticProposals, _getGovernorStorage());
     }
 
     /// @return The number of active optimistic proposals
@@ -233,19 +236,8 @@ contract ReserveGovernor is
         require(caller == address(optimisticProposals[proposalId]), NotOptimisticProposal(caller));
 
         // cast initial AGAINST votes
-        uint256 votedWeight =
-            _countVote(proposalId, caller, uint8(VoteType.Against), initialVotesAgainst, "Veto Optimistic");
-        emit VoteCast(caller, proposalId, uint8(VoteType.Against), votedWeight, "Veto Optimistic");
-    }
-
-    function _propose(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        string memory description,
-        address proposer
-    ) internal override returns (uint256) {
-        return super._propose(targets, values, calldatas, description, proposer);
+        uint256 votedWeight = _countVote(proposalId, caller, uint8(VoteType.Against), initialVotesAgainst, "");
+        emit VoteCast(caller, proposalId, uint8(VoteType.Against), votedWeight, "");
     }
 
     function _queueOperations(
@@ -282,7 +274,8 @@ contract ReserveGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        return _isGuardian(caller) || super._validateCancel(proposalId, caller);
+        return TimelockControllerOptimistic(payable(timelock())).hasRole(CANCELLER_ROLE, caller)
+            || super._validateCancel(proposalId, caller);
     }
 
     function _executor()
@@ -313,12 +306,11 @@ contract ReserveGovernor is
         optimisticParams = params;
     }
 
-    function _isGuardian(address account) private view returns (bool) {
-        return TimelockControllerOptimistic(payable(timelock())).hasRole(CANCELLER_ROLE, account);
-    }
-
-    function _isOptimisticProposer(address account) private view returns (bool) {
-        return TimelockControllerOptimistic(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, account);
+    function _requireOptimisticProposer(address account) private view {
+        require(
+            TimelockControllerOptimistic(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, account),
+            NotOptimisticProposer(account)
+        );
     }
 
     /// @dev Upgrades authorized only through timelock (governance)
