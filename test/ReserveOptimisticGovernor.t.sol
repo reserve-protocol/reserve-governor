@@ -6,8 +6,6 @@ import { Test } from "forge-std/Test.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-
 import { IReserveGovernor } from "@interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "@interfaces/IVetoToken.sol";
 import { Deployer, DeploymentParams } from "@src/Deployer.sol";
@@ -19,6 +17,8 @@ import { TimelockControllerOptimistic } from "@src/TimelockControllerOptimistic.
 import { StakingVault } from "@reserve-protocol/reserve-index-dtf/staking/StakingVault.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
+import { ReserveOptimisticGovernorV2Mock } from "./mocks/ReserveOptimisticGovernorV2Mock.sol";
+import { TimelockControllerOptimisticV2Mock } from "./mocks/TimelockControllerOptimisticV2Mock.sol";
 
 contract ReserveOptimisticGovernorTest is Test {
     // Contracts
@@ -2200,5 +2200,113 @@ contract ReserveOptimisticGovernorTest is Test {
             )
         );
         governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    // ==================== Upgrade Tests ====================
+
+    function test_upgradeGovernor_viaGovernance() public {
+        // Deploy new governor implementation
+        ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
+
+        // Create proposal to upgrade governor
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.upgradeToAndCall, (address(newImpl), ""));
+
+        string memory description = "Upgrade governor to V2";
+
+        vm.warp(block.timestamp + 1);
+
+        // Create slow proposal
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        // Pass voting
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        // Queue
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        // Execute after timelock delay
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        // Verify upgrade succeeded by calling new function
+        assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).implVersion(), 2);
+    }
+
+    function test_cannotUpgradeGovernor_unauthorized() public {
+        // Deploy new governor implementation
+        ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
+
+        // Try to upgrade directly (not via governance) - should fail
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorOnlyExecutor.selector, alice));
+        governor.upgradeToAndCall(address(newImpl), "");
+    }
+
+    function test_upgradeTimelock_viaSelfCall() public {
+        // Deploy new timelock implementation
+        TimelockControllerOptimisticV2Mock newImpl = new TimelockControllerOptimisticV2Mock();
+
+        // Create proposal to upgrade timelock (timelock calls itself)
+        address[] memory targets = new address[](1);
+        targets[0] = address(timelock);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(timelock.upgradeToAndCall, (address(newImpl), ""));
+
+        string memory description = "Upgrade timelock to V2";
+
+        vm.warp(block.timestamp + 1);
+
+        // Create slow proposal
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        // Pass voting
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        // Queue
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        // Execute after timelock delay
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        // Verify upgrade succeeded by calling new function
+        assertEq(TimelockControllerOptimisticV2Mock(payable(address(timelock))).implVersion(), 2);
+    }
+
+    function test_cannotUpgradeTimelock_unauthorized() public {
+        // Deploy new timelock implementation
+        TimelockControllerOptimisticV2Mock newImpl = new TimelockControllerOptimisticV2Mock();
+
+        // Try to upgrade directly (not via self-call) - should fail
+        vm.prank(alice);
+        vm.expectRevert(TimelockControllerOptimistic.TimelockControllerOptimistic__UnauthorizedUpgrade.selector);
+        timelock.upgradeToAndCall(address(newImpl), "");
     }
 }
