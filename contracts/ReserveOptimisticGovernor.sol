@@ -172,6 +172,10 @@ contract ReserveOptimisticGovernor is
 
     // === Inheritance overrides ===
 
+    function quorumDenominator() public pure override returns (uint256) {
+        return 1e18;
+    }
+
     /// @dev Call proposalType() to determine whether to call `state()` or `optimisticProposal.state()`
     function state(uint256 proposalId)
         public
@@ -180,10 +184,6 @@ contract ReserveOptimisticGovernor is
         returns (ProposalState)
     {
         return super.state(proposalId);
-    }
-
-    function quorumDenominator() public pure override returns (uint256) {
-        return 1e18;
     }
 
     function proposalDeadline(uint256 proposalId)
@@ -313,6 +313,6 @@ contract ReserveOptimisticGovernor is
         );
     }
 
-    /// @dev Upgrades authorized only through timelock (governance)
+    /// @dev Upgrades authorized only through timelock
     function _authorizeUpgrade(address) internal override onlyGovernance { }
 }
