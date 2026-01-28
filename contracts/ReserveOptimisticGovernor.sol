@@ -113,8 +113,6 @@ contract ReserveOptimisticGovernor is
 
         _setOptimisticParams(optimisticGovParams);
 
-        // confirm selector registry is callable
-        OptimisticSelectorRegistry(payable(_selectorRegistry)).isAllowed(address(1), IVetoToken.burn.selector);
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
 
         // confirm token is burnable
