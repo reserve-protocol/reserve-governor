@@ -26,9 +26,9 @@ bsc = "https://bsc-rpc.publicnode.com"
 mainnet = "https://ethereum-rpc.publicnode.com"
 
 [etherscan]
-mainnet = {key = "${ETHERSCAN_KEY}"}
 base = {key = "${ETHERSCAN_KEY}"}
 bsc = {key = "${ETHERSCAN_KEY}"}
+mainnet = {key = "${ETHERSCAN_KEY}"}
 
 [fmt]
 bracket_spacing = true
