@@ -6,9 +6,11 @@ import { Test } from "forge-std/Test.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
+import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveGovernor } from "@interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "@interfaces/IVetoToken.sol";
-import { ReserveOptimisticGovernorDeployer, DeploymentParams } from "@src/Deployer.sol";
+import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { OptimisticProposal } from "@src/OptimisticProposal.sol";
 import { OptimisticSelectorRegistry } from "@src/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@src/ReserveOptimisticGovernor.sol";
@@ -76,7 +78,8 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
 
         // Deploy Deployer
-        deployer = new ReserveOptimisticGovernorDeployer(address(governorImpl), address(timelockImpl), address(registryImpl));
+        deployer =
+            new ReserveOptimisticGovernorDeployer(address(governorImpl), address(timelockImpl), address(registryImpl));
 
         // Prepare deployment parameters
         address[] memory optimisticProposers = new address[](1);
@@ -89,28 +92,29 @@ contract ReserveOptimisticGovernorTest is Test {
         transferSelectors[0] = IERC20.transfer.selector;
 
         OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = OptimisticSelectorRegistry.SelectorData(address(underlying), transferSelectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(underlying), transferSelectors);
 
-        DeploymentParams memory params = DeploymentParams({
-            optimisticParams: IReserveGovernor.OptimisticGovernanceParams({
-                vetoPeriod: VETO_PERIOD,
-                vetoThreshold: VETO_THRESHOLD,
-                slashingPercentage: SLASHING_PERCENTAGE,
-                numParallelProposals: NUM_PARALLEL_PROPOSALS
-            }),
-            standardParams: IReserveGovernor.StandardGovernanceParams({
-                votingDelay: VOTING_DELAY,
-                votingPeriod: VOTING_PERIOD,
-                voteExtension: VOTE_EXTENSION,
-                proposalThreshold: PROPOSAL_THRESHOLD,
-                quorumNumerator: QUORUM_NUMERATOR
-            }),
-            token: IVetoToken(address(stakingVault)),
-            selectorData: selectorData,
-            optimisticProposers: optimisticProposers,
-            guardians: guardians,
-            timelockDelay: TIMELOCK_DELAY
-        });
+        IReserveOptimisticGovernorDeployer.DeploymentParams memory params =
+            IReserveOptimisticGovernorDeployer.DeploymentParams({
+                optimisticParams: IReserveGovernor.OptimisticGovernanceParams({
+                    vetoPeriod: VETO_PERIOD,
+                    vetoThreshold: VETO_THRESHOLD,
+                    slashingPercentage: SLASHING_PERCENTAGE,
+                    numParallelProposals: NUM_PARALLEL_PROPOSALS
+                }),
+                standardParams: IReserveGovernor.StandardGovernanceParams({
+                    votingDelay: VOTING_DELAY,
+                    votingPeriod: VOTING_PERIOD,
+                    voteExtension: VOTE_EXTENSION,
+                    proposalThreshold: PROPOSAL_THRESHOLD,
+                    quorumNumerator: QUORUM_NUMERATOR
+                }),
+                token: IVetoToken(address(stakingVault)),
+                selectorData: selectorData,
+                optimisticProposers: optimisticProposers,
+                guardians: guardians,
+                timelockDelay: TIMELOCK_DELAY
+            });
 
         // Deploy governance system
         (address governorAddr, address timelockAddr, address selectorRegistryAddr) = deployer.deploy(params);
@@ -127,7 +131,7 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = selector;
         OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = OptimisticSelectorRegistry.SelectorData(target, selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(target, selectors);
         vm.prank(address(timelock));
         registry.registerSelectors(selectorData);
     }
@@ -136,7 +140,7 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = selector;
         OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = OptimisticSelectorRegistry.SelectorData(target, selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(target, selectors);
         vm.prank(address(timelock));
         registry.unregisterSelectors(selectorData);
     }
@@ -2101,10 +2105,10 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = IERC20.transfer.selector;
         OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = OptimisticSelectorRegistry.SelectorData(address(registry), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(registry), selectors);
 
         vm.prank(address(timelock));
-        vm.expectRevert(OptimisticSelectorRegistry.SelfAsTarget.selector);
+        vm.expectRevert(IOptimisticSelectorRegistry.SelfAsTarget.selector);
         registry.registerSelectors(selectorData);
     }
 
@@ -2112,10 +2116,10 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = IERC20.approve.selector;
         OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = OptimisticSelectorRegistry.SelectorData(address(underlying), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(underlying), selectors);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(OptimisticSelectorRegistry.OnlyOwner.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.OnlyOwner.selector, alice));
         registry.registerSelectors(selectorData);
     }
 
@@ -2123,10 +2127,10 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = IERC20.transfer.selector;
         OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = OptimisticSelectorRegistry.SelectorData(address(underlying), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(underlying), selectors);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(OptimisticSelectorRegistry.OnlyOwner.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.OnlyOwner.selector, alice));
         registry.unregisterSelectors(selectorData);
     }
 

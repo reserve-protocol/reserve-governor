@@ -7,6 +7,7 @@ import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
+import { IReserveOptimisticGovernorDeployer } from "./interfaces/IDeployer.sol";
 import {
     CANCELLER_ROLE,
     EXECUTOR_ROLE,
@@ -14,23 +15,8 @@ import {
     OPTIMISTIC_PROPOSER_ROLE,
     PROPOSER_ROLE
 } from "./interfaces/IReserveGovernor.sol";
-import { IVetoToken } from "./interfaces/IVetoToken.sol";
 
-struct DeploymentParams {
-    IReserveGovernor.OptimisticGovernanceParams optimisticParams;
-    IReserveGovernor.StandardGovernanceParams standardParams;
-    IVetoToken token;
-    OptimisticSelectorRegistry.SelectorData[] selectorData;
-    address[] optimisticProposers;
-    address[] guardians;
-    uint256 timelockDelay;
-}
-
-contract ReserveOptimisticGovernorDeployer {
-    event ReserveOptimisticGovernorSystemDeployed(
-        address indexed governor, address indexed timelock, address indexed token, address OptimisticSelectorRegistry
-    );
-
+contract ReserveOptimisticGovernorDeployer is IReserveOptimisticGovernorDeployer {
     address public immutable governorImpl;
     address public immutable timelockImpl;
     address public immutable selectorRegistryImpl;

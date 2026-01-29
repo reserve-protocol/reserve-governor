@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.33;
 
-import { Script, console2 } from "forge-std/Script.sol";
 import { ReserveOptimisticGovernorDeployer } from "../contracts/Deployer.sol";
 import { OptimisticSelectorRegistry } from "../contracts/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "../contracts/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "../contracts/TimelockControllerOptimistic.sol";
+import { Script, console2 } from "forge-std/Script.sol";
 
 string constant junkSeedPhrase = "test test test test test test test test test test test junk";
 
@@ -18,26 +18,21 @@ contract DeployScript is Script {
     string seedPhrase = block.chainid != 31337 ? vm.readFile(".seed") : junkSeedPhrase;
     uint256 privateKey = vm.deriveKey(seedPhrase, 0);
     address walletAddress = vm.rememberKey(privateKey);
-    
+
     // Deployment Mode: Production or Testing
     // Change this before deployment!
     DeploymentMode public deploymentMode = DeploymentMode.Production;
-    
+
     function run()
         external
-        returns (
-            address deployer,
-            address governorImpl,
-            address timelockImpl,
-            address selectorRegistryImpl
-        )
+        returns (address deployer, address governorImpl, address timelockImpl, address selectorRegistryImpl)
     {
         console2.log("----- START -----");
         console2.log("Mode:", deploymentMode == DeploymentMode.Production ? "Production" : "Testing");
         console2.log("Chain ID:", block.chainid);
         console2.log("Wallet Address:", walletAddress);
         console2.log("");
-        
+
         vm.startBroadcast(privateKey);
 
         // Deploy implementations
