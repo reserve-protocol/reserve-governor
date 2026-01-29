@@ -18,6 +18,7 @@ interface IReserveGovernor {
     error NotOptimisticProposer(address account);
     error NotOptimisticProposal(address account);
     error InvalidFunctionCall(address target, bytes4 selector);
+    error InvalidFunctionCallToEOA(address target);
     error TooManyParallelOptimisticProposals();
     error InvalidProposalLengths();
 

@@ -43,7 +43,7 @@ library OptimisticProposalLib {
             IReserveGovernor.InvalidProposalLengths()
         );
 
-        // ensure all calls are allowed
+        // validate function calls
         {
             address timelock = address(_timelock());
 
@@ -55,6 +55,13 @@ library OptimisticProposalLib {
                 require(
                     target != address(this) && target != timelock && selectorRegistry.isAllowed(target, selector),
                     IReserveGovernor.InvalidFunctionCall(target, selector)
+                );
+
+                // ensure no accidental calls to EOAs
+                // limitation: cannot log data to EOAs or interact with a contract within its constructor
+                require(
+                    selector == bytes4(0) || target.code.length != 0,
+                    IReserveGovernor.InvalidFunctionCallToEOA(target)
                 );
             }
         }

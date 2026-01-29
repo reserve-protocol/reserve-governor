@@ -1627,14 +1627,9 @@ contract ReserveOptimisticGovernorTest is Test {
 
     // ==================== Negative Tests: EOA Protection ====================
 
-    function test_cannotExecuteCalldataToEOA() public {
-        // Create an EOA target
+    function test_cannotProposeCalldataToEOA_standard() public {
         address eoaTarget = makeAddr("eoaTarget");
 
-        // Register a selector for the EOA (registry doesn't validate target is a contract)
-        _allowSelector(eoaTarget, bytes4(keccak256("someFunction(uint256)")));
-
-        // Create optimistic proposal targeting the EOA with calldata
         address[] memory targets = new address[](1);
         targets[0] = eoaTarget;
 
@@ -1646,33 +1641,40 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Call EOA with calldata - should fail";
 
-        vm.prank(optimisticProposer);
-        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        vm.warp(block.timestamp + 1);
 
-        // Warp past veto period
-        vm.warp(block.timestamp + VETO_PERIOD + 1);
-
-        // Try to execute - should fail because target is EOA with calldata
-        vm.prank(optimisticProposer);
-        vm.expectRevert(TimelockControllerOptimistic.TimelockControllerOptimistic__InvalidCall.selector);
-        governor.executeOptimistic(proposalId);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.InvalidFunctionCallToEOA.selector, eoaTarget));
+        governor.propose(targets, values, calldatas, description);
     }
 
-    function test_canSendETHToEOAWithEmptyCalldata() public {
-        // Create an EOA target
+    function test_cannotProposeCalldataToEOA_optimistic() public {
         address eoaTarget = makeAddr("eoaTarget");
+        bytes4 selector = bytes4(keccak256("someFunction(uint256)"));
 
-        // Fund the timelock with ETH
+        // Register selector for EOA (registry doesn't validate target is a contract)
+        _allowSelector(eoaTarget, selector);
+
+        address[] memory targets = new address[](1);
+        targets[0] = eoaTarget;
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeWithSelector(selector, 123);
+
+        string memory description = "Call EOA with calldata - should fail";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.InvalidFunctionCallToEOA.selector, eoaTarget));
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
+    function test_canSendETHToEOAWithEmptyCalldata_standard() public {
+        address eoaTarget = makeAddr("eoaTarget");
         vm.deal(address(timelock), 1 ether);
 
-        // Register empty selector for the EOA (to allow empty calldata calls)
-        // Actually, we need to use a different approach since empty calldata won't have a selector
-        // We need to allow value transfers - let's check if the selector registry allows this
-
-        // For this test, we'll use a slow proposal path since it's simpler to send ETH
-        // The _execute function is called for both paths
-
-        // Create proposal to send ETH to EOA with empty calldata
         address[] memory targets = new address[](1);
         targets[0] = eoaTarget;
 
@@ -1680,17 +1682,15 @@ contract ReserveOptimisticGovernorTest is Test {
         values[0] = 0.1 ether;
 
         bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = ""; // Empty calldata
+        calldatas[0] = "";
 
         string memory description = "Send ETH to EOA - should succeed";
 
         vm.warp(block.timestamp + 1);
 
-        // Create slow proposal
         vm.prank(alice);
         uint256 proposalId = governor.propose(targets, values, calldatas, description);
 
-        // Pass voting
         vm.warp(block.timestamp + VOTING_DELAY + 1);
         vm.prank(alice);
         governor.castVote(proposalId, 1);
@@ -1699,17 +1699,44 @@ contract ReserveOptimisticGovernorTest is Test {
 
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
 
-        // Queue
         bytes32 descriptionHash = keccak256(bytes(description));
         governor.queue(targets, values, calldatas, descriptionHash);
 
-        // Execute after timelock delay
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
         uint256 eoaBalanceBefore = eoaTarget.balance;
         governor.execute(targets, values, calldatas, descriptionHash);
 
-        // Verify ETH was sent
+        assertEq(eoaTarget.balance, eoaBalanceBefore + 0.1 ether);
+    }
+
+    function test_canSendETHToEOAWithEmptyCalldata_optimistic() public {
+        address eoaTarget = makeAddr("eoaTarget");
+        vm.deal(address(timelock), 1 ether);
+
+        // Register empty selector for EOA (empty calldata extracts as bytes4(0))
+        _allowSelector(eoaTarget, bytes4(0));
+
+        address[] memory targets = new address[](1);
+        targets[0] = eoaTarget;
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0.1 ether;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = "";
+
+        string memory description = "Send ETH to EOA via optimistic - should succeed";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VETO_PERIOD + 1);
+
+        uint256 eoaBalanceBefore = eoaTarget.balance;
+        vm.prank(optimisticProposer);
+        governor.executeOptimistic(proposalId);
+
         assertEq(eoaTarget.balance, eoaBalanceBefore + 0.1 ether);
     }
 

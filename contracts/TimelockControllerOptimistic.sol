@@ -17,7 +17,6 @@ contract TimelockControllerOptimistic is
 {
     error TimelockControllerOptimistic__OperationConflict();
     error TimelockControllerOptimistic__UnauthorizedUpgrade();
-    error TimelockControllerOptimistic__InvalidCall();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -60,15 +59,6 @@ contract TimelockControllerOptimistic is
         return super._revokeRole(role, account);
     }
 
-    /// @dev Exclude EOAs from receiving calldata
-    ///      This is a light protection mechanism for address typos. If passing calldata to an EOA would otherwise
-    ///      be used as a log, a simple smart contract will have to be deployed to receive the calldata instead.
-    function _execute(address target, uint256 value, bytes calldata data) internal override {
-        require(data.length == 0 || target.code.length != 0, TimelockControllerOptimistic__InvalidCall());
-       
-        super._execute(target, value, data);
-    }
-    
     /// @dev Danger!
     ///      Execute a batch of operations immediately without waiting out the delay.
     ///      Caller must have BOTH the PROPOSER_ROLE and EXECUTOR_ROLE.
@@ -90,7 +80,6 @@ contract TimelockControllerOptimistic is
         // check caller has EXECUTOR_ROLE and execute
         executeBatch(targets, values, payloads, predecessor, salt);
     }
-
 
     /// @dev Timelock authorizes its own upgrades (self-admin pattern)
     function _authorizeUpgrade(address) internal view override {

@@ -48,6 +48,9 @@ contract Deployer {
         external
         returns (address governor, address timelock, address selectorRegistry)
     {
+        // Step 0: Confirm token is burnable
+        params.token.burn(0);
+
         // Step 1: Deploy Timelock proxy with Deployer as temporary admin
         bytes memory timelockInitData = abi.encodeCall(
             TimelockControllerOptimistic.initialize,

@@ -114,9 +114,6 @@ contract ReserveOptimisticGovernor is
         _setOptimisticParams(optimisticGovParams);
 
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
-
-        // confirm token is burnable
-        _token.burn(0);
     }
 
     function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
@@ -236,6 +233,21 @@ contract ReserveOptimisticGovernor is
         // cast initial AGAINST votes
         uint256 votedWeight = _countVote(proposalId, caller, uint8(VoteType.Against), initialVotesAgainst, "");
         emit VoteCast(caller, proposalId, uint8(VoteType.Against), votedWeight, "");
+    }
+
+    function propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) public override returns (uint256) {
+        // ensure no accidental calls to EOAs
+        // limitation: cannot log data to EOAs or interact with a contract within its constructor
+        for (uint256 i = 0; i < targets.length; i++) {
+            require(calldatas[i].length == 0 || targets[i].code.length != 0, InvalidFunctionCallToEOA(targets[i]));
+        }
+
+        return super.propose(targets, values, calldatas, description);
     }
 
     function _queueOperations(
