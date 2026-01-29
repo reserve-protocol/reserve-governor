@@ -26,8 +26,8 @@ struct DeploymentParams {
     uint256 timelockDelay;
 }
 
-contract Deployer {
-    event ReserveGovernorSystemDeployed(
+contract ReserveOptimisticGovernorDeployer {
+    event ReserveOptimisticGovernorSystemDeployed(
         address indexed governor, address indexed timelock, address indexed token, address OptimisticSelectorRegistry
     );
 
@@ -96,6 +96,6 @@ contract Deployer {
         // Step 6: Renounce admin role
         _timelock.renounceRole(_timelock.DEFAULT_ADMIN_ROLE(), address(this));
 
-        emit ReserveGovernorSystemDeployed(governor, timelock, address(params.token), selectorRegistry);
+        emit ReserveOptimisticGovernorSystemDeployed(governor, timelock, address(params.token), selectorRegistry);
     }
 }

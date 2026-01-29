@@ -8,7 +8,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { IReserveGovernor } from "@interfaces/IReserveGovernor.sol";
 import { IVetoToken } from "@interfaces/IVetoToken.sol";
-import { Deployer, DeploymentParams } from "@src/Deployer.sol";
+import { ReserveOptimisticGovernorDeployer, DeploymentParams } from "@src/Deployer.sol";
 import { OptimisticProposal } from "@src/OptimisticProposal.sol";
 import { OptimisticSelectorRegistry } from "@src/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@src/ReserveOptimisticGovernor.sol";
@@ -25,7 +25,7 @@ contract ReserveOptimisticGovernorTest is Test {
     MockERC20 public underlying;
     StakingVault public stakingVault;
     OptimisticSelectorRegistry public registry;
-    Deployer public deployer;
+    ReserveOptimisticGovernorDeployer public deployer;
     ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
 
@@ -76,7 +76,7 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
 
         // Deploy Deployer
-        deployer = new Deployer(address(governorImpl), address(timelockImpl), address(registryImpl));
+        deployer = new ReserveOptimisticGovernorDeployer(address(governorImpl), address(timelockImpl), address(registryImpl));
 
         // Prepare deployment parameters
         address[] memory optimisticProposers = new address[](1);
