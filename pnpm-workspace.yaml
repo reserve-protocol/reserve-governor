@@ -1,2 +1,2 @@
 patchedDependencies:
-  '@openzeppelin/contracts-upgradeable': patches/@openzeppelin__contracts-upgradeable.patch
+  "@openzeppelin/contracts-upgradeable": patches/@openzeppelin__contracts-upgradeable.patch

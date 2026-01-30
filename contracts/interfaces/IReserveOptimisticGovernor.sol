@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
+
 import { IVetoToken } from "./IVetoToken.sol";
 
 bytes32 constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE"); // 0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1
@@ -68,3 +70,6 @@ interface IReserveOptimisticGovernor {
         address _selectorRegistry
     ) external;
 }
+
+/// @dev This interface is separate to avoid too many interface overloads in the implementation
+interface IReserveGovernorFull is IReserveOptimisticGovernor, IGovernor { }
