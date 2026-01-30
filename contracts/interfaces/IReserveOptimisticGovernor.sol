@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import { IVetoToken } from "./IVetoToken.sol";
+
 bytes32 constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE"); // 0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1
 bytes32 constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE"); // 0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63
 bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE"); // 0xfd643c72710c63c0180259aba6b2d05451e3591a24e58b62239378085726f783
@@ -9,7 +11,7 @@ uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 30 minutes;
 uint256 constant MAX_VETO_THRESHOLD = 0.2e18; // 20%
 uint256 constant MAX_PARALLEL_OPTIMISTIC_PROPOSALS = 5;
 
-interface IReserveGovernor {
+interface IReserveOptimisticGovernor {
     // === Errors ===
 
     error ExistingOptimisticProposal(uint256 proposalId);
@@ -57,4 +59,12 @@ interface IReserveGovernor {
         uint256 proposalThreshold; // D18{1}
         uint256 quorumNumerator; // D18{1}
     }
+
+    function initialize(
+        OptimisticGovernanceParams calldata optimisticGovParams,
+        StandardGovernanceParams calldata standardGovParams,
+        IVetoToken _token,
+        address _timelock,
+        address _selectorRegistry
+    ) external;
 }

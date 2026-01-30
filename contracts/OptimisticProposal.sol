@@ -11,11 +11,11 @@ import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 import {
     CANCELLER_ROLE,
-    IReserveGovernor,
+    IReserveOptimisticGovernor,
     MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
-} from "./interfaces/IReserveGovernor.sol";
+} from "./interfaces/IReserveOptimisticGovernor.sol";
 import { IVetoToken } from "./interfaces/IVetoToken.sol";
 
 /**
@@ -98,7 +98,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     /// @param _params.vetoThreshold D18{1} Fraction of token supply required to lock proposal for dispute
     /// @param _params.slashingPercentage D18{1} Fraction of staked tokens to be potentially slashed
     function initialize(
-        IReserveGovernor.OptimisticGovernanceParams calldata _params,
+        IReserveOptimisticGovernor.OptimisticGovernanceParams calldata _params,
         uint256 _proposalId,
         address _proposer,
         address[] memory _targets,
@@ -142,9 +142,9 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         }
 
         try governor.state(proposalId) returns (IGovernor.ProposalState governorState) {
-            IReserveGovernor.ProposalType proposalType = governor.proposalType(proposalId);
+            IReserveOptimisticGovernor.ProposalType proposalType = governor.proposalType(proposalId);
 
-            if (proposalType == IReserveGovernor.ProposalType.Optimistic) {
+            if (proposalType == IReserveOptimisticGovernor.ProposalType.Optimistic) {
                 // Proposal executed without dispute
 
                 return OptimisticProposalState.Executed;

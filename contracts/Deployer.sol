@@ -11,10 +11,10 @@ import { IReserveOptimisticGovernorDeployer } from "./interfaces/IDeployer.sol";
 import {
     CANCELLER_ROLE,
     EXECUTOR_ROLE,
-    IReserveGovernor,
+    IReserveOptimisticGovernor,
     OPTIMISTIC_PROPOSER_ROLE,
     PROPOSER_ROLE
-} from "./interfaces/IReserveGovernor.sol";
+} from "./interfaces/IReserveOptimisticGovernor.sol";
 
 contract ReserveOptimisticGovernorDeployer is IReserveOptimisticGovernorDeployer {
     address public immutable governorImpl;

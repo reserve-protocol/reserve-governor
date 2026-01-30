@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
-import { IReserveGovernor } from "./IReserveGovernor.sol";
+import { IReserveOptimisticGovernor } from "./IReserveOptimisticGovernor.sol";
 import { IVetoToken } from "./IVetoToken.sol";
 
 interface IReserveOptimisticGovernorDeployer {
@@ -15,8 +15,8 @@ interface IReserveOptimisticGovernorDeployer {
     // === Data ===
 
     struct DeploymentParams {
-        IReserveGovernor.OptimisticGovernanceParams optimisticParams;
-        IReserveGovernor.StandardGovernanceParams standardParams;
+        IReserveOptimisticGovernor.OptimisticGovernanceParams optimisticParams;
+        IReserveOptimisticGovernor.StandardGovernanceParams standardParams;
         IVetoToken token;
         OptimisticSelectorRegistry.SelectorData[] selectorData;
         address[] optimisticProposers;

@@ -12,7 +12,7 @@ import { OptimisticProposal } from "../OptimisticProposal.sol";
 import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "../ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "../TimelockControllerOptimistic.sol";
-import { IReserveGovernor } from "../interfaces/IReserveGovernor.sol";
+import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 
 library OptimisticProposalLib {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -31,16 +31,16 @@ library OptimisticProposalLib {
         ProposalData memory proposal,
         mapping(uint256 proposalId => OptimisticProposal) storage optimisticProposals,
         EnumerableSet.AddressSet storage activeOptimisticProposals,
-        IReserveGovernor.OptimisticGovernanceParams calldata optimisticParams,
+        IReserveOptimisticGovernor.OptimisticGovernanceParams calldata optimisticParams,
         address optimisticProposalImpl,
         OptimisticSelectorRegistry selectorRegistry
     ) external returns (uint256 proposalId) {
         _clearCompletedOptimisticProposals(activeOptimisticProposals);
 
-        require(proposal.targets.length != 0, IReserveGovernor.InvalidProposalLengths());
+        require(proposal.targets.length != 0, IReserveOptimisticGovernor.InvalidProposalLengths());
         require(
             proposal.targets.length == proposal.values.length && proposal.targets.length == proposal.calldatas.length,
-            IReserveGovernor.InvalidProposalLengths()
+            IReserveOptimisticGovernor.InvalidProposalLengths()
         );
 
         // validate function calls
@@ -54,13 +54,14 @@ library OptimisticProposalLib {
                 // never target ReserveOptimisticGovernor or TimelockControllerOptimistic
                 require(
                     target != address(this) && target != timelock && selectorRegistry.isAllowed(target, selector),
-                    IReserveGovernor.InvalidFunctionCall(target, selector)
+                    IReserveOptimisticGovernor.InvalidFunctionCall(target, selector)
                 );
 
                 // ensure no accidental calls to EOAs
                 // limitation: cannot log data to EOAs or interact with a contract within its constructor
                 require(
-                    selector == bytes4(0) || target.code.length != 0, IReserveGovernor.InvalidFunctionCallToEOA(target)
+                    selector == bytes4(0) || target.code.length != 0,
+                    IReserveOptimisticGovernor.InvalidFunctionCallToEOA(target)
                 );
             }
         }
@@ -88,17 +89,17 @@ library OptimisticProposalLib {
 
         require(
             address(optimisticProposals[proposalId]) == address(0),
-            IReserveGovernor.ExistingOptimisticProposal(proposalId)
+            IReserveOptimisticGovernor.ExistingOptimisticProposal(proposalId)
         );
         optimisticProposals[proposalId] = optimisticProposal;
 
         require(
             activeOptimisticProposals.length() < optimisticParams.numParallelProposals,
-            IReserveGovernor.TooManyParallelOptimisticProposals()
+            IReserveOptimisticGovernor.TooManyParallelOptimisticProposals()
         );
         activeOptimisticProposals.add(address(optimisticProposal));
 
-        emit IReserveGovernor.OptimisticProposalCreated(
+        emit IReserveOptimisticGovernor.OptimisticProposalCreated(
             msg.sender,
             proposalId,
             proposal.targets,
@@ -120,7 +121,7 @@ library OptimisticProposalLib {
 
         require(
             optimisticProposal.state() == OptimisticProposal.OptimisticProposalState.Succeeded,
-            IReserveGovernor.OptimisticProposalNotSuccessful(proposalId)
+            IReserveOptimisticGovernor.OptimisticProposalNotSuccessful(proposalId)
         );
 
         // mark executed in proposal core (for compatibility with legacy offchain monitoring)

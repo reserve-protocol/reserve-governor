@@ -8,7 +8,8 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
-import { IReserveGovernor } from "@interfaces/IReserveGovernor.sol";
+import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
+import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { IVetoToken } from "@interfaces/IVetoToken.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { OptimisticProposal } from "@src/OptimisticProposal.sol";
@@ -96,13 +97,13 @@ contract ReserveOptimisticGovernorTest is Test {
 
         IReserveOptimisticGovernorDeployer.DeploymentParams memory params =
             IReserveOptimisticGovernorDeployer.DeploymentParams({
-                optimisticParams: IReserveGovernor.OptimisticGovernanceParams({
+                optimisticParams: IReserveOptimisticGovernor.OptimisticGovernanceParams({
                     vetoPeriod: VETO_PERIOD,
                     vetoThreshold: VETO_THRESHOLD,
                     slashingPercentage: SLASHING_PERCENTAGE,
                     numParallelProposals: NUM_PARALLEL_PROPOSALS
                 }),
-                standardParams: IReserveGovernor.StandardGovernanceParams({
+                standardParams: IReserveOptimisticGovernor.StandardGovernanceParams({
                     votingDelay: VOTING_DELAY,
                     votingPeriod: VOTING_PERIOD,
                     voteExtension: VOTE_EXTENSION,
@@ -244,7 +245,9 @@ contract ReserveOptimisticGovernorTest is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         // Verify proposal is optimistic and active
-        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Optimistic));
+        assertEq(
+            uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Optimistic)
+        );
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Active));
 
@@ -360,7 +363,7 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
         // Verify dispute proposal was created with initial AGAINST votes (proposalType should now be Standard)
-        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Standard));
+        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
 
         // Verify initial AGAINST votes equal vetoThreshold
         (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
@@ -902,7 +905,9 @@ contract ReserveOptimisticGovernorTest is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         // Initially it's Optimistic
-        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Optimistic));
+        assertEq(
+            uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Optimistic)
+        );
 
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
@@ -914,7 +919,7 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.stopPrank();
 
         // After dispute triggered, it should be Standard
-        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Standard));
+        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
     }
 
     // ==================== Negative Tests: Parallel Proposals Limit ====================
@@ -952,7 +957,7 @@ contract ReserveOptimisticGovernorTest is Test {
         string memory description = "Transfer overflow";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(IReserveGovernor.TooManyParallelOptimisticProposals.selector);
+        vm.expectRevert(IReserveOptimisticGovernor.TooManyParallelOptimisticProposals.selector);
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
@@ -1098,7 +1103,9 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Try to execute optimistic - should fail
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.OptimisticProposalNotSuccessful.selector, proposalId));
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.OptimisticProposalNotSuccessful.selector, proposalId)
+        );
         governor.executeOptimistic(proposalId);
     }
 
@@ -1141,7 +1148,9 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Try to execute optimistic - should fail
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.OptimisticProposalNotSuccessful.selector, proposalId));
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.OptimisticProposalNotSuccessful.selector, proposalId)
+        );
         governor.executeOptimistic(proposalId);
     }
 
@@ -1193,7 +1202,9 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Try to execute optimistic - should fail
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.OptimisticProposalNotSuccessful.selector, proposalId));
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.OptimisticProposalNotSuccessful.selector, proposalId)
+        );
         governor.executeOptimistic(proposalId);
     }
 
@@ -1401,7 +1412,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Now locked - dispute should have been created exactly once
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
-        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveGovernor.ProposalType.Standard));
+        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
 
         // Verify Bob's stake was capped to 1 (only what was needed)
         assertEq(optProposal.staked(bob), 1);
@@ -1599,7 +1610,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Alice (not optimistic proposer) tries to propose optimistically
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.NotOptimisticProposer.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.NotOptimisticProposer.selector, alice));
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
@@ -1625,7 +1636,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Alice (not optimistic proposer) tries to execute
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.NotOptimisticProposer.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.NotOptimisticProposer.selector, alice));
         governor.executeOptimistic(proposalId);
     }
 
@@ -1648,7 +1659,7 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.warp(block.timestamp + 1);
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.InvalidFunctionCallToEOA.selector, eoaTarget));
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidFunctionCallToEOA.selector, eoaTarget));
         governor.propose(targets, values, calldatas, description);
     }
 
@@ -1671,7 +1682,7 @@ contract ReserveOptimisticGovernorTest is Test {
         string memory description = "Call EOA with calldata - should fail";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(IReserveGovernor.InvalidFunctionCallToEOA.selector, eoaTarget));
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidFunctionCallToEOA.selector, eoaTarget));
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
@@ -1755,12 +1766,13 @@ contract ReserveOptimisticGovernorTest is Test {
         values[0] = 0;
 
         // vetoPeriod = 1 minute (< 30 minutes minimum)
-        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
-            vetoPeriod: 1 minutes,
-            vetoThreshold: VETO_THRESHOLD,
-            slashingPercentage: SLASHING_PERCENTAGE,
-            numParallelProposals: NUM_PARALLEL_PROPOSALS
-        });
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: 1 minutes,
+                vetoThreshold: VETO_THRESHOLD,
+                slashingPercentage: SLASHING_PERCENTAGE,
+                numParallelProposals: NUM_PARALLEL_PROPOSALS
+            });
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
@@ -1787,7 +1799,7 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
         // Execution should revert
-        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidVetoParameters.selector);
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
@@ -1799,12 +1811,13 @@ contract ReserveOptimisticGovernorTest is Test {
         values[0] = 0;
 
         // vetoThreshold = 25% (> 20% maximum)
-        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
-            vetoPeriod: VETO_PERIOD,
-            vetoThreshold: 0.25e18,
-            slashingPercentage: SLASHING_PERCENTAGE,
-            numParallelProposals: NUM_PARALLEL_PROPOSALS
-        });
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: 0.25e18,
+                slashingPercentage: SLASHING_PERCENTAGE,
+                numParallelProposals: NUM_PARALLEL_PROPOSALS
+            });
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
@@ -1829,7 +1842,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
-        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidVetoParameters.selector);
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
@@ -1841,12 +1854,13 @@ contract ReserveOptimisticGovernorTest is Test {
         values[0] = 0;
 
         // vetoThreshold = 0
-        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
-            vetoPeriod: VETO_PERIOD,
-            vetoThreshold: 0,
-            slashingPercentage: SLASHING_PERCENTAGE,
-            numParallelProposals: NUM_PARALLEL_PROPOSALS
-        });
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: 0,
+                slashingPercentage: SLASHING_PERCENTAGE,
+                numParallelProposals: NUM_PARALLEL_PROPOSALS
+            });
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
@@ -1871,7 +1885,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
-        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidVetoParameters.selector);
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
@@ -1883,12 +1897,13 @@ contract ReserveOptimisticGovernorTest is Test {
         uint256[] memory values = new uint256[](1);
         values[0] = 0;
 
-        IReserveGovernor.OptimisticGovernanceParams memory zeroSlashParams = IReserveGovernor.OptimisticGovernanceParams({
-            vetoPeriod: VETO_PERIOD,
-            vetoThreshold: VETO_THRESHOLD,
-            slashingPercentage: 0,
-            numParallelProposals: NUM_PARALLEL_PROPOSALS
-        });
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory zeroSlashParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: VETO_THRESHOLD,
+                slashingPercentage: 0,
+                numParallelProposals: NUM_PARALLEL_PROPOSALS
+            });
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (zeroSlashParams));
@@ -1990,12 +2005,13 @@ contract ReserveOptimisticGovernorTest is Test {
         values[0] = 0;
 
         // slashingPercentage = 150%
-        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
-            vetoPeriod: VETO_PERIOD,
-            vetoThreshold: VETO_THRESHOLD,
-            slashingPercentage: 1.5e18,
-            numParallelProposals: NUM_PARALLEL_PROPOSALS
-        });
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: VETO_THRESHOLD,
+                slashingPercentage: 1.5e18,
+                numParallelProposals: NUM_PARALLEL_PROPOSALS
+            });
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
@@ -2020,7 +2036,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
-        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidVetoParameters.selector);
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
@@ -2032,12 +2048,13 @@ contract ReserveOptimisticGovernorTest is Test {
         values[0] = 0;
 
         // numParallelProposals = 10 (> 5 maximum)
-        IReserveGovernor.OptimisticGovernanceParams memory badParams = IReserveGovernor.OptimisticGovernanceParams({
-            vetoPeriod: VETO_PERIOD,
-            vetoThreshold: VETO_THRESHOLD,
-            slashingPercentage: SLASHING_PERCENTAGE,
-            numParallelProposals: 10
-        });
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: VETO_THRESHOLD,
+                slashingPercentage: SLASHING_PERCENTAGE,
+                numParallelProposals: 10
+            });
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
@@ -2062,7 +2079,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
-        vm.expectRevert(IReserveGovernor.InvalidVetoParameters.selector);
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidVetoParameters.selector);
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
@@ -2076,7 +2093,7 @@ contract ReserveOptimisticGovernorTest is Test {
         string memory description = "Empty proposal";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(IReserveGovernor.InvalidProposalLengths.selector);
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidProposalLengths.selector);
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
@@ -2095,7 +2112,7 @@ contract ReserveOptimisticGovernorTest is Test {
         string memory description = "Mismatched arrays";
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(IReserveGovernor.InvalidProposalLengths.selector);
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidProposalLengths.selector);
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
@@ -2179,7 +2196,7 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(optimisticProposer);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IReserveGovernor.InvalidFunctionCall.selector, address(underlying), IERC20.approve.selector
+                IReserveOptimisticGovernor.InvalidFunctionCall.selector, address(underlying), IERC20.approve.selector
             )
         );
         governor.proposeOptimistic(targets, values, calldatas, description);
@@ -2196,7 +2213,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(
-            governor.setOptimisticParams, (IReserveGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
+            governor.setOptimisticParams,
+            (IReserveOptimisticGovernor.OptimisticGovernanceParams(1 hours, 0.1e18, 0.1e18, 2))
         );
 
         string memory description = "Try governor via optimistic";
@@ -2204,7 +2222,9 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(optimisticProposer);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IReserveGovernor.InvalidFunctionCall.selector, address(governor), governor.setOptimisticParams.selector
+                IReserveOptimisticGovernor.InvalidFunctionCall.selector,
+                address(governor),
+                governor.setOptimisticParams.selector
             )
         );
         governor.proposeOptimistic(targets, values, calldatas, description);
@@ -2227,7 +2247,9 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(optimisticProposer);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IReserveGovernor.InvalidFunctionCall.selector, address(timelock), timelock.updateDelay.selector
+                IReserveOptimisticGovernor.InvalidFunctionCall.selector,
+                address(timelock),
+                timelock.updateDelay.selector
             )
         );
         governor.proposeOptimistic(targets, values, calldatas, description);
@@ -2337,7 +2359,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Try to upgrade directly (not via self-call) - should fail
         vm.prank(alice);
-        vm.expectRevert(TimelockControllerOptimistic.TimelockControllerOptimistic__UnauthorizedUpgrade.selector);
+        vm.expectRevert(ITimelockControllerOptimistic.TimelockControllerOptimistic__UnauthorizedUpgrade.selector);
         timelock.upgradeToAndCall(address(newImpl), "");
     }
 }
