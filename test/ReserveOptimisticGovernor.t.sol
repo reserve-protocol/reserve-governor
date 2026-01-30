@@ -122,7 +122,7 @@ contract ReserveOptimisticGovernorTest is Test {
             });
 
         // Deploy governance system
-        (address governorAddr, address timelockAddr, address selectorRegistryAddr) = deployer.deploy(params);
+        (address governorAddr, address timelockAddr, address selectorRegistryAddr) = deployer.deploy(params, bytes32(0));
         governor = ReserveOptimisticGovernor(payable(governorAddr));
         timelock = TimelockControllerOptimistic(payable(timelockAddr));
         registry = OptimisticSelectorRegistry(selectorRegistryAddr);
