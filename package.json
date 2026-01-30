@@ -10,7 +10,8 @@
     "test": "forge test",
     "size": "forge compile --sizes",
     "format": "forge fmt",
-    "selectors:upload": "forge selectors upload --all"
+    "selectors:upload": "forge selectors upload --all",
+    "deploy": "forge script script/Deploy.s.sol:DeployScript --slow"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",

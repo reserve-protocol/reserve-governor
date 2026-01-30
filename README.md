@@ -82,13 +82,13 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
 
 ### Fast Proposal Paths
 
-| Path | Name | Flow | Outcome |
-|------|------|------|---------|
-| F1 | Uncontested Success | Active → Succeeded → Executed | Proposal executes after veto period via `executeOptimistic()` |
-| F2 | Early Cancellation | Active → Canceled | Proposal stopped before dispute; stakers withdraw full amount |
-| F3 | Dispute Passes | Active → Locked → Slashed | Vetoers were wrong; slashed, proposal executes via slow vote |
-| F4 | Dispute Fails (Veto Succeeds) | Active → Locked → Vetoed | Veto succeeds! Proposal blocked, stakers withdraw full amount |
-| F5 | Dispute Canceled | Active → Locked → Canceled | Guardian cancels dispute; stakers withdraw full amount |
+| Path | Name                          | Flow                          | Outcome                                                       |
+| ---- | ----------------------------- | ----------------------------- | ------------------------------------------------------------- |
+| F1   | Uncontested Success           | Active → Succeeded → Executed | Proposal executes after veto period via `executeOptimistic()` |
+| F2   | Early Cancellation            | Active → Canceled             | Proposal stopped before dispute; stakers withdraw full amount |
+| F3   | Dispute Passes                | Active → Locked → Slashed     | Vetoers were wrong; slashed, proposal executes via slow vote  |
+| F4   | Dispute Fails (Veto Succeeds) | Active → Locked → Vetoed      | Veto succeeds! Proposal blocked, stakers withdraw full amount |
+| F5   | Dispute Canceled              | Active → Locked → Canceled    | Guardian cancels dispute; stakers withdraw full amount        |
 
 ### Slow Proposal Lifecycle
 
@@ -114,11 +114,11 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting and ti
 
 ### Slow Proposal Paths
 
-| Path | Name | Flow | Outcome |
-|------|------|------|---------|
-| S1 | Success | Pending → Active → Succeeded → Queued → Executed | Normal governance execution |
-| S2 | Voting Defeated | Pending → Active → Defeated | Proposal rejected by voters |
-| S3 | Early Cancellation | Pending → Canceled | Canceled before voting starts |
+| Path | Name               | Flow                                             | Outcome                       |
+| ---- | ------------------ | ------------------------------------------------ | ----------------------------- |
+| S1   | Success            | Pending → Active → Succeeded → Queued → Executed | Normal governance execution   |
+| S2   | Voting Defeated    | Pending → Active → Defeated                      | Proposal rejected by voters   |
+| S3   | Early Cancellation | Pending → Canceled                               | Canceled before voting starts |
 
 ## Veto Mechanism
 
@@ -143,11 +143,11 @@ When a fast proposal reaches the vetoThreshold (becomes `Locked`):
 1. **Slow Vote Initiated**: The `OptimisticProposal` calls `governor.proposeDispute()` to start a standard governance vote with staked tokens counted as initial AGAINST votes
 2. **Three Possible Outcomes**:
 
-| Dispute Result | OptimisticProposal State | Proposal Outcome | Staker Outcome |
-|---------------------|--------------------------|------------------|----------------|
-| **Vote Passes** (Executed) | `Slashed` | Proposal executes | Slashed on withdrawal |
-| **Vote Fails** (Defeated) | `Vetoed` | Proposal blocked | Full refund |
-| **Vote Canceled** | `Canceled` | Proposal blocked | Full refund |
+| Dispute Result             | OptimisticProposal State | Proposal Outcome  | Staker Outcome        |
+| -------------------------- | ------------------------ | ----------------- | --------------------- |
+| **Vote Passes** (Executed) | `Slashed`                | Proposal executes | Slashed on withdrawal |
+| **Vote Fails** (Defeated)  | `Vetoed`                 | Proposal blocked  | Full refund           |
+| **Vote Canceled**          | `Canceled`               | Proposal blocked  | Full refund           |
 
 ### Slashing Mechanics
 
@@ -163,23 +163,25 @@ Slashed tokens are burned via `token.burn()`.
 
 ### When You Can Withdraw
 
-| Proposal State | Can Withdraw? | Slashing Applied? | Meaning |
-|----------------|---------------|-------------------|---------|
-| Active | Yes | No | Veto period ongoing, can unstake |
-| Succeeded | Yes | No | Veto period ended without challenge |
-| Locked | **No** | N/A | Dispute in progress |
-| Vetoed | Yes | **No** | Veto succeeded! Stakers were right |
-| Slashed | Yes | **Yes** | Vetoers were wrong, penalty applied |
-| Canceled | Yes | No | Proposal canceled, full refund |
-| Executed | Yes | No | Proposal executed without dispute |
+| Proposal State | Can Withdraw? | Slashing Applied? | Meaning                             |
+| -------------- | ------------- | ----------------- | ----------------------------------- |
+| Active         | Yes           | No                | Veto period ongoing, can unstake    |
+| Succeeded      | Yes           | No                | Veto period ended without challenge |
+| Locked         | **No**        | N/A               | Dispute in progress                 |
+| Vetoed         | Yes           | **No**            | Veto succeeded! Stakers were right  |
+| Slashed        | Yes           | **Yes**           | Vetoers were wrong, penalty applied |
+| Canceled       | Yes           | No                | Proposal canceled, full refund      |
+| Executed       | Yes           | No                | Proposal executed without dispute   |
 
 ### Risk Assessment
 
 **Low Risk Scenarios:**
+
 - Staking against clearly malicious proposals
 - Proposals where community consensus opposes execution
 
 **High Risk Scenarios:**
+
 - Staking against legitimate proposals (risk of slashing if dispute passes)
 
 ### Key Insight: Vetoed vs Slashed
@@ -204,12 +206,12 @@ enum ProposalType {
 
 ## Roles
 
-| Role | Held By | Permissions |
-|------|---------|-------------|
-| `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs | Create and execute fast proposals |
-| `PROPOSER_ROLE` | Governor contract | Schedule operations on the timelock (granted automatically by Deployer) |
-| `EXECUTOR_ROLE` | Governor contract | Execute queued slow proposals via the timelock |
-| `CANCELLER_ROLE` | Governor contract + Guardian addresses | Cancel proposals (fast or slow) |
+| Role                       | Held By                                | Permissions                                                             |
+| -------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
+| `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs               | Create and execute fast proposals                                       |
+| `PROPOSER_ROLE`            | Governor contract                      | Schedule operations on the timelock (granted automatically by Deployer) |
+| `EXECUTOR_ROLE`            | Governor contract                      | Execute queued slow proposals via the timelock                          |
+| `CANCELLER_ROLE`           | Governor contract + Guardian addresses | Cancel proposals (fast or slow)                                         |
 
 > **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself — it allows the governor to schedule operations, not individual users to create proposals.
 
@@ -228,11 +230,13 @@ The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessCon
 The main hybrid governor contract.
 
 **Fast Proposal Functions:**
+
 - `proposeOptimistic(targets, values, calldatas, description)` - Create a fast proposal
 - `executeOptimistic(proposalId)` - Execute a succeeded fast proposal
 - `proposeDispute(targets, values, calldatas, description, initialProposer, initialVotesAgainst)` - Create a dispute proposal (only callable by OptimisticProposal contracts)
 
 **State Query:**
+
 - `proposalType(proposalId)` - Returns `Optimistic` or `Standard`
 - `state(proposalId)` - Standard Governor state (for Standard proposals)
 - `optimisticProposals(proposalId)` - Get the OptimisticProposal contract for a proposal
@@ -240,6 +244,7 @@ The main hybrid governor contract.
 - `selectorRegistry()` - The OptimisticSelectorRegistry contract address
 
 **Configuration:**
+
 - `setOptimisticParams(params)` - Update optimistic governance parameters
 
 ### OptimisticProposal
@@ -247,13 +252,16 @@ The main hybrid governor contract.
 Per-proposal contract handling veto logic. Created as a clone for each fast proposal.
 
 **User Functions:**
+
 - `stakeToVeto(maxAmount)` - Stake tokens against the proposal (up to maxAmount, capped at remaining needed)
 - `withdraw()` - Withdraw staked tokens (with potential slashing)
 
 **Admin Functions:**
+
 - `cancel()` - Cancel proposal (requires CANCELLER_ROLE or be the proposer, only in Active/Succeeded state)
 
 **State Query:**
+
 - `state()` - Returns `OptimisticProposalState`
 - `staked(address)` - Returns amount staked by address
 - `totalStaked` - Total tokens staked against the proposal
@@ -267,15 +275,18 @@ Per-proposal contract handling veto logic. Created as a clone for each fast prop
 Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Controlled by the timelock (governance-controlled).
 
 **Management (onlyTimelock):**
+
 - `registerSelectors(SelectorData[])` - Add allowed `(target, selector)` pairs
 - `unregisterSelectors(SelectorData[])` - Remove allowed pairs
 
 **Query:**
+
 - `isAllowed(target, selector)` - Check if a `(target, selector)` pair is whitelisted
 - `targets()` - List all targets that have at least one registered selector
 - `selectorsAllowed(target)` - List all allowed selectors for a given target
 
 **Constraints:**
+
 - Cannot register itself as a target (reverts with `SelfAsTarget`)
 - The governor and timelock are additionally blocked as targets in `OptimisticProposalLib` (hardcoded)
 
@@ -297,33 +308,33 @@ Extended timelock supporting both flows.
 
 ### Optimistic Governance Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `vetoPeriod` | `uint32` | Duration of veto window in seconds |
-| `vetoThreshold` | `uint256` | Fraction of supply needed to trigger dispute (D18) |
-| `slashingPercentage` | `uint256` | Fraction of stake slashed on failed veto (D18) |
-| `numParallelProposals` | `uint256` | Maximum number of concurrent optimistic proposals |
+| Parameter              | Type      | Description                                        |
+| ---------------------- | --------- | -------------------------------------------------- |
+| `vetoPeriod`           | `uint32`  | Duration of veto window in seconds                 |
+| `vetoThreshold`        | `uint256` | Fraction of supply needed to trigger dispute (D18) |
+| `slashingPercentage`   | `uint256` | Fraction of stake slashed on failed veto (D18)     |
+| `numParallelProposals` | `uint256` | Maximum number of concurrent optimistic proposals  |
 
 ### Standard Governance Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `votingDelay` | `uint48` | Delay before voting snapshot |
-| `votingPeriod` | `uint32` | Duration of voting window |
-| `voteExtension` | `uint48` | Late quorum time extension |
+| Parameter           | Type      | Description                                |
+| ------------------- | --------- | ------------------------------------------ |
+| `votingDelay`       | `uint48`  | Delay before voting snapshot               |
+| `votingPeriod`      | `uint32`  | Duration of voting window                  |
+| `voteExtension`     | `uint48`  | Late quorum time extension                 |
 | `proposalThreshold` | `uint256` | Fraction of supply needed to propose (D18) |
-| `quorumNumerator` | `uint256` | Fraction of supply needed for quorum (D18) |
+| `quorumNumerator`   | `uint256` | Fraction of supply needed for quorum (D18) |
 
 ### Parameter Constraints
 
 The following enforcement limits apply to optimistic governance parameters:
 
-| Parameter | Constraint | Constant |
-|-----------|------------|----------|
-| `vetoPeriod` | >= 30 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
-| `vetoThreshold` | > 0 and <= 20% | `MAX_VETO_THRESHOLD` |
-| `slashingPercentage` | >= 0 and <= 100% | Validated in `_setOptimisticParams()` |
-| `numParallelProposals` | <= 5 | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS` |
+| Parameter              | Constraint       | Constant                              |
+| ---------------------- | ---------------- | ------------------------------------- |
+| `vetoPeriod`           | >= 30 minutes    | `MIN_OPTIMISTIC_VETO_PERIOD`          |
+| `vetoThreshold`        | > 0 and <= 20%   | `MAX_VETO_THRESHOLD`                  |
+| `slashingPercentage`   | >= 0 and <= 100% | Validated in `_setOptimisticParams()` |
+| `numParallelProposals` | <= 5             | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS`   |
 
 ## Token Requirements
 
@@ -359,9 +370,9 @@ Any governance changes to the system itself must go through the slow proposal pa
 
 Both contracts are UUPS upgradeable:
 
-| Contract | Upgrade Authorization |
-|----------|----------------------|
-| `ReserveOptimisticGovernor` | Via governance (timelock must call `upgradeToAndCall`) |
+| Contract                       | Upgrade Authorization                                    |
+| ------------------------------ | -------------------------------------------------------- |
+| `ReserveOptimisticGovernor`    | Via governance (timelock must call `upgradeToAndCall`)   |
 | `TimelockControllerOptimistic` | Self-administered (only the timelock itself can upgrade) |
 
 ## Flow Summary

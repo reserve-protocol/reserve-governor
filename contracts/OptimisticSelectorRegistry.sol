@@ -6,27 +6,11 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
+import { IOptimisticSelectorRegistry } from "./interfaces/IOptimisticSelectorRegistry.sol";
 
-contract OptimisticSelectorRegistry is Initializable {
+contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
-
-    // === Events ===
-
-    event SelectorsAdded(address indexed target, bytes4[] indexed selectors);
-    event SelectorsRemoved(address indexed target, bytes4[] indexed selectors);
-
-    // === Errors ===
-
-    error OnlyOwner();
-    error SelfAsTarget();
-
-    // === Structs ===
-
-    struct SelectorData {
-        address target;
-        bytes4[] selectors;
-    }
 
     // === State ===
 

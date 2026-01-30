@@ -32,12 +32,12 @@ import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 import {
     CANCELLER_ROLE,
-    IReserveGovernor,
+    IReserveOptimisticGovernor,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
     MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
-} from "./interfaces/IReserveGovernor.sol";
+} from "./interfaces/IReserveOptimisticGovernor.sol";
 import { IVetoToken } from "./interfaces/IVetoToken.sol";
 import { OptimisticProposalLib } from "./libraries/OptimisticProposalLib.sol";
 
@@ -63,7 +63,7 @@ contract ReserveOptimisticGovernor is
     GovernorVotesQuorumFractionUpgradeable,
     GovernorTimelockControlUpgradeable,
     UUPSUpgradeable,
-    IReserveGovernor
+    IReserveOptimisticGovernor
 {
     address public immutable optimisticProposalImpl;
 

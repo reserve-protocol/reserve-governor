@@ -10,22 +10,21 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
+import { ITimelockControllerOptimistic } from "./interfaces/ITimelockControllerOptimistic.sol";
+
 contract TimelockControllerOptimistic is
     TimelockControllerUpgradeable,
     AccessControlEnumerableUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    ITimelockControllerOptimistic
 {
-    error TimelockControllerOptimistic__OperationConflict();
-    error TimelockControllerOptimistic__UnauthorizedUpgrade();
-
-    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
 
     function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
         public
-        override
+        override(ITimelockControllerOptimistic, TimelockControllerUpgradeable)
         initializer
     {
         __TimelockController_init(minDelay, proposers, executors, admin);

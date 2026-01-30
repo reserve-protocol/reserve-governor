@@ -7,30 +7,16 @@ import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
+import { IReserveOptimisticGovernorDeployer } from "./interfaces/IDeployer.sol";
 import {
     CANCELLER_ROLE,
     EXECUTOR_ROLE,
-    IReserveGovernor,
+    IReserveOptimisticGovernor,
     OPTIMISTIC_PROPOSER_ROLE,
     PROPOSER_ROLE
-} from "./interfaces/IReserveGovernor.sol";
-import { IVetoToken } from "./interfaces/IVetoToken.sol";
+} from "./interfaces/IReserveOptimisticGovernor.sol";
 
-struct DeploymentParams {
-    IReserveGovernor.OptimisticGovernanceParams optimisticParams;
-    IReserveGovernor.StandardGovernanceParams standardParams;
-    IVetoToken token;
-    OptimisticSelectorRegistry.SelectorData[] selectorData;
-    address[] optimisticProposers;
-    address[] guardians;
-    uint256 timelockDelay;
-}
-
-contract Deployer {
-    event ReserveGovernorSystemDeployed(
-        address indexed governor, address indexed timelock, address indexed token, address OptimisticSelectorRegistry
-    );
-
+contract ReserveOptimisticGovernorDeployer is IReserveOptimisticGovernorDeployer {
     address public immutable governorImpl;
     address public immutable timelockImpl;
     address public immutable selectorRegistryImpl;
@@ -96,6 +82,6 @@ contract Deployer {
         // Step 6: Renounce admin role
         _timelock.renounceRole(_timelock.DEFAULT_ADMIN_ROLE(), address(this));
 
-        emit ReserveGovernorSystemDeployed(governor, timelock, address(params.token), selectorRegistry);
+        emit ReserveOptimisticGovernorSystemDeployed(governor, timelock, address(params.token), selectorRegistry);
     }
 }
