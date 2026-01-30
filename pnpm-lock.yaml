@@ -20,8 +20,8 @@ importers:
         specifier: ^5.4.0
         version: 5.4.0(patch_hash=0bffbc4488ca2b60087b08ff462cd91ca320c810d09c6f482aeda3b47280fcb4)(@openzeppelin/contracts@5.4.0)
       '@reserve-protocol/reserve-index-dtf':
-        specifier: github:reserve-protocol/reserve-index-dtf#907e80f979a48b5d665a6565d97baa43138eb6c8
-        version: folio@https://codeload.github.com/reserve-protocol/reserve-index-dtf/tar.gz/907e80f979a48b5d665a6565d97baa43138eb6c8(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)
+        specifier: github:reserve-protocol/reserve-index-dtf#59a972d19f2e5e77c6dbee1424a38c55f3b03dd2
+        version: folio@https://codeload.github.com/reserve-protocol/reserve-index-dtf/tar.gz/59a972d19f2e5e77c6dbee1424a38c55f3b03dd2(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)
       forge-std:
         specifier: github:foundry-rs/forge-std#v1.14.0
         version: https://codeload.github.com/foundry-rs/forge-std/tar.gz/1801b0541f4fda118a10798fd3486bb7051c5dd6
@@ -454,8 +454,8 @@ packages:
     resolution: {integrity: sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw==}
     engines: {node: '>=8'}
 
-  folio@https://codeload.github.com/reserve-protocol/reserve-index-dtf/tar.gz/907e80f979a48b5d665a6565d97baa43138eb6c8:
-    resolution: {tarball: https://codeload.github.com/reserve-protocol/reserve-index-dtf/tar.gz/907e80f979a48b5d665a6565d97baa43138eb6c8}
+  folio@https://codeload.github.com/reserve-protocol/reserve-index-dtf/tar.gz/59a972d19f2e5e77c6dbee1424a38c55f3b03dd2:
+    resolution: {tarball: https://codeload.github.com/reserve-protocol/reserve-index-dtf/tar.gz/59a972d19f2e5e77c6dbee1424a38c55f3b03dd2}
     version: 0.1.0
 
   forge-std@https://codeload.github.com/foundry-rs/forge-std/tar.gz/1801b0541f4fda118a10798fd3486bb7051c5dd6:
@@ -1583,7 +1583,7 @@ snapshots:
       locate-path: 5.0.0
       path-exists: 4.0.0
 
-  folio@https://codeload.github.com/reserve-protocol/reserve-index-dtf/tar.gz/907e80f979a48b5d665a6565d97baa43138eb6c8(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0):
+  folio@https://codeload.github.com/reserve-protocol/reserve-index-dtf/tar.gz/59a972d19f2e5e77c6dbee1424a38c55f3b03dd2(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0):
     dependencies:
       '@openzeppelin/contracts': 5.1.0
       '@openzeppelin/contracts-upgradeable': 5.1.0(patch_hash=0bffbc4488ca2b60087b08ff462cd91ca320c810d09c6f482aeda3b47280fcb4)(@openzeppelin/contracts@5.1.0)

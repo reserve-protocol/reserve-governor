@@ -26,7 +26,7 @@ interface IReserveOptimisticGovernorDeployer {
 
     // === Functions ===
 
-    function deploy(DeploymentParams calldata params)
+    function deploy(DeploymentParams calldata params, bytes32 deploymentNonce)
         external
         returns (address governor, address timelock, address selectorRegistry);
 }
