@@ -68,3 +68,6 @@ interface IReserveOptimisticGovernor {
         address _selectorRegistry
     ) external;
 }
+
+/// @dev This interface is separate to avoid too many interface overloads in the implementation
+interface IReserveGovernorFull is IReserveOptimisticGovernor, IGovernor { }
