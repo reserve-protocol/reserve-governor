@@ -3,8 +3,8 @@ pragma solidity ^0.8.33;
 
 import { Test } from "forge-std/Test.sol";
 
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
@@ -64,17 +64,19 @@ contract ReserveOptimisticGovernorTest is Test {
         // Deploy underlying token
         underlying = new MockERC20("Underlying Token", "UNDL");
 
-
         // Deploy StakingVault
         address stakingVaultImpl = address(new StakingVault());
-        bytes memory stakingVaultInitData = abi.encodeCall(StakingVault.initialize, (
-            "Staked Token",
-            "stTKN",
-            IERC20(address(underlying)),
-            address(this), // owner
-            REWARD_HALF_LIFE,
-            UNSTAKING_DELAY
-        ));
+        bytes memory stakingVaultInitData = abi.encodeCall(
+            StakingVault.initialize,
+            (
+                "Staked Token",
+                "stTKN",
+                IERC20(address(underlying)),
+                address(this), // owner
+                REWARD_HALF_LIFE,
+                UNSTAKING_DELAY
+            )
+        );
         stakingVault = StakingVault(address(new ERC1967Proxy(stakingVaultImpl, stakingVaultInitData)));
 
         // Deploy implementations
@@ -122,7 +124,7 @@ contract ReserveOptimisticGovernorTest is Test {
             });
 
         // Deploy governance system
-        (address governorAddr, address timelockAddr, address selectorRegistryAddr) = deployer.deploy(params);
+        (address governorAddr, address timelockAddr, address selectorRegistryAddr) = deployer.deploy(params, bytes32(0));
         governor = ReserveOptimisticGovernor(payable(governorAddr));
         timelock = TimelockControllerOptimistic(payable(timelockAddr));
         registry = OptimisticSelectorRegistry(selectorRegistryAddr);

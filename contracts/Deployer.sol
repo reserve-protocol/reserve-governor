@@ -30,10 +30,12 @@ contract ReserveOptimisticGovernorDeployer is IReserveOptimisticGovernorDeployer
     /// @notice Deploy a complete Reserve Governor system with UUPS proxies
     /// @return governor The deployed Governor proxy address
     /// @return timelock The deployed Timelock proxy address
-    function deploy(DeploymentParams calldata params)
+    function deploy(DeploymentParams calldata params, bytes32 deploymentNonce)
         external
         returns (address governor, address timelock, address selectorRegistry)
     {
+        bytes32 deploymentSalt = keccak256(abi.encode(msg.sender, params, deploymentNonce));
+
         // Step 0: Confirm token is burnable
         params.token.burn(0);
 
@@ -42,17 +44,17 @@ contract ReserveOptimisticGovernorDeployer is IReserveOptimisticGovernorDeployer
             TimelockControllerOptimistic.initialize,
             (params.timelockDelay, new address[](0), new address[](0), address(this))
         );
-        timelock = address(new ERC1967Proxy(timelockImpl, timelockInitData));
+        timelock = address(new ERC1967Proxy{ salt: deploymentSalt }(timelockImpl, timelockInitData));
 
         // Step 2: Deploy OptimisticSelectorRegistry proxy
-        selectorRegistry = Clones.clone(selectorRegistryImpl);
+        selectorRegistry = Clones.cloneDeterministic(selectorRegistryImpl, deploymentSalt);
 
         // Step 3: Deploy Governor proxy
         bytes memory governorInitData = abi.encodeCall(
             ReserveOptimisticGovernor.initialize,
             (params.optimisticParams, params.standardParams, params.token, timelock, selectorRegistry)
         );
-        governor = address(new ERC1967Proxy(governorImpl, governorInitData));
+        governor = address(new ERC1967Proxy{ salt: deploymentSalt }(governorImpl, governorInitData));
 
         // Step 4: Finalize OptimisticSelectorRegistry proxy
         OptimisticSelectorRegistry(payable(selectorRegistry)).initialize(governor, params.selectorData);
