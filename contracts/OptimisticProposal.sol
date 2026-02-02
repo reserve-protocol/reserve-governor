@@ -55,7 +55,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     error OptimisticProposal__ZeroWithdrawal();
     error OptimisticProposal__NotGovernor();
     error OptimisticProposal__NotSlashed();
-    error OptimisticProposal__UnderDispute();
+    error OptimisticProposal__UnderConfirmation();
 
     // === Enums ===
 
@@ -95,7 +95,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     }
 
     /// @param _params.vetoPeriod {s} Veto period
-    /// @param _params.vetoThreshold D18{1} Fraction of token supply required to lock proposal for dispute
+    /// @param _params.vetoThreshold D18{1} Fraction of token supply required to lock proposal for confirmation
     /// @param _params.slashingPercentage D18{1} Fraction of staked tokens to be potentially slashed
     function initialize(
         IReserveOptimisticGovernor.OptimisticGovernanceParams calldata _params,
@@ -145,11 +145,11 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
             IReserveOptimisticGovernor.ProposalType proposalType = governor.proposalType(proposalId);
 
             if (proposalType == IReserveOptimisticGovernor.ProposalType.Optimistic) {
-                // Proposal executed without dispute
+                // Proposal executed without confirmation
 
                 return OptimisticProposalState.Executed;
             } else {
-                // Proposal under dispute
+                // Proposal under confirmation
 
                 if (
                     governorState == IGovernor.ProposalState.Defeated
@@ -169,7 +169,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
                 return OptimisticProposalState.Locked;
             }
         } catch {
-            // Proposal not under dispute nor executed
+            // Proposal not under confirmation nor executed
 
             if (block.timestamp > voteEnd) {
                 return OptimisticProposalState.Succeeded;
@@ -194,7 +194,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === Admin ===
 
-    /// Cancel an optimistic proposal WITHOUT a corresponding adjudicating slow proposal
+    /// Cancel an optimistic proposal WITHOUT a corresponding confirmation proposal
     /// Caller must have CANCELLER_ROLE or OPTIMISTIC_PROPOSER_ROLE
     function cancel() external {
         TimelockControllerOptimistic timelock = TimelockControllerOptimistic(payable(governor.timelock()));
@@ -231,8 +231,8 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         totalStaked += amount;
 
         if (totalStaked == vetoThreshold) {
-            // initiate dispute process via slow proposal
-            governor.proposeDispute(targets, values, calldatas, description, proposer, totalStaked);
+            // initiate confirmation process via slow proposal
+            governor.proposeConfirmation(targets, values, calldatas, description, proposer, totalStaked);
         }
 
         token.safeTransferFrom(_msgSender(), address(this), amount);
@@ -241,7 +241,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     function withdraw() external {
         OptimisticProposalState _state = state();
-        require(_state != OptimisticProposalState.Locked, OptimisticProposal__UnderDispute());
+        require(_state != OptimisticProposalState.Locked, OptimisticProposal__UnderConfirmation());
 
         // can leave dust behind equal to total number of deposits
         // {tok} = {tok} * D18{1}
