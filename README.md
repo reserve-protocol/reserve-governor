@@ -65,30 +65,30 @@ Fast proposals skip voting entirely and execute after a veto period unless commu
                     ▼                              ▼                              ▼
             ┌───────────────┐             ┌───────────────┐              ┌───────────────┐
             │   CANCELED    │             │   SUCCEEDED   │              │    LOCKED     │
-            │               │             │ (veto period  │              │  (dispute     │
-            │ (guardian or  │             │   expired)    │              │   started)    │
+            │               │             │ (veto period  │              │ (confirmation │
+            │ (guardian or  │             │   expired)    │              │    started)   │
             │  proposer)    │             └───────┬───────┘              └───────┬───────┘
             └───────────────┘                     │                              │
                                                   ▼                   ┌──────────┼──────────┐
                                           ┌───────────────┐          │          │          │
                                           │   EXECUTED    │          ▼          ▼          ▼
-                                          │  (via bypass) │   ┌──────────┐ ┌────────-┐ ┌────────-┐
-                                          └───────────────┘   │ SLASHED  │ │ VETOED  │ │CANCELED │
-                                                              │(dispute  │ │(dispute │ │(dispute │
-                                                              │ passed;  │ │ failed) │ │canceled)│
-                                                              │ executes)│ |         | |         |
-                                                              └──────────┘ └────────-┘ └──────── ┘
+                                          │  (via bypass) │   ┌──────────┐ ┌─────────-┐ ┌─────────-┐
+                                          └───────────────┘   │ SLASHED  │ │  VETOED  │ │ CANCELED │
+                                                              │(confirm  │ │(confirm  │ │(confirm  │
+                                                              │ passed;  │ │ failed)  │ │ canceled)│
+                                                              │ executes)│ │          │ │          │
+                                                              └──────────┘ └─────────-┘ └─────────-┘
 ```
 
 ### Fast Proposal Paths
 
-| Path | Name                          | Flow                          | Outcome                                                       |
-| ---- | ----------------------------- | ----------------------------- | ------------------------------------------------------------- |
-| F1   | Uncontested Success           | Active → Succeeded → Executed | Proposal executes after veto period via `executeOptimistic()` |
-| F2   | Early Cancellation            | Active → Canceled             | Proposal stopped before dispute; stakers withdraw full amount |
-| F3   | Dispute Passes                | Active → Locked → Slashed     | Vetoers were wrong; slashed, proposal executes via slow vote  |
-| F4   | Dispute Fails (Veto Succeeds) | Active → Locked → Vetoed      | Veto succeeds! Proposal blocked, stakers withdraw full amount |
-| F5   | Dispute Canceled              | Active → Locked → Canceled    | Guardian cancels dispute; stakers withdraw full amount        |
+| Path | Name                          | Flow                          | Outcome                                                            |
+| ---- | ----------------------------- | ----------------------------- | ------------------------------------------------------------------ |
+| F1   | Uncontested Success           | Active → Succeeded → Executed | Proposal executes after veto period via `executeOptimistic()`      |
+| F2   | Early Cancellation            | Active → Canceled             | Proposal stopped before confirmation; stakers withdraw full amount |
+| F3   | Confirmation Passes           | Active → Locked → Slashed     | Vetoers were wrong; slashed, proposal executes via slow vote  |
+| F4   | Confirmation Fails            | Active → Locked → Vetoed      | Veto succeeds! Proposal blocked, stakers withdraw full amount |
+| F5   | Confirmation Canceled         | Active → Locked → Canceled    | Guardian cancels confirmation; stakers withdraw full amount   |
 
 ### Slow Proposal Lifecycle
 
@@ -127,8 +127,8 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting and ti
 1. Any token holder can call `stakeToVeto(maxAmount)` on an `OptimisticProposal` during the veto period
 2. Staked tokens are locked in the proposal contract
 3. If total staked tokens reach `vetoThreshold`, the proposal enters `Locked` state
-4. The proposal automatically initiates a slow (dispute) vote via `governor.proposeDispute()`, which casts the staked tokens as initial AGAINST votes
-5. The dispute vote determines whether the proposal should execute
+4. The proposal automatically initiates a slow (confirmation) vote via `governor.proposeConfirmation()`, which casts the staked tokens as initial AGAINST votes
+5. The confirmation vote determines whether the proposal should execute
 
 ### Veto Threshold
 
@@ -136,14 +136,14 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting and ti
 vetoThreshold = ceil((vetoThresholdRatio * tokenSupply) / 1e18)
 ```
 
-## Dispute Process
+## Confirmation Process
 
 When a fast proposal reaches the vetoThreshold (becomes `Locked`):
 
-1. **Slow Vote Initiated**: The `OptimisticProposal` calls `governor.proposeDispute()` to start a standard governance vote with staked tokens counted as initial AGAINST votes
+1. **Slow Vote Initiated**: The `OptimisticProposal` calls `governor.proposeConfirmation()` to start a standard governance vote with staked tokens counted as initial AGAINST votes
 2. **Three Possible Outcomes**:
 
-| Dispute Result             | OptimisticProposal State | Proposal Outcome  | Staker Outcome        |
+| Confirmation Result        | OptimisticProposal State | Proposal Outcome  | Staker Outcome        |
 | -------------------------- | ------------------------ | ----------------- | --------------------- |
 | **Vote Passes** (Executed) | `Slashed`                | Proposal executes | Slashed on withdrawal |
 | **Vote Fails** (Defeated)  | `Vetoed`                 | Proposal blocked  | Full refund           |
@@ -151,7 +151,7 @@ When a fast proposal reaches the vetoThreshold (becomes `Locked`):
 
 ### Slashing Mechanics
 
-Slashing only applies when the dispute vote passes (state = `Slashed`):
+Slashing only applies when the confirmation vote passes (state = `Slashed`):
 
 ```
 withdrawalAmount = stakedAmount * (1e18 - slashingPercentage) / 1e18
@@ -165,13 +165,13 @@ Slashed tokens are burned via `token.burn()`.
 
 | Proposal State | Can Withdraw? | Slashing Applied? | Meaning                             |
 | -------------- | ------------- | ----------------- | ----------------------------------- |
-| Active         | Yes           | No                | Veto period ongoing, can unstake    |
-| Succeeded      | Yes           | No                | Veto period ended without challenge |
-| Locked         | **No**        | N/A               | Dispute in progress                 |
+| Active         | Yes           | No                | Veto period ongoing, can unstake       |
+| Succeeded      | Yes           | No                | Veto period ended without challenge    |
+| Locked         | **No**        | N/A               | Confirmation vote in progress          |
 | Vetoed         | Yes           | **No**            | Veto succeeded! Stakers were right  |
 | Slashed        | Yes           | **Yes**           | Vetoers were wrong, penalty applied |
 | Canceled       | Yes           | No                | Proposal canceled, full refund      |
-| Executed       | Yes           | No                | Proposal executed without dispute   |
+| Executed       | Yes           | No                | Proposal executed without challenge |
 
 ### Risk Assessment
 
@@ -182,13 +182,13 @@ Slashed tokens are burned via `token.burn()`.
 
 **High Risk Scenarios:**
 
-- Staking against legitimate proposals (risk of slashing if dispute passes)
+- Staking against legitimate proposals (risk of slashing if confirmation passes)
 
 ### Key Insight: Vetoed vs Slashed
 
-- **Vetoed**: The community AGREED with the stakers. The dispute vote failed/was defeated, confirming the proposal should not execute. Stakers get their full stake back as a reward for protecting the protocol.
+- **Vetoed**: The community AGREED with the stakers. The confirmation vote failed/was defeated, confirming the proposal should not execute. Stakers get their full stake back as a reward for protecting the protocol.
 
-- **Slashed**: The community DISAGREED with the stakers. The dispute vote passed, meaning the proposal was legitimate. Stakers are penalized for blocking a valid proposal.
+- **Slashed**: The community DISAGREED with the stakers. The confirmation vote passed, meaning the proposal was legitimate. Stakers are penalized for blocking a valid proposal.
 
 ## Proposal Types
 
@@ -196,13 +196,13 @@ The `proposalType(proposalId)` function returns the type of a proposal:
 
 ```solidity
 enum ProposalType {
-    Optimistic,  // Fast proposal (no voting unless disputed)
+    Optimistic,  // Fast proposal (no voting unless challenged)
     Standard     // Slow proposal (full voting process)
 }
 ```
 
 - **Optimistic**: Created via `proposeOptimistic()`, uses `OptimisticProposal.state()` for status
-- **Standard**: Created via `propose()` or when dispute is triggered, uses `governor.state()` for status
+- **Standard**: Created via `propose()` or when confirmation vote is triggered, uses `governor.state()` for status
 
 ## Roles
 
@@ -233,7 +233,7 @@ The main hybrid governor contract.
 
 - `proposeOptimistic(targets, values, calldatas, description)` - Create a fast proposal
 - `executeOptimistic(proposalId)` - Execute a succeeded fast proposal
-- `proposeDispute(targets, values, calldatas, description, initialProposer, initialVotesAgainst)` - Create a dispute proposal (only callable by OptimisticProposal contracts)
+- `proposeConfirmation(targets, values, calldatas, description, initialProposer, initialVotesAgainst)` - Create a confirmation proposal (only callable by OptimisticProposal contracts)
 
 **State Query:**
 
@@ -266,7 +266,7 @@ Per-proposal contract handling veto logic. Created as a clone for each fast prop
 - `staked(address)` - Returns amount staked by address
 - `totalStaked` - Total tokens staked against the proposal
 - `voteEnd` - Timestamp when veto period ends (uint48)
-- `vetoThreshold` - Token amount needed to trigger dispute
+- `vetoThreshold` - Token amount needed to trigger confirmation vote
 - `canceled` - Whether proposal was canceled
 - `proposalData()` - Returns `(targets, values, calldatas, description)`
 
@@ -311,7 +311,7 @@ Extended timelock supporting both flows.
 | Parameter              | Type      | Description                                        |
 | ---------------------- | --------- | -------------------------------------------------- |
 | `vetoPeriod`           | `uint32`  | Duration of veto window in seconds                 |
-| `vetoThreshold`        | `uint256` | Fraction of supply needed to trigger dispute (D18) |
+| `vetoThreshold`        | `uint256` | Fraction of supply needed to trigger confirmation (D18) |
 | `slashingPercentage`   | `uint256` | Fraction of stake slashed on failed veto (D18)     |
 | `numParallelProposals` | `uint256` | Maximum number of concurrent optimistic proposals  |
 
@@ -388,7 +388,7 @@ Fast Proposal:
                                 └─► [staking reaches threshold]
                                             │
                                             ▼
-                                      LOCKED (dispute)
+                                    LOCKED (confirmation)
                                             │
                         ┌───────────────────┼───────────────────┐
                         ▼                   ▼                   ▼

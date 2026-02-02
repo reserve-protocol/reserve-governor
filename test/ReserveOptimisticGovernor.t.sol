@@ -328,10 +328,10 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Canceled));
     }
 
-    // ==================== F3: Dispute Passes (Slashed) ====================
+    // ==================== F3: Confirmation Passes (Slashed) ====================
     // Active → Locked → Slashed
 
-    function test_fastProposal_F3_disputePasses_slashed() public {
+    function test_fastProposal_F3_confirmationPasses_slashed() public {
         // Setup: Send tokens to timelock
         uint256 transferAmount = 1000e18;
         underlying.mint(address(timelock), transferAmount);
@@ -346,7 +346,7 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, transferAmount));
 
-        string memory description = "Transfer tokens - will be disputed";
+        string memory description = "Transfer tokens - will be confirmed";
 
         // Warp to ensure we have a snapshot
         vm.warp(block.timestamp + 1);
@@ -359,16 +359,16 @@ contract ReserveOptimisticGovernorTest is Test {
         // Calculate veto threshold
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Alice stakes to veto (enough to trigger dispute)
+        // Alice stakes to veto (enough to trigger confirmation)
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
         vm.stopPrank();
 
-        // Verify proposal is now locked (dispute started)
+        // Verify proposal is now locked (confirmation started)
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
-        // Verify dispute proposal was created with initial AGAINST votes (proposalType should now be Standard)
+        // Verify confirmation proposal was created with initial AGAINST votes (proposalType should now be Standard)
         assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
 
         // Verify initial AGAINST votes equal vetoThreshold
@@ -380,7 +380,7 @@ contract ReserveOptimisticGovernorTest is Test {
         // Warp past voting delay
         vm.warp(block.timestamp + VOTING_DELAY + 1);
 
-        // Cast votes - both alice and bob vote FOR (dispute passes = vetoers were wrong)
+        // Cast votes - both alice and bob vote FOR (confirmation passes = vetoers were wrong)
         vm.prank(alice);
         governor.castVote(proposalId, 1); // Vote for
 
@@ -424,10 +424,10 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(stakingVault.balanceOf(alice), aliceStakingBalanceBefore + expectedWithdrawal);
     }
 
-    // ==================== F4: Dispute Fails (Vetoed) ====================
+    // ==================== F4: Confirmation Fails (Vetoed) ====================
     // Active → Locked → Vetoed
 
-    function test_fastProposal_F4_disputeFails_vetoed() public {
+    function test_fastProposal_F4_confirmationFails_vetoed() public {
         // Create proposal
         address[] memory targets = new address[](1);
         targets[0] = address(underlying);
@@ -487,10 +487,10 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(stakingVault.balanceOf(alice), aliceStakingBalanceBefore + vetoThreshold);
     }
 
-    // ==================== F5a: Dispute Canceled ====================
+    // ==================== F5a: Confirmation Canceled ====================
     // Active → Locked → Canceled
 
-    function test_fastProposal_F5a_disputeCanceled() public {
+    function test_fastProposal_F5a_confirmationCanceled() public {
         // Create proposal
         address[] memory targets = new address[](1);
         targets[0] = address(underlying);
@@ -501,7 +501,7 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
-        string memory description = "Transfer tokens - dispute canceled";
+        string memory description = "Transfer tokens - confirmation canceled";
 
         // Warp to ensure we have a snapshot
         vm.warp(block.timestamp + 1);
@@ -521,7 +521,7 @@ contract ReserveOptimisticGovernorTest is Test {
         // Verify locked
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
-        // Guardian cancels the slow proposal (dispute)
+        // Guardian cancels the slow proposal (confirmation)
         // Use modified description from OptimisticProposal which includes #proposer= suffix
         bytes32 descriptionHash = keccak256(bytes(optProposal.description()));
         vm.prank(guardian);
@@ -539,10 +539,10 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(stakingVault.balanceOf(alice), aliceStakingBalanceBefore + vetoThreshold);
     }
 
-    // ==================== F5b: Dispute Vote Expires (No Quorum) ====================
+    // ==================== F5b: Confirmation Vote Expires (No Quorum) ====================
     // Active → Locked → Vetoed (via vote not reaching quorum)
 
-    function test_fastProposal_F5b_disputeNoQuorum() public {
+    function test_fastProposal_F5b_confirmationNoQuorum() public {
         // Create proposal
         address[] memory targets = new address[](1);
         targets[0] = address(underlying);
@@ -553,7 +553,7 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
-        string memory description = "Transfer tokens - dispute no quorum";
+        string memory description = "Transfer tokens - confirmation no quorum";
 
         // Warp to ensure we have a snapshot
         vm.warp(block.timestamp + 1);
@@ -576,7 +576,7 @@ contract ReserveOptimisticGovernorTest is Test {
         // Warp past voting delay
         vm.warp(block.timestamp + VOTING_DELAY + 1);
 
-        // No additional votes cast - dispute has only initial AGAINST votes from vetoers
+        // No additional votes cast - confirmation has only initial AGAINST votes from vetoers
 
         // Warp past voting period
         vm.warp(block.timestamp + VOTING_PERIOD + 1);
@@ -584,7 +584,7 @@ contract ReserveOptimisticGovernorTest is Test {
         // Verify defeated (no quorum)
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
 
-        // Verify vetoed state (since dispute failed due to no quorum)
+        // Verify vetoed state (since confirmation failed due to no quorum)
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Vetoed));
 
         // Alice withdraws - should receive full amount (no slashing when veto succeeds)
@@ -747,7 +747,7 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Alice stakes to trigger dispute
+        // Alice stakes to trigger confirmation
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
@@ -758,7 +758,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Try to withdraw - should fail
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__UnderDispute.selector));
+        vm.expectRevert(abi.encodeWithSelector(OptimisticProposal.OptimisticProposal__UnderConfirmation.selector));
         optProposal.withdraw();
     }
 
@@ -918,13 +918,13 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Stake to trigger dispute
+        // Stake to trigger confirmation
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
         vm.stopPrank();
 
-        // After dispute triggered, it should be Standard
+        // After confirmation triggered, it should be Standard
         assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
     }
 
@@ -1099,7 +1099,7 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Stake to trigger dispute (locked state)
+        // Stake to trigger confirmation (locked state)
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
@@ -1135,7 +1135,7 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Stake to trigger dispute
+        // Stake to trigger confirmation
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
@@ -1182,13 +1182,13 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Stake to trigger dispute
+        // Stake to trigger confirmation
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
         vm.stopPrank();
 
-        // Vote FOR (dispute passes = slash stakers)
+        // Vote FOR (confirmation passes = slash stakers)
         vm.warp(block.timestamp + VOTING_DELAY + 1);
         vm.prank(alice);
         governor.castVote(proposalId, 1);
@@ -1214,7 +1214,7 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.executeOptimistic(proposalId);
     }
 
-    function test_governorStateRevertsForUndisputedOptimistic() public {
+    function test_governorStateRevertsForUnConfirmedOptimistic() public {
         address[] memory targets = new address[](1);
         targets[0] = address(underlying);
 
@@ -1229,7 +1229,7 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
-        // Calling state() on an active (undisputed) optimistic proposal should revert
+        // Calling state() on an active (unconfirmed) optimistic proposal should revert
         // because there's no slow proposal yet
         vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorNonexistentProposal.selector, proposalId));
         governor.state(proposalId);
@@ -1416,7 +1416,7 @@ contract ReserveOptimisticGovernorTest is Test {
         optProposal.stakeToVeto(2);
         vm.stopPrank();
 
-        // Now locked - dispute should have been created exactly once
+        // Now locked - confirmation should have been created exactly once
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
         assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
 
@@ -1482,7 +1482,7 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Stake to trigger dispute
+        // Stake to trigger confirmation
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
@@ -1490,7 +1490,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
-        // Guardian cancels the dispute proposal via governor
+        // Guardian cancels the confirmation proposal via governor
         bytes32 descriptionHash = keccak256(bytes(optProposal.description()));
 
         vm.prank(guardian);
@@ -1513,7 +1513,7 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
-        string memory description = "Transfer tokens - proposer cancels dispute";
+        string memory description = "Transfer tokens - proposer cancels confirmation";
 
         vm.warp(block.timestamp + 1);
 
@@ -1524,17 +1524,17 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Alice stakes to trigger dispute
+        // Alice stakes to trigger confirmation
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
         vm.stopPrank();
 
-        // Verify proposal is now in Locked (dispute) state
+        // Verify proposal is now in Locked (confirmation) state
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
-        // The original optimisticProposer cancels the dispute proposal via governor
-        // This works because proposeDispute() sets the proposer as the initialProposer
+        // The original optimisticProposer cancels the confirmation proposal via governor
+        // This works because proposeConfirmation() sets the proposer as the initialProposer
         bytes32 descriptionHash = keccak256(bytes(optProposal.description()));
 
         vm.prank(optimisticProposer);
@@ -1941,7 +1941,7 @@ contract ReserveOptimisticGovernorTest is Test {
         (,, uint256 slashingPct,) = governor.optimisticParams();
         assertEq(slashingPct, 0, "Slashing percentage should be 0");
 
-        // Step 2: Create an optimistic proposal that will be disputed
+        // Step 2: Create an optimistic proposal that will be confirmed
         underlying.mint(address(timelock), 1000e18);
 
         address[] memory optTargets = new address[](1);
@@ -1953,7 +1953,7 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes[] memory optCalldatas = new bytes[](1);
         optCalldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
-        string memory optDescription = "Transfer tokens - will be disputed with zero slashing";
+        string memory optDescription = "Transfer tokens - will be confirmed with zero slashing";
 
         vm.warp(block.timestamp + 1);
 
@@ -1963,7 +1963,7 @@ contract ReserveOptimisticGovernorTest is Test {
         OptimisticProposal optProposal = governor.optimisticProposals(optProposalId);
         uint256 vetoThreshold = optProposal.vetoThreshold();
 
-        // Step 3: Alice stakes to veto (triggers dispute)
+        // Step 3: Alice stakes to veto (triggers confirmation)
         vm.startPrank(alice);
         stakingVault.approve(address(optProposal), vetoThreshold);
         optProposal.stakeToVeto(vetoThreshold);
@@ -1971,7 +1971,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
         assertEq(uint256(optProposal.state()), uint256(OptimisticProposal.OptimisticProposalState.Locked));
 
-        // Step 4: Dispute passes (vetoers were wrong, they get "slashed")
+        // Step 4: Confirmation passes (vetoers were wrong, they get "slashed")
         vm.warp(block.timestamp + VOTING_DELAY + 1);
 
         vm.prank(alice);

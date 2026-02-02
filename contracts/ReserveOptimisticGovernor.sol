@@ -86,7 +86,7 @@ contract ReserveOptimisticGovernor is
     }
 
     /// @param optimisticGovParams.vetoPeriod {s} Veto period
-    /// @param optimisticGovParams.vetoThreshold D18{1} Fraction of tok supply required to start dispute process
+    /// @param optimisticGovParams.vetoThreshold D18{1} Fraction of tok supply required to start confirmation process
     /// @param optimisticGovParams.slashingPercentage D18{1} Percentage of staked tokens to be slashed
     /// @param optimisticGovParams.numParallelProposals Number of optimistic proposals that can be in parallel
     /// @param standardGovParams.votingDelay {s} Delay before snapshot
@@ -140,7 +140,7 @@ contract ReserveOptimisticGovernor is
         );
     }
 
-    /// Execute an optimistic proposal that passed successfully without dispute
+    /// Execute an optimistic proposal that passed successfully without confirmation
     function executeOptimistic(uint256 proposalId) external payable onlyOptimisticProposer {
         OptimisticProposalLib.executeOptimisticProposal(proposalId, optimisticProposals, _getGovernorStorage());
     }
@@ -215,8 +215,8 @@ contract ReserveOptimisticGovernor is
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
     }
 
-    /// Propose a dispute proposal, only callable by an OptimisticProposal
-    function proposeDispute(
+    /// Propose a confirmation proposal, only callable by an OptimisticProposal
+    function proposeConfirmation(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,

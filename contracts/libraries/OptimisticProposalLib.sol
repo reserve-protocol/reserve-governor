@@ -68,7 +68,7 @@ library OptimisticProposalLib {
 
         OptimisticProposal optimisticProposal = OptimisticProposal(Clones.clone(optimisticProposalImpl));
 
-        // ensure ONLY the OptimisticProposal can create the dispute proposal
+        // ensure ONLY the OptimisticProposal can create the confirmation proposal
         proposal.description =
             string.concat(proposal.description, "#proposer=", Strings.toHexString(address(optimisticProposal)));
 
