@@ -9,4 +9,12 @@ interface ITimelockControllerOptimistic {
 
     function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
         external;
+
+    function executeBatchBypass(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] calldata calldatas,
+        bytes32 predecessor,
+        bytes32 salt
+    ) external payable;
 }

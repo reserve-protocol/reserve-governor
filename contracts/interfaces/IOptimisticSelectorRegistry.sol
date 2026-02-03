@@ -18,4 +18,8 @@ interface IOptimisticSelectorRegistry {
         address target;
         bytes4[] selectors;
     }
+
+    // === Functions ===
+
+    function isAllowed(address target, bytes4 selector) external view returns (bool);
 }

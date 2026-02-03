@@ -1,24 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.20;
 
 import { Test } from "forge-std/Test.sol";
 
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
-import { IVetoToken } from "@interfaces/IVetoToken.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { OptimisticProposal } from "@src/OptimisticProposal.sol";
-import { OptimisticSelectorRegistry } from "@src/OptimisticSelectorRegistry.sol";
-import { ReserveOptimisticGovernor } from "@src/ReserveOptimisticGovernor.sol";
-import { TimelockControllerOptimistic } from "@src/TimelockControllerOptimistic.sol";
-
-import { StakingVault } from "@reserve-protocol/reserve-index-dtf/staking/StakingVault.sol";
+import { OptimisticProposal } from "@src/governance/OptimisticProposal.sol";
+import { OptimisticSelectorRegistry } from "@src/governance/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@src/governance/ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "@src/governance/TimelockControllerOptimistic.sol";
+import { StakingVault } from "@src/staking/StakingVault.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { ReserveOptimisticGovernorV2Mock } from "./mocks/ReserveOptimisticGovernorV2Mock.sol";
@@ -64,29 +61,16 @@ contract ReserveOptimisticGovernorTest is Test {
         // Deploy underlying token
         underlying = new MockERC20("Underlying Token", "UNDL");
 
-        // Deploy StakingVault
-        address stakingVaultImpl = address(new StakingVault());
-        bytes memory stakingVaultInitData = abi.encodeCall(
-            StakingVault.initialize,
-            (
-                "Staked Token",
-                "stTKN",
-                IERC20(address(underlying)),
-                address(this), // owner
-                REWARD_HALF_LIFE,
-                UNSTAKING_DELAY
-            )
-        );
-        stakingVault = StakingVault(address(new ERC1967Proxy(stakingVaultImpl, stakingVaultInitData)));
-
         // Deploy implementations
+        StakingVault stakingVaultImpl = new StakingVault();
         ReserveOptimisticGovernor governorImpl = new ReserveOptimisticGovernor();
         TimelockControllerOptimistic timelockImpl = new TimelockControllerOptimistic();
         OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
 
         // Deploy Deployer
-        deployer =
-            new ReserveOptimisticGovernorDeployer(address(governorImpl), address(timelockImpl), address(registryImpl));
+        deployer = new ReserveOptimisticGovernorDeployer(
+            address(stakingVaultImpl), address(governorImpl), address(timelockImpl), address(registryImpl)
+        );
 
         // Prepare deployment parameters
         address[] memory optimisticProposers = new address[](1);
@@ -116,7 +100,7 @@ contract ReserveOptimisticGovernorTest is Test {
                     proposalThreshold: PROPOSAL_THRESHOLD,
                     quorumNumerator: QUORUM_NUMERATOR
                 }),
-                token: IVetoToken(address(stakingVault)),
+                underlying: underlying,
                 selectorData: selectorData,
                 optimisticProposers: optimisticProposers,
                 guardians: guardians,
@@ -124,7 +108,9 @@ contract ReserveOptimisticGovernorTest is Test {
             });
 
         // Deploy governance system
-        (address governorAddr, address timelockAddr, address selectorRegistryAddr) = deployer.deploy(params, bytes32(0));
+        (address stakingVaultAddr, address governorAddr, address timelockAddr, address selectorRegistryAddr) =
+            deployer.deploy(params, bytes32(0));
+        stakingVault = StakingVault(stakingVaultAddr);
         governor = ReserveOptimisticGovernor(payable(governorAddr));
         timelock = TimelockControllerOptimistic(payable(timelockAddr));
         registry = OptimisticSelectorRegistry(selectorRegistryAddr);

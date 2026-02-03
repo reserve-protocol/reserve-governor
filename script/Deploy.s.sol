@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.20;
 
-import { ReserveOptimisticGovernorDeployer } from "../contracts/Deployer.sol";
-import { OptimisticSelectorRegistry } from "../contracts/OptimisticSelectorRegistry.sol";
-import { ReserveOptimisticGovernor } from "../contracts/ReserveOptimisticGovernor.sol";
-import { TimelockControllerOptimistic } from "../contracts/TimelockControllerOptimistic.sol";
 import { Script, console2 } from "forge-std/Script.sol";
+
+import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
+import { OptimisticSelectorRegistry } from "@src/governance/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@src/governance/ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "@src/governance/TimelockControllerOptimistic.sol";
 
 string constant junkSeedPhrase = "test test test test test test test test test test test junk";
 

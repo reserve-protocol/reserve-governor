@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.20;
 
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -27,19 +27,20 @@ import {
     GovernorVotesUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 
-import { OptimisticProposal } from "./OptimisticProposal.sol";
-import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
-import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 import {
     CANCELLER_ROLE,
-    IReserveOptimisticGovernor,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
     MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
-} from "./interfaces/IReserveOptimisticGovernor.sol";
-import { IVetoToken } from "./interfaces/IVetoToken.sol";
-import { OptimisticProposalLib } from "./libraries/OptimisticProposalLib.sol";
+} from "../interfaces/Constants.sol";
+import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
+import { IStakingVault } from "../interfaces/IStakingVault.sol";
+
+import { OptimisticProposal } from "./OptimisticProposal.sol";
+import { OptimisticProposalLib } from "./OptimisticProposalLib.sol";
+import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
+import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 
 /**
  * @title Reserve Optimistic Governor
@@ -97,7 +98,7 @@ contract ReserveOptimisticGovernor is
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
-        IVetoToken _token,
+        address _token,
         address _timelock,
         address _selectorRegistry
     ) public initializer {
@@ -107,7 +108,7 @@ contract ReserveOptimisticGovernor is
         );
         __GovernorPreventLateQuorum_init(standardGovParams.voteExtension);
         __GovernorCountingSimple_init();
-        __GovernorVotes_init(_token);
+        __GovernorVotes_init(IStakingVault(_token));
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
 

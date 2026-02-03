@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.20;
 
-import { ReserveOptimisticGovernor } from "@src/ReserveOptimisticGovernor.sol";
+import { ReserveOptimisticGovernor } from "@src/governance/ReserveOptimisticGovernor.sol";
 
 /// @dev Mock V2 implementation for upgrade testing
 contract ReserveOptimisticGovernorV2Mock is ReserveOptimisticGovernor {

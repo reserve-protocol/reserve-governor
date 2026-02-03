@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.20;
 
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
+import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
+
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
-import { IOptimisticSelectorRegistry } from "./interfaces/IOptimisticSelectorRegistry.sol";
 
 contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;

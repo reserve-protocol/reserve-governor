@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.20;
 
 import {
     AccessControlEnumerableUpgradeable,
@@ -10,7 +10,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import { ITimelockControllerOptimistic } from "./interfaces/ITimelockControllerOptimistic.sol";
+import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
 
 contract TimelockControllerOptimistic is
     TimelockControllerUpgradeable,
@@ -67,7 +67,7 @@ contract TimelockControllerOptimistic is
         bytes[] calldata payloads,
         bytes32 predecessor,
         bytes32 salt
-    ) public payable onlyRoleOrOpenRole(PROPOSER_ROLE) {
+    ) public payable override onlyRoleOrOpenRole(PROPOSER_ROLE) {
         bytes32 id = hashOperationBatch(targets, values, payloads, predecessor, salt);
 
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();

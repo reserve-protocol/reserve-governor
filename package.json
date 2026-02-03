@@ -16,7 +16,6 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.4.0",
-    "@reserve-protocol/reserve-index-dtf": "github:reserve-protocol/reserve-index-dtf#59a972d19f2e5e77c6dbee1424a38c55f3b03dd2",
     "forge-std": "github:foundry-rs/forge-std#v1.14.0"
   },
   "packageManager": "pnpm@10.28.0"

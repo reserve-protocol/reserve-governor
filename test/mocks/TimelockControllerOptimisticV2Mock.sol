@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.20;
 
-import { TimelockControllerOptimistic } from "@src/TimelockControllerOptimistic.sol";
+import { TimelockControllerOptimistic } from "@src/governance/TimelockControllerOptimistic.sol";
 
 /// @dev Mock V2 implementation for upgrade testing
 contract TimelockControllerOptimisticV2Mock is TimelockControllerOptimistic {

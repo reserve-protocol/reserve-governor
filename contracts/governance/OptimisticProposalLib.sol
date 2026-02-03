@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.20;
 
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
@@ -7,12 +7,15 @@ import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
+import {
+    GovernorTimelockControlUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
 
-import { OptimisticProposal } from "../OptimisticProposal.sol";
-import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
-import { ReserveOptimisticGovernor } from "../ReserveOptimisticGovernor.sol";
-import { TimelockControllerOptimistic } from "../TimelockControllerOptimistic.sol";
+import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
+import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
+
+import { OptimisticProposal } from "./OptimisticProposal.sol";
 
 library OptimisticProposalLib {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -33,7 +36,7 @@ library OptimisticProposalLib {
         EnumerableSet.AddressSet storage activeOptimisticProposals,
         IReserveOptimisticGovernor.OptimisticGovernanceParams calldata optimisticParams,
         address optimisticProposalImpl,
-        OptimisticSelectorRegistry selectorRegistry
+        IOptimisticSelectorRegistry selectorRegistry
     ) external returns (uint256 proposalId) {
         _clearCompletedOptimisticProposals(activeOptimisticProposals);
 
@@ -72,7 +75,7 @@ library OptimisticProposalLib {
         proposal.description =
             string.concat(proposal.description, "#proposer=", Strings.toHexString(address(optimisticProposal)));
 
-        proposalId = ReserveOptimisticGovernor(payable(address(this)))
+        proposalId = IGovernor(payable(address(this)))
             .getProposalId(
                 proposal.targets, proposal.values, proposal.calldatas, keccak256(bytes(proposal.description))
             );
@@ -177,7 +180,10 @@ library OptimisticProposalLib {
             || state == OptimisticProposal.OptimisticProposalState.Executed;
     }
 
-    function _timelock() private view returns (TimelockControllerOptimistic) {
-        return TimelockControllerOptimistic(payable(ReserveOptimisticGovernor(payable(address(this))).timelock()));
+    function _timelock() private view returns (ITimelockControllerOptimistic) {
+        return
+            ITimelockControllerOptimistic(
+                payable(GovernorTimelockControlUpgradeable(payable(address(this))).timelock())
+            );
     }
 }

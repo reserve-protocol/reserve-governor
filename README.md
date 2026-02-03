@@ -338,17 +338,6 @@ The following enforcement limits apply to optimistic governance parameters:
 
 ## Token Requirements
 
-### IVetoToken Interface
-
-The governance token must implement the `IVetoToken` interface, which extends `IERC20` and `IVotes`:
-
-- **`burn(uint256 amount)`**: Required for slashing mechanics. Must not revert for zero amount.
-- **`getPastTotalSupply(uint256 timepoint)`**: Required for snapshot-based veto threshold calculation.
-
-The burn function is verified at initialization by calling `token.burn(0)`.
-
-### Token Compatibility Warnings
-
 - **Rebasing tokens**: Not compatible with rebasing tokens
 - **Direct transfers**: Do NOT send tokens to OptimisticProposal directly; use `stakeToVeto()` instead
 - **Supply limit**: Token supply should be less than 1e59
