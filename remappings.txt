@@ -5,4 +5,7 @@ forge-std/=node_modules/forge-std/src/
 @reserve-protocol/reserve-index-dtf/=node_modules/@reserve-protocol/reserve-index-dtf/contracts/
 
 @src/=contracts/
+@governance/=contracts/governance/
 @interfaces/=contracts/interfaces/
+@staking/=contracts/staking/
+@utils/=contracts/utils/

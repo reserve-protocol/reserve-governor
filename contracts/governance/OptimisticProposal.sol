@@ -7,14 +7,14 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
+import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
+import { IStakingVault } from "../interfaces/IStakingVault.sol";
 import {
     CANCELLER_ROLE,
     MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
-} from "../interfaces/Constants.sol";
-import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
-import { IStakingVault } from "../interfaces/IStakingVault.sol";
+} from "../utils/Constants.sol";
 
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";

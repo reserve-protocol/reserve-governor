@@ -6,19 +6,32 @@ import "forge-std/Test.sol";
 import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IERC20, IERC4626 } from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-import { StakingVault, UnstakingManager } from "contracts/staking/StakingVault.sol";
+import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
+import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
+import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
+
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
+import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
+import { StakingVault } from "@src/staking/StakingVault.sol";
+import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
+import { DEFAULT_UNSTAKING_DELAY } from "@src/utils/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
+import { StakingVaultV2Mock } from "./mocks/StakingVaultV2Mock.sol";
 
 contract StakingVaultTest is Test {
     MockERC20 private token;
     MockERC20 private reward;
 
     StakingVault private vault;
-    StakingVault private implementation;
+    address private vaultImpl;
+
+    address private timelock;
 
     uint256 private constant REWARD_HALF_LIFE = 3 days;
 
@@ -31,30 +44,48 @@ contract StakingVaultTest is Test {
         vm.label(address(token), "Test Token");
         vm.label(address(reward), "Reward Token");
 
-        implementation = new StakingVault();
-        vault = _deployVaultProxy(
-            "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0
-        );
+        // Deploy implementations
+        vaultImpl = address(new StakingVault());
+        address governorImpl = address(new ReserveOptimisticGovernor());
+        address timelockImpl = address(new TimelockControllerOptimistic());
+        address registryImpl = address(new OptimisticSelectorRegistry());
 
-        vault.addRewardToken(address(reward));
+        // Deploy Deployer
+        ReserveOptimisticGovernorDeployer deployer =
+            new ReserveOptimisticGovernorDeployer(vaultImpl, governorImpl, timelockImpl, registryImpl);
+
+        address[] memory rewardTokens = new address[](1);
+        rewardTokens[0] = address(reward);
+
+        IReserveOptimisticGovernorDeployer.DeploymentParams memory params =
+            IReserveOptimisticGovernorDeployer.DeploymentParams({
+                optimisticParams: IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                    vetoPeriod: 2 hours, vetoThreshold: 0.05e18, slashingPercentage: 0.1e18, numParallelProposals: 3
+                }),
+                standardParams: IReserveOptimisticGovernor.StandardGovernanceParams({
+                    votingDelay: 1 days,
+                    votingPeriod: 1 weeks,
+                    voteExtension: 1 days,
+                    proposalThreshold: 0.01e18,
+                    quorumNumerator: 0.1e18
+                }),
+                selectorData: new IOptimisticSelectorRegistry.SelectorData[](0),
+                optimisticProposers: new address[](0),
+                guardians: new address[](0),
+                timelockDelay: 2 days,
+                underlying: IERC20Metadata(address(token)),
+                rewardTokens: rewardTokens,
+                rewardHalfLife: REWARD_HALF_LIFE,
+                unstakingDelay: DEFAULT_UNSTAKING_DELAY
+            });
+
+        // Deploy system
+        (address stakingVaultAddr,, address timelockAddr,) = deployer.deploy(params, bytes32(0));
+        vault = StakingVault(stakingVaultAddr);
+        timelock = timelockAddr;
 
         vm.label(ACTOR_ALICE, "Alice");
         vm.label(ACTOR_BOB, "Bob");
-    }
-
-    function _deployVaultProxy(
-        string memory name,
-        string memory symbol,
-        IERC20 underlying,
-        address initialOwner,
-        uint256 rewardPeriod,
-        uint256 unstakingDelay
-    ) internal returns (StakingVault) {
-        bytes memory initData = abi.encodeCall(
-            StakingVault.initialize, (name, symbol, underlying, initialOwner, rewardPeriod, unstakingDelay)
-        );
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
-        return StakingVault(address(proxy));
     }
 
     function _payoutRewards(uint256 cycles) internal {
@@ -82,6 +113,11 @@ contract StakingVaultTest is Test {
     }
 
     function test_deployment() public view {
+        assertEq(vault.name(), "Vote-Locked Test Token");
+        assertEq(vault.symbol(), "vlTEST");
+        assertEq(address(vault.asset()), address(token));
+        assertEq(vault.owner(), address(timelock));
+        assertEq(vault.unstakingDelay(), DEFAULT_UNSTAKING_DELAY);
         assertEq(vault.clock(), block.timestamp);
         assertEq(vault.CLOCK_MODE(), "mode=timestamp");
         assertEq(vault.totalSupply(), 0);
@@ -129,33 +165,39 @@ contract StakingVaultTest is Test {
         uint8[4] memory rewardTokens = [1, 10, 25, 50];
 
         for (uint8 i = 0; i < rewardTokens.length; i++) {
-            StakingVault newVault = _deployVaultProxy(
-                "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0
-            );
+            uint256 snap = vm.snapshot();
+
+            vm.prank(address(timelock));
+            vault.setUnstakingDelay(0);
+            vm.prank(address(timelock));
+            vault.removeRewardToken(address(reward));
 
             token.mint(address(this), 1000 * 1e18);
-            token.approve(address(newVault), 1000 * 1e18);
-            newVault.deposit(1000 * 1e18, address(this));
+            token.approve(address(vault), 1000 * 1e18);
+            vault.deposit(1000 * 1e18, address(this));
 
             vm.warp(block.timestamp + 1);
-            newVault.poke();
+            vault.poke();
 
             for (uint8 j = 0; j < rewardTokens[i]; j++) {
                 MockERC20 rewardToken = new MockERC20("Reward Token", "REWARD");
-                rewardToken.mint(address(newVault), 1000 * 1e18);
+                rewardToken.mint(address(vault), 1000 * 1e18);
 
-                newVault.addRewardToken(address(rewardToken));
+                vm.prank(address(timelock));
+                vault.addRewardToken(address(rewardToken));
             }
 
             string memory gasTag1 = string.concat("poke(1, ", vm.toString(rewardTokens[i]), " tokens)");
             _payoutRewards(1);
-            newVault.poke();
+            vault.poke();
             vm.snapshotGasLastCall(gasTag1);
 
             string memory gasTag2 = string.concat("poke(2, ", vm.toString(rewardTokens[i]), " tokens)");
             _payoutRewards(1);
-            newVault.poke();
+            vault.poke();
             vm.snapshotGasLastCall(gasTag2);
+
+            vm.revertToAndDelete(snap);
         }
     }
 
@@ -313,6 +355,7 @@ contract StakingVaultTest is Test {
         MockERC20 newReward = new MockERC20("New Reward Token", "NREWARD");
         vm.expectEmit(true, false, false, true);
         emit StakingVault.RewardTokenAdded(address(newReward));
+        vm.prank(address(timelock));
         vault.addRewardToken(address(newReward));
 
         address[] memory _rewardTokens = vault.getAllRewardTokens();
@@ -329,6 +372,7 @@ contract StakingVaultTest is Test {
     }
 
     function test_cannotAddRewardTokenIfInvalid() public {
+        vm.startPrank(address(timelock));
         vm.expectRevert();
         vault.addRewardToken(address(0));
 
@@ -337,20 +381,24 @@ contract StakingVaultTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__InvalidRewardToken.selector, address(vault)));
         vault.addRewardToken(address(vault));
+        vm.stopPrank();
     }
 
     function test_cannotAddRewardTokenIfPreviouslyRemoved() public {
         // Remove reward token
+        vm.prank(address(timelock));
         vault.removeRewardToken(address(reward));
         address[] memory _rewardTokens = vault.getAllRewardTokens();
         assertEq(_rewardTokens.length, 0);
 
         // Cannot re-add token
+        vm.prank(address(timelock));
         vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__DisallowedRewardToken.selector, address(reward)));
         vault.addRewardToken(address(reward));
     }
 
     function test_cannotAddRewardTokenIfAlreadyRegistered() public {
+        vm.prank(address(timelock));
         vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__RewardAlreadyRegistered.selector));
         vault.addRewardToken(address(reward));
     }
@@ -358,6 +406,7 @@ contract StakingVaultTest is Test {
     function test_removeRewardToken() public {
         vm.expectEmit(true, false, false, true);
         emit StakingVault.RewardTokenRemoved(address(reward));
+        vm.prank(address(timelock));
         vault.removeRewardToken(address(reward));
         address[] memory _rewardTokens = vault.getAllRewardTokens();
         assertEq(_rewardTokens.length, 0);
@@ -371,6 +420,7 @@ contract StakingVaultTest is Test {
 
     function test_cannotRemoveRewardTokenIfNotRegistered() public {
         MockERC20 newReward = new MockERC20("New Reward Token", "NREWARD");
+        vm.prank(address(timelock));
         vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__RewardNotRegistered.selector));
         vault.removeRewardToken(address(newReward));
     }
@@ -380,6 +430,7 @@ contract StakingVaultTest is Test {
         vm.expectEmit(true, true, false, true);
         emit StakingVault.RewardRatioSet(rewardRatioPrev * 2, REWARD_HALF_LIFE / 2);
 
+        vm.prank(address(timelock));
         vault.setRewardRatio(REWARD_HALF_LIFE / 2);
         assertEq(vault.rewardRatio(), rewardRatioPrev * 2);
     }
@@ -391,6 +442,7 @@ contract StakingVaultTest is Test {
     }
 
     function test_cannotSetRewardRatioWithInvalidValue() public {
+        vm.prank(address(timelock));
         vm.expectRevert(StakingVault.Vault__InvalidRewardsHalfLife.selector);
         vault.setRewardRatio(2 weeks + 1);
     }
@@ -418,6 +470,9 @@ contract StakingVaultTest is Test {
     }
 
     function test_unstake_noDelay() public {
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(0);
+
         token.mint(address(this), 1000e18);
         token.approve(address(vault), 1000e18);
 
@@ -429,6 +484,9 @@ contract StakingVaultTest is Test {
     }
 
     function test_unstake_noDelay_redeemOnBehalf() public {
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(0);
+
         token.mint(address(this), 1000e18);
         token.approve(address(vault), 1000e18);
 
@@ -447,20 +505,19 @@ contract StakingVaultTest is Test {
     }
 
     function test_unstakingDelay_claimLock() public {
-        StakingVault newVault = _deployVaultProxy(
-            "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 14 days
-        );
-        UnstakingManager manager = newVault.unstakingManager();
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(14 days);
+        UnstakingManager manager = vault.unstakingManager();
 
         token.mint(address(this), 1000e18);
-        token.approve(address(newVault), 1000e18);
+        token.approve(address(vault), 1000e18);
 
-        newVault.deposit(1000e18, address(this));
+        vault.deposit(1000e18, address(this));
         vm.expectEmit(true, true, true, true);
-        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + newVault.unstakingDelay());
+        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + vault.unstakingDelay());
         vm.expectEmit(true, true, true, true);
         emit IERC4626.Withdraw(address(this), address(this), address(this), 1000e18, 1000e18);
-        newVault.redeem(1000e18, address(this), address(this));
+        vault.redeem(1000e18, address(this), address(this));
 
         assertEq(token.balanceOf(address(this)), 0);
 
@@ -480,18 +537,17 @@ contract StakingVaultTest is Test {
     }
 
     function test_unstakingDelay_cancelLock() public {
-        StakingVault newVault = _deployVaultProxy(
-            "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 14 days
-        );
-        UnstakingManager manager = newVault.unstakingManager();
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(14 days);
+        UnstakingManager manager = vault.unstakingManager();
 
         token.mint(address(this), 1000e18);
-        token.approve(address(newVault), 1000e18);
+        token.approve(address(vault), 1000e18);
 
-        newVault.deposit(1000e18, address(this));
+        vault.deposit(1000e18, address(this));
         vm.expectEmit(true, true, true, true);
-        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + newVault.unstakingDelay());
-        newVault.redeem(1000e18, address(this), address(this));
+        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + vault.unstakingDelay());
+        vault.redeem(1000e18, address(this), address(this));
 
         assertEq(token.balanceOf(address(this)), 0);
 
@@ -503,7 +559,7 @@ contract StakingVaultTest is Test {
         manager.cancelLock(0);
 
         assertEq(token.balanceOf(address(this)), 0);
-        assertEq(newVault.balanceOf(address(this)), 1000e18);
+        assertEq(vault.balanceOf(address(this)), 1000e18);
 
         // Cannot claim
         vm.expectRevert(UnstakingManager.UnstakingManager__NotUnlockedYet.selector);
@@ -511,22 +567,21 @@ contract StakingVaultTest is Test {
     }
 
     function test_unstakingDelay_redeemOnBehalf() public {
-        StakingVault newVault = _deployVaultProxy(
-            "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 14 days
-        );
-        UnstakingManager manager = newVault.unstakingManager();
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(14 days);
+        UnstakingManager manager = vault.unstakingManager();
 
         token.mint(address(this), 1000e18);
-        token.approve(address(newVault), 1000e18);
-        newVault.deposit(1000e18, address(this));
+        token.approve(address(vault), 1000e18);
+        vault.deposit(1000e18, address(this));
 
         // Reedem on behalf
-        newVault.approve(ACTOR_ALICE, 1000e18);
+        vault.approve(ACTOR_ALICE, 1000e18);
 
         vm.startPrank(ACTOR_ALICE);
         vm.expectEmit(true, true, true, true);
-        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + newVault.unstakingDelay());
-        newVault.redeem(1000e18, address(this), address(this));
+        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + vault.unstakingDelay());
+        vault.redeem(1000e18, address(this), address(this));
         vm.stopPrank();
 
         assertEq(token.balanceOf(address(this)), 0);
@@ -540,18 +595,17 @@ contract StakingVaultTest is Test {
     }
 
     function test_cannotCancelLockIfNotUser() public {
-        StakingVault newVault = _deployVaultProxy(
-            "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 14 days
-        );
-        UnstakingManager manager = newVault.unstakingManager();
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(14 days);
+        UnstakingManager manager = vault.unstakingManager();
 
         token.mint(address(this), 1000e18);
-        token.approve(address(newVault), 1000e18);
+        token.approve(address(vault), 1000e18);
 
-        newVault.deposit(1000e18, address(this));
+        vault.deposit(1000e18, address(this));
         vm.expectEmit(true, true, true, true);
-        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + newVault.unstakingDelay());
-        newVault.redeem(1000e18, address(this), address(this));
+        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + vault.unstakingDelay());
+        vault.redeem(1000e18, address(this), address(this));
 
         assertEq(token.balanceOf(address(this)), 0);
 
@@ -561,18 +615,17 @@ contract StakingVaultTest is Test {
     }
 
     function test_cannotCancelLockIfAlreadyClaimed() public {
-        StakingVault newVault = _deployVaultProxy(
-            "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 14 days
-        );
-        UnstakingManager manager = newVault.unstakingManager();
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(14 days);
+        UnstakingManager manager = vault.unstakingManager();
 
         token.mint(address(this), 1000e18);
-        token.approve(address(newVault), 1000e18);
+        token.approve(address(vault), 1000e18);
 
-        newVault.deposit(1000e18, address(this));
+        vault.deposit(1000e18, address(this));
         vm.expectEmit(true, true, true, true);
-        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + newVault.unstakingDelay());
-        newVault.redeem(1000e18, address(this), address(this));
+        emit UnstakingManager.LockCreated(0, address(this), 1000e18, block.timestamp + vault.unstakingDelay());
+        vault.redeem(1000e18, address(this), address(this));
 
         assertEq(token.balanceOf(address(this)), 0);
 
@@ -596,25 +649,24 @@ contract StakingVaultTest is Test {
     }
 
     function test_setUnstakingDelay() public {
-        assertEq(vault.unstakingDelay(), 0, "wrong unstaking delay");
-        uint256 newUnstakingDelay = 1 weeks;
+        uint256 newUnstakingDelay = 2 weeks;
         vm.expectEmit(true, false, false, true);
         emit StakingVault.UnstakingDelaySet(newUnstakingDelay);
+        vm.prank(address(timelock));
         vault.setUnstakingDelay(newUnstakingDelay);
         assertEq(vault.unstakingDelay(), newUnstakingDelay, "wrong unstaking delay");
     }
 
     function test_cannotSetUnstakingDelayIfNotOwner() public {
-        assertEq(vault.unstakingDelay(), 0, "wrong unstaking delay");
-        uint256 newUnstakingDelay = 1 weeks;
+        uint256 newUnstakingDelay = 2 weeks;
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ACTOR_ALICE));
         vault.setUnstakingDelay(newUnstakingDelay);
     }
 
     function test_cannotSetUnstakingDelayIfNotValid() public {
-        assertEq(vault.unstakingDelay(), 0, "wrong unstaking delay");
         uint256 newUnstakingDelay = 4 weeks + 1; // invalid
+        vm.prank(address(timelock));
         vm.expectRevert(StakingVault.Vault__InvalidUnstakingDelay.selector);
         vault.setUnstakingDelay(newUnstakingDelay);
     }
@@ -738,6 +790,11 @@ contract StakingVaultTest is Test {
 
         _withdrawAs(ACTOR_ALICE, aliceShares);
         _withdrawAs(ACTOR_BOB, bobShares);
+
+        // Wait for unstaking delay and claim locks
+        vm.warp(block.timestamp + DEFAULT_UNSTAKING_DELAY);
+        vault.unstakingManager().claimLock(0);
+        vault.unstakingManager().claimLock(1);
 
         uint256 aliceBalanceAfter = token.balanceOf(ACTOR_ALICE);
         uint256 bobBalanceAfter = token.balanceOf(ACTOR_BOB);
@@ -880,6 +937,11 @@ contract StakingVaultTest is Test {
         // Bob can actually redeem and receive the full amount
         uint256 bobBalanceBefore = token.balanceOf(ACTOR_BOB);
         _withdrawAs(ACTOR_BOB, 1000e18);
+
+        // Wait for unstaking delay and claim lock
+        vm.warp(block.timestamp + DEFAULT_UNSTAKING_DELAY);
+        vault.unstakingManager().claimLock(0);
+
         uint256 bobBalanceAfter = token.balanceOf(ACTOR_BOB);
 
         assertApproxEqRel(bobBalanceAfter - bobBalanceBefore, 2000e18, 0.001e18);
@@ -888,28 +950,42 @@ contract StakingVaultTest is Test {
     // ============ UUPS Upgrade Tests ============
 
     function test_upgrade() public {
-        // Setup: deposit some tokens
+        // Setup: deposit some tokens and accrue rewards
         _mintAndDepositFor(ACTOR_ALICE, 1000e18);
+        vm.warp(block.timestamp + 1);
+        reward.mint(address(vault), 500e18);
+        vault.poke();
+        _payoutRewards(1);
 
         // Deploy new implementation
-        StakingVault newImplementation = new StakingVault();
+        StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
 
-        // Upgrade should succeed as owner
-        vault.upgradeToAndCall(address(newImplementation), "");
+        // Upgrade via deployer (the owner)
+        vm.prank(address(timelock));
+        vault.upgradeToAndCall(address(newImpl), "");
+
+        // Verify new implementation is active
+        assertEq(StakingVault(address(vault)).version(), "2.0.0");
 
         // Verify state is preserved
-        assertEq(vault.name(), "Staked Test Token");
-        assertEq(vault.symbol(), "sTEST");
+        assertEq(vault.name(), "Vote-Locked Test Token");
+        assertEq(vault.symbol(), "vlTEST");
         assertEq(address(vault.asset()), address(token));
         assertEq(vault.balanceOf(ACTOR_ALICE), 1000e18);
+        assertEq(vault.owner(), address(timelock));
+        assertEq(vault.unstakingDelay(), DEFAULT_UNSTAKING_DELAY);
+
+        address[] memory _rewardTokens = vault.getAllRewardTokens();
+        assertEq(_rewardTokens.length, 1);
+        assertEq(_rewardTokens[0], address(reward));
     }
 
     function test_cannotUpgradeIfNotOwner() public {
-        StakingVault newImplementation = new StakingVault();
+        StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
 
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ACTOR_ALICE));
-        vault.upgradeToAndCall(address(newImplementation), "");
+        vault.upgradeToAndCall(address(newImpl), "");
     }
 
     function test_cannotInitializeTwice() public {
@@ -919,8 +995,7 @@ contract StakingVaultTest is Test {
 
     function test_implementationCannotBeInitialized() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        implementation.initialize(
-            "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0
-        );
+        StakingVault(vaultImpl)
+            .initialize("Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0);
     }
 }

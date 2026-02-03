@@ -87,7 +87,7 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
                 InvalidCall(target, selectors[i])
             );
 
-            // target != token || is token.addRewardToken()/removeRewardToken()
+            // target != token || selector == addRewardToken()/removeRewardToken()
             require(
                 target != token || selectors[i] == IStakingVault.addRewardToken.selector
                     || selectors[i] == IStakingVault.removeRewardToken.selector,

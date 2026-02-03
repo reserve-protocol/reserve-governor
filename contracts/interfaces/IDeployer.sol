@@ -22,10 +22,13 @@ interface IReserveOptimisticGovernorDeployer {
         IReserveOptimisticGovernor.OptimisticGovernanceParams optimisticParams;
         IReserveOptimisticGovernor.StandardGovernanceParams standardParams;
         IOptimisticSelectorRegistry.SelectorData[] selectorData;
-        IERC20Metadata underlying;
         address[] optimisticProposers;
         address[] guardians;
-        uint256 timelockDelay;
+        uint256 timelockDelay; // {s}
+        IERC20Metadata underlying; // MUST have strong value relationship to the system being governed
+        address[] rewardTokens;
+        uint256 rewardHalfLife; // {s}
+        uint256 unstakingDelay; // {s}
     }
 
     // === Functions ===

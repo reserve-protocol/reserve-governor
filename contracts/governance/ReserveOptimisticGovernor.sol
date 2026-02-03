@@ -27,18 +27,19 @@ import {
     GovernorVotesUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 
+import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
+import { IStakingVault } from "../interfaces/IStakingVault.sol";
 import {
     CANCELLER_ROLE,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
     MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
-} from "../interfaces/Constants.sol";
-import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
-import { IStakingVault } from "../interfaces/IStakingVault.sol";
-
-import { OptimisticProposal } from "./OptimisticProposal.sol";
+} from "../utils/Constants.sol";
 import { OptimisticProposalLib } from "./OptimisticProposalLib.sol";
+
+import { Versioned } from "../utils/Versioned.sol";
+import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 
@@ -63,6 +64,7 @@ contract ReserveOptimisticGovernor is
     GovernorVotesUpgradeable,
     GovernorVotesQuorumFractionUpgradeable,
     GovernorTimelockControlUpgradeable,
+    Versioned,
     UUPSUpgradeable,
     IReserveOptimisticGovernor
 {
@@ -326,4 +328,8 @@ contract ReserveOptimisticGovernor is
 
     /// @dev Upgrades authorized only through timelock
     function _authorizeUpgrade(address) internal override onlyGovernance { }
+
+    function version() public pure virtual override(GovernorUpgradeable, Versioned) returns (string memory) {
+        return Versioned.version();
+    }
 }

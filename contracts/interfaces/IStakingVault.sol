@@ -7,4 +7,8 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 interface IStakingVault is IERC20, IVotes {
     /// @dev Should NOT revert for 0 amount burn
     function burn(uint256 amount) external;
+
+    function addRewardToken(address rewardToken) external;
+
+    function removeRewardToken(address rewardToken) external;
 }

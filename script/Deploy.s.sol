@@ -3,10 +3,10 @@ pragma solidity ^0.8.28;
 
 import { Script, console2 } from "forge-std/Script.sol";
 
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { OptimisticSelectorRegistry } from "@src/governance/OptimisticSelectorRegistry.sol";
-import { ReserveOptimisticGovernor } from "@src/governance/ReserveOptimisticGovernor.sol";
-import { TimelockControllerOptimistic } from "@src/governance/TimelockControllerOptimistic.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 
 string constant junkSeedPhrase = "test test test test test test test test test test test junk";

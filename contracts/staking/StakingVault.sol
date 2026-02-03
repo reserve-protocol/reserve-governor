@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
@@ -16,12 +17,12 @@ import {
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20VotesUpgradeable.sol";
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
 
+import { Versioned } from "../utils/Versioned.sol";
 import { UnstakingManager } from "./UnstakingManager.sol";
 
 uint256 constant MAX_UNSTAKING_DELAY = 4 weeks; // {s}
@@ -47,6 +48,7 @@ contract StakingVault is
     ERC20PermitUpgradeable,
     ERC20VotesUpgradeable,
     OwnableUpgradeable,
+    Versioned,
     UUPSUpgradeable,
     IStakingVault
 {

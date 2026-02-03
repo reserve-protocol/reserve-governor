@@ -12,9 +12,12 @@ import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgrade
 
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
 
+import { Versioned } from "../utils/Versioned.sol";
+
 contract TimelockControllerOptimistic is
     TimelockControllerUpgradeable,
     AccessControlEnumerableUpgradeable,
+    Versioned,
     UUPSUpgradeable,
     ITimelockControllerOptimistic
 {

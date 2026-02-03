@@ -9,12 +9,14 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
+import { IStakingVault } from "@interfaces/IStakingVault.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
+
+import { OptimisticProposal } from "@governance/OptimisticProposal.sol";
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { OptimisticProposal } from "@src/governance/OptimisticProposal.sol";
-import { OptimisticSelectorRegistry } from "@src/governance/OptimisticSelectorRegistry.sol";
-import { ReserveOptimisticGovernor } from "@src/governance/ReserveOptimisticGovernor.sol";
-import { TimelockControllerOptimistic } from "@src/governance/TimelockControllerOptimistic.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
@@ -100,11 +102,14 @@ contract ReserveOptimisticGovernorTest is Test {
                     proposalThreshold: PROPOSAL_THRESHOLD,
                     quorumNumerator: QUORUM_NUMERATOR
                 }),
-                underlying: underlying,
                 selectorData: selectorData,
                 optimisticProposers: optimisticProposers,
                 guardians: guardians,
-                timelockDelay: TIMELOCK_DELAY
+                timelockDelay: TIMELOCK_DELAY,
+                underlying: underlying,
+                rewardTokens: new address[](0),
+                rewardHalfLife: REWARD_HALF_LIFE,
+                unstakingDelay: UNSTAKING_DELAY
             });
 
         // Deploy governance system
@@ -2113,11 +2118,53 @@ contract ReserveOptimisticGovernorTest is Test {
     function test_registry_cannotAddSelfAsTarget() public {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = IERC20.transfer.selector;
-        OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(registry), selectors);
 
+        OptimisticSelectorRegistry.SelectorData[] memory selectorData = new OptimisticSelectorRegistry.SelectorData[](1);
+
+        // 1. Cannot target the registry itself
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(registry), selectors);
         vm.prank(address(timelock));
-        vm.expectRevert(IOptimisticSelectorRegistry.SelfAsTarget.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(registry), selectors[0])
+        );
+        registry.registerSelectors(selectorData);
+
+        // 2. Cannot target the governor
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(governor), selectors);
+        vm.prank(address(timelock));
+        vm.expectRevert(
+            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(governor), selectors[0])
+        );
+        registry.registerSelectors(selectorData);
+
+        // 3. Cannot target the timelock
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(timelock), selectors);
+        vm.prank(address(timelock));
+        vm.expectRevert(
+            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(timelock), selectors[0])
+        );
+        registry.registerSelectors(selectorData);
+
+        // 4. Cannot target the staking vault with a disallowed selector
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
+        vm.prank(address(timelock));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IOptimisticSelectorRegistry.InvalidCall.selector, address(stakingVault), selectors[0]
+            )
+        );
+        registry.registerSelectors(selectorData);
+
+        // 5. CAN target the staking vault with addRewardToken
+        selectors[0] = IStakingVault.addRewardToken.selector;
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
+        vm.prank(address(timelock));
+        registry.registerSelectors(selectorData);
+
+        // 6. CAN target the staking vault with removeRewardToken
+        selectors[0] = IStakingVault.removeRewardToken.selector;
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
+        vm.prank(address(timelock));
         registry.registerSelectors(selectorData);
     }
 
@@ -2195,8 +2242,6 @@ contract ReserveOptimisticGovernorTest is Test {
     }
 
     function test_registry_cannotTargetGovernorOptimistically() public {
-        _allowSelector(address(governor), governor.setOptimisticParams.selector);
-
         address[] memory targets = new address[](1);
         targets[0] = address(governor);
 
@@ -2223,8 +2268,6 @@ contract ReserveOptimisticGovernorTest is Test {
     }
 
     function test_registry_cannotTargetTimelockOptimistically() public {
-        _allowSelector(address(timelock), timelock.updateDelay.selector);
-
         address[] memory targets = new address[](1);
         targets[0] = address(timelock);
 
@@ -2289,7 +2332,7 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
 
         // Verify upgrade succeeded by calling new function
-        assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).implVersion(), 2);
+        assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).version(), "2.0.0");
     }
 
     function test_cannotUpgradeGovernor_unauthorized() public {
@@ -2342,7 +2385,7 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
 
         // Verify upgrade succeeded by calling new function
-        assertEq(TimelockControllerOptimisticV2Mock(payable(address(timelock))).implVersion(), 2);
+        assertEq(TimelockControllerOptimisticV2Mock(payable(address(timelock))).version(), "2.0.0");
     }
 
     function test_cannotUpgradeTimelock_unauthorized() public {

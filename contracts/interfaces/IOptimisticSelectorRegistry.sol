@@ -9,8 +9,8 @@ interface IOptimisticSelectorRegistry {
 
     // === Errors ===
 
-    error OnlyOwner();
-    error SelfAsTarget();
+    error OnlyOwner(address caller);
+    error InvalidCall(address target, bytes4 selector);
 
     // === Data ===
 
