@@ -6,6 +6,7 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
+import { IStakingVault } from "../interfaces/IStakingVault.sol";
 
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 
@@ -37,7 +38,7 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     // === External ===
 
     modifier onlyTimelock() {
-        require(msg.sender == governor.timelock(), OnlyOwner());
+        require(msg.sender == governor.timelock(), OnlyOwner(msg.sender));
         _;
     }
 
@@ -76,9 +77,23 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     // === Internal ===
 
     function _add(address target, bytes4[] memory selectors) internal {
-        require(target != address(this), SelfAsTarget());
+        address timelock = address(governor.timelock());
+        address token = address(governor.token());
 
         for (uint256 i = 0; i < selectors.length; i++) {
+            // target != self, governor, timelock
+            require(
+                target != address(this) && target != address(governor) && target != timelock,
+                InvalidCall(target, selectors[i])
+            );
+
+            // target != token || is token.addRewardToken()/removeRewardToken()
+            require(
+                target != token || selectors[i] == IStakingVault.addRewardToken.selector
+                    || selectors[i] == IStakingVault.removeRewardToken.selector,
+                InvalidCall(target, selectors[i])
+            );
+
             bool added = _allowedSelectors[target].add(bytes32(selectors[i]));
 
             if (added) {
@@ -90,8 +105,6 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     }
 
     function _remove(address target, bytes4[] memory selectors) internal {
-        require(target != address(this), SelfAsTarget());
-
         for (uint256 i = 0; i < selectors.length; i++) {
             bool removed = _allowedSelectors[target].remove(bytes32(selectors[i]));
 

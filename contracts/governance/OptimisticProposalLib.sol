@@ -48,15 +48,12 @@ library OptimisticProposalLib {
 
         // validate function calls
         {
-            address timelock = address(_timelock());
-
             for (uint256 i = 0; i < proposal.targets.length; i++) {
                 address target = proposal.targets[i];
                 bytes4 selector = bytes4(proposal.calldatas[i]);
 
-                // never target ReserveOptimisticGovernor or TimelockControllerOptimistic
                 require(
-                    target != address(this) && target != timelock && selectorRegistry.isAllowed(target, selector),
+                    selectorRegistry.isAllowed(target, selector),
                     IReserveOptimisticGovernor.InvalidFunctionCall(target, selector)
                 );
 
