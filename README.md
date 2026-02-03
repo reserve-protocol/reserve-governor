@@ -290,6 +290,9 @@ Per-proposal contract handling veto logic. Created as a clone for each fast prop
 
 ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to receive vault shares that carry voting power.
 
+IMPORTANT: StakingVault should only be deployed with an underlying token that has a STRONG value relationship to the system being governed. The token should not derive value from many sources. It is important that withdrawals that occur AFTER a malicious proposal executes do not recoup much value. 
+
+
 **User Functions:**
 
 - `depositAndDelegate(assets)` - Deposit tokens and self-delegate voting power
