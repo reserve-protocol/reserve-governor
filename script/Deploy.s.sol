@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.28;
 
-import { ReserveOptimisticGovernorDeployer } from "../contracts/Deployer.sol";
-import { OptimisticSelectorRegistry } from "../contracts/OptimisticSelectorRegistry.sol";
-import { ReserveOptimisticGovernor } from "../contracts/ReserveOptimisticGovernor.sol";
-import { TimelockControllerOptimistic } from "../contracts/TimelockControllerOptimistic.sol";
 import { Script, console2 } from "forge-std/Script.sol";
+
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
+import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
+import { StakingVault } from "@src/staking/StakingVault.sol";
 
 string constant junkSeedPhrase = "test test test test test test test test test test test junk";
 
@@ -25,7 +27,13 @@ contract DeployScript is Script {
 
     function run()
         external
-        returns (address deployer, address governorImpl, address timelockImpl, address selectorRegistryImpl)
+        returns (
+            address stakingVaultImpl,
+            address governorImpl,
+            address timelockImpl,
+            address selectorRegistryImpl,
+            address deployer
+        )
     {
         console2.log("----- START -----");
         console2.log("Mode:", deploymentMode == DeploymentMode.Production ? "Production" : "Testing");
@@ -36,15 +44,19 @@ contract DeployScript is Script {
         vm.startBroadcast(privateKey);
 
         // Deploy implementations
+        stakingVaultImpl = address(new StakingVault());
         governorImpl = address(new ReserveOptimisticGovernor());
         timelockImpl = address(new TimelockControllerOptimistic());
         selectorRegistryImpl = address(new OptimisticSelectorRegistry());
 
         // Deploy Deployer
-        deployer = address(new ReserveOptimisticGovernorDeployer(governorImpl, timelockImpl, selectorRegistryImpl));
+        deployer = address(
+            new ReserveOptimisticGovernorDeployer(stakingVaultImpl, governorImpl, timelockImpl, selectorRegistryImpl)
+        );
 
         vm.stopBroadcast();
 
+        console2.log("StakingVault:", stakingVaultImpl);
         console2.log("ReserveOptimisticGovernor:", governorImpl);
         console2.log("TimelockControllerOptimistic:", timelockImpl);
         console2.log("OptimisticSelectorRegistry:", selectorRegistryImpl);

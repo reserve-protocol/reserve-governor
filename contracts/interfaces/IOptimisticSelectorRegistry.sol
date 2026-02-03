@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
 interface IOptimisticSelectorRegistry {
     // === Events ===
@@ -9,8 +9,8 @@ interface IOptimisticSelectorRegistry {
 
     // === Errors ===
 
-    error OnlyOwner();
-    error SelfAsTarget();
+    error OnlyOwner(address caller);
+    error InvalidCall(address target, bytes4 selector);
 
     // === Data ===
 
@@ -18,4 +18,8 @@ interface IOptimisticSelectorRegistry {
         address target;
         bytes4[] selectors;
     }
+
+    // === Functions ===
+
+    function isAllowed(address target, bytes4 selector) external view returns (bool);
 }

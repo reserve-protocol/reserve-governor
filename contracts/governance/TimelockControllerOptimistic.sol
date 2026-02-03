@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.28;
 
 import {
     AccessControlEnumerableUpgradeable,
@@ -10,11 +10,14 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
-import { ITimelockControllerOptimistic } from "./interfaces/ITimelockControllerOptimistic.sol";
+import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
+
+import { Versioned } from "../utils/Versioned.sol";
 
 contract TimelockControllerOptimistic is
     TimelockControllerUpgradeable,
     AccessControlEnumerableUpgradeable,
+    Versioned,
     UUPSUpgradeable,
     ITimelockControllerOptimistic
 {

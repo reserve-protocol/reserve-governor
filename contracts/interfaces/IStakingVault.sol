@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-interface IVetoToken is IERC20, IVotes {
+interface IStakingVault is IERC20, IVotes {
     /// @dev Should NOT revert for 0 amount burn
     function burn(uint256 amount) external;
+
+    function addRewardToken(address rewardToken) external;
+
+    function removeRewardToken(address rewardToken) external;
 }

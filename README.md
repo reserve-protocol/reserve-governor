@@ -13,14 +13,30 @@ This design enables efficient day-to-day governance while preserving community o
 
 ## Architecture
 
-The system consists of four components:
+The system consists of six components:
 
-1. **ReserveOptimisticGovernor** — Hybrid governor unifying optimistic/standard proposal flows
-2. **OptimisticSelectorRegistry** — Whitelist of allowed `(target, selector)` pairs for optimistic proposals
-3. **TimelockControllerOptimistic** — Single timelock for execution, with bypass for the optimistic path
-4. **OptimisticProposal** — Per-proposal clone contract supporting veto staking and slashing
+1. **StakingVault** — ERC4626 vault with vote-locking, multi-token rewards, and unstaking delay
+2. **UnstakingManager** — Time-locked withdrawal manager created by StakingVault during initialization
+3. **ReserveOptimisticGovernor** — Hybrid governor unifying optimistic/standard proposal flows
+4. **OptimisticSelectorRegistry** — Whitelist of allowed `(target, selector)` pairs for optimistic proposals
+5. **TimelockControllerOptimistic** — Single timelock for execution, with bypass for the optimistic path
+6. **OptimisticProposal** — Per-proposal clone contract supporting veto staking and slashing
 
 ```
+┌──────────────────────────────────┐
+│          StakingVault            │
+│  ERC4626 + ERC20Votes           │
+│                                  │
+│  deposit / withdraw / delegate   │
+│  claimRewards / burn             │
+│  ┌────────────────────────────┐  │
+│  │     UnstakingManager      │  │
+│  │  createLock / claimLock   │  │
+│  │  cancelLock               │  │
+│  └────────────────────────────┘  │
+└───────────────┬──────────────────┘
+                │ (voting token)
+                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                  ReserveOptimisticGovernor                       │
 │  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
@@ -270,6 +286,54 @@ Per-proposal contract handling veto logic. Created as a clone for each fast prop
 - `canceled` - Whether proposal was canceled
 - `proposalData()` - Returns `(targets, values, calldatas, description)`
 
+### StakingVault
+
+ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to receive vault shares that carry voting power.
+
+IMPORTANT: StakingVault should only be deployed with an underlying token that has a STRONG value relationship to the system being governed. The token should not derive value from many sources. It is important that withdrawals that occur AFTER a malicious proposal executes do not recoup much value. 
+
+
+**User Functions:**
+
+- `depositAndDelegate(assets)` - Deposit tokens and self-delegate voting power
+- `claimRewards(rewardTokens[])` - Claim accumulated rewards for specified reward tokens
+- `poke()` - Trigger reward accrual without performing an action
+
+**Admin Functions (onlyOwner):**
+
+- `addRewardToken(rewardToken)` - Add a new reward token for distribution
+- `removeRewardToken(rewardToken)` - Remove a reward token from distribution
+- `setUnstakingDelay(delay)` - Set the delay before unstaked tokens can be claimed
+- `setRewardRatio(rewardHalfLife)` - Set the exponential decay half-life for reward distribution
+
+**Other:**
+
+- `burn(shares)` - Burn shares, converting their underlying value to native rewards
+- `getAllRewardTokens()` - Return all active reward tokens
+
+**Properties:**
+
+- UUPS upgradeable (owner-authorized)
+- Clock: timestamp-based (ERC5805)
+- Creates an `UnstakingManager` during initialization
+
+### UnstakingManager
+
+Time-locked withdrawal manager, created by StakingVault during initialization.
+
+**Functions:**
+
+- `createLock(user, amount, unlockTime)` - Create a new unstaking lock (vault only)
+- `claimLock(lockId)` - Claim tokens after unlock time is reached (anyone can call)
+- `cancelLock(lockId)` - Cancel a lock and re-deposit tokens into the vault (lock owner only)
+
+**Lock Struct:**
+
+- `user` — Receiver of unstaked tokens
+- `amount` — Amount of tokens locked
+- `unlockTime` — Timestamp when tokens become claimable
+- `claimedAt` — Timestamp when claimed (0 if not yet claimed)
+
 ### OptimisticSelectorRegistry
 
 Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Controlled by the timelock (governance-controlled).
@@ -287,15 +351,9 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 
 **Constraints:**
 
-- Cannot register itself as a target (reverts with `SelfAsTarget`)
-- The governor and timelock are additionally blocked as targets in `OptimisticProposalLib` (hardcoded)
+- Cannot register itself as a target
+- The governor, timelock, and StakingVault (token) are additionally blocked as targets in `OptimisticSelectorRegistry` (hardcoded, exempt: addRewardToken()/removeRewardToken())
 
-### Deployer
-
-Deploys the complete Reserve Governor system: timelock proxy, selector registry, and governor proxy.
-
-- `deploy(DeploymentParams)` - Returns `(governor, timelock, selectorRegistry)`
-- Configures all timelock roles (`PROPOSER_ROLE`, `EXECUTOR_ROLE`, `CANCELLER_ROLE` → governor; `CANCELLER_ROLE` → guardians; `OPTIMISTIC_PROPOSER_ROLE` → proposers) and renounces admin
 
 ### TimelockControllerOptimistic
 
@@ -336,42 +394,44 @@ The following enforcement limits apply to optimistic governance parameters:
 | `slashingPercentage`   | >= 0 and <= 100% | Validated in `_setOptimisticParams()` |
 | `numParallelProposals` | <= 5             | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS`   |
 
+### StakingVault Parameters
+
+| Parameter        | Constraint          | Constant                                  |
+| ---------------- | ------------------- | ----------------------------------------- |
+| `unstakingDelay` | <= 4 weeks          | `MAX_UNSTAKING_DELAY`                     |
+| `rewardHalfLife` | 1 day to 2 weeks    | `MIN_REWARD_HALF_LIFE`, `MAX_REWARD_HALF_LIFE` |
+
+Defaults (from Constants.sol):
+
+- `DEFAULT_REWARD_PERIOD` = 1 week
+- `DEFAULT_UNSTAKING_DELAY` = 1 week
+
 ## Token Requirements
-
-### IVetoToken Interface
-
-The governance token must implement the `IVetoToken` interface, which extends `IERC20` and `IVotes`:
-
-- **`burn(uint256 amount)`**: Required for slashing mechanics. Must not revert for zero amount.
-- **`getPastTotalSupply(uint256 timepoint)`**: Required for snapshot-based veto threshold calculation.
-
-The burn function is verified at initialization by calling `token.burn(0)`.
-
-### Token Compatibility Warnings
 
 - **Rebasing tokens**: Not compatible with rebasing tokens
 - **Direct transfers**: Do NOT send tokens to OptimisticProposal directly; use `stakeToVeto()` instead
 - **Supply limit**: Token supply should be less than 1e59
+- **Voting power**: Voting power is denominated in StakingVault shares, not the underlying token directly. Users must deposit into StakingVault and delegate to participate in governance.
 
 ## Optimistic Call Restrictions
 
-Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `OptimisticSelectorRegistry`. In addition, two targets are **always** blocked regardless of the registry:
+Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `OptimisticSelectorRegistry`. In addition, the following targets are **always** blocked at registration time (hardcoded in `OptimisticSelectorRegistry`):
 
-- The `ReserveOptimisticGovernor` contract (hardcoded in `OptimisticProposalLib`)
-- The `TimelockControllerOptimistic` contract (hardcoded in `OptimisticProposalLib`)
+- The `ReserveOptimisticGovernor` contract
+- The `TimelockControllerOptimistic` contract
+- The `OptimisticSelectorRegistry` itself
+- The `StakingVault` (token) — except for `addRewardToken()` and `removeRewardToken()` selectors
 
-The `OptimisticSelectorRegistry` also cannot be registered as a target within itself (reverts with `SelfAsTarget`).
-
-Attempting a disallowed call reverts with `InvalidFunctionCall(target, selector)`.
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.
 
 ## Upgradeability
 
-Both contracts are UUPS upgradeable:
+Three contracts are UUPS upgradeable:
 
 | Contract                       | Upgrade Authorization                                    |
 | ------------------------------ | -------------------------------------------------------- |
+| `StakingVault`                 | Owner-authorized (`onlyOwner`)                          |
 | `ReserveOptimisticGovernor`    | Via governance (timelock must call `upgradeToAndCall`)   |
 | `TimelockControllerOptimistic` | Self-administered (only the timelock itself can upgrade) |
 
@@ -403,10 +463,4 @@ Fast Proposal:
 
 Slow Proposal:
   propose() → [voting delay] → [voting period] → queue() → [timelock] → execute()
-                   │                  │
-                   ▼                  ▼
-               PENDING → ACTIVE → SUCCEEDED → QUEUED → EXECUTED
-                   │                  │
-                   ▼                  ▼
-               CANCELED           DEFEATED
 ```

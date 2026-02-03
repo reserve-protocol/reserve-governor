@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.28;
 
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -7,16 +7,17 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
-import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
-import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
+import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
+import { IStakingVault } from "../interfaces/IStakingVault.sol";
 import {
     CANCELLER_ROLE,
-    IReserveOptimisticGovernor,
     MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
-} from "./interfaces/IReserveOptimisticGovernor.sol";
-import { IVetoToken } from "./interfaces/IVetoToken.sol";
+} from "../utils/Constants.sol";
+
+import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 
 /**
  * @title OptimisticProposal
@@ -26,7 +27,7 @@ import { IVetoToken } from "./interfaces/IVetoToken.sol";
  *      Token supply should be less than 1e59
  */
 contract OptimisticProposal is Initializable, ContextUpgradeable {
-    using SafeERC20 for IVetoToken;
+    using SafeERC20 for IStakingVault;
 
     // === Events ===
 
@@ -72,7 +73,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     // === State ===
 
     ReserveOptimisticGovernor public governor;
-    IVetoToken public token;
+    IStakingVault public token;
 
     address public proposer;
     uint256 public proposalId;
@@ -107,7 +108,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         string memory _description
     ) public initializer {
         governor = ReserveOptimisticGovernor(payable(_msgSender()));
-        token = IVetoToken(address(governor.token()));
+        token = IStakingVault(address(governor.token()));
 
         proposer = _proposer;
         proposalId = _proposalId;
@@ -120,7 +121,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         voteEnd = uint48(block.timestamp + _params.vetoPeriod);
 
         // {tok}
-        uint256 supply = IVetoToken(address(token)).getPastTotalSupply(governor.clock() - 1);
+        uint256 supply = IStakingVault(address(token)).getPastTotalSupply(governor.clock() - 1);
 
         // {tok} = D18{1} * {tok} / D18{1}
         vetoThreshold = (_params.vetoThreshold * supply + (1e18 - 1)) / 1e18;

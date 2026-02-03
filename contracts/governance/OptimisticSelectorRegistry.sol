@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.33;
+pragma solidity ^0.8.28;
 
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
+import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
+import { IStakingVault } from "../interfaces/IStakingVault.sol";
+
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
-import { IOptimisticSelectorRegistry } from "./interfaces/IOptimisticSelectorRegistry.sol";
 
 contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -36,7 +38,7 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     // === External ===
 
     modifier onlyTimelock() {
-        require(msg.sender == governor.timelock(), OnlyOwner());
+        require(msg.sender == governor.timelock(), OnlyOwner(msg.sender));
         _;
     }
 
@@ -75,9 +77,23 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     // === Internal ===
 
     function _add(address target, bytes4[] memory selectors) internal {
-        require(target != address(this), SelfAsTarget());
+        address timelock = address(governor.timelock());
+        address token = address(governor.token());
 
         for (uint256 i = 0; i < selectors.length; i++) {
+            // target != self, governor, timelock
+            require(
+                target != address(this) && target != address(governor) && target != timelock,
+                InvalidCall(target, selectors[i])
+            );
+
+            // target != token || selector == addRewardToken()/removeRewardToken()
+            require(
+                target != token || selectors[i] == IStakingVault.addRewardToken.selector
+                    || selectors[i] == IStakingVault.removeRewardToken.selector,
+                InvalidCall(target, selectors[i])
+            );
+
             bool added = _allowedSelectors[target].add(bytes32(selectors[i]));
 
             if (added) {
@@ -89,8 +105,6 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     }
 
     function _remove(address target, bytes4[] memory selectors) internal {
-        require(target != address(this), SelfAsTarget());
-
         for (uint256 i = 0; i < selectors.length; i++) {
             bool removed = _allowedSelectors[target].remove(bytes32(selectors[i]));
 
