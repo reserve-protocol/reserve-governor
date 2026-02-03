@@ -406,7 +406,9 @@ Slow Proposal:
                    │                  │
                    ▼                  ▼
                PENDING → ACTIVE → SUCCEEDED → QUEUED → EXECUTED
-                   │                  │
-                   ▼                  ▼
-               CANCELED           DEFEATED
+                   │       |         │          |
+                   ▼       ▼         ▼          ▼
+               CANCELED  CANCELED  DEFEATED  CANCELED
 ```
+
+Note: Cancellations that occur during the QUEUED state will still incur a slashing. 
