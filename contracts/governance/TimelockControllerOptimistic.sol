@@ -70,7 +70,7 @@ contract TimelockControllerOptimistic is
         bytes[] calldata payloads,
         bytes32 predecessor,
         bytes32 salt
-    ) public payable override onlyRoleOrOpenRole(PROPOSER_ROLE) {
+    ) public payable onlyRoleOrOpenRole(PROPOSER_ROLE) {
         bytes32 id = hashOperationBatch(targets, values, payloads, predecessor, salt);
 
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();

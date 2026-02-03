@@ -351,18 +351,9 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 
 **Constraints:**
 
-- Cannot register itself as a target (reverts with `SelfAsTarget`)
-- The governor and timelock are additionally blocked as targets in `OptimisticProposalLib` (hardcoded)
+- Cannot register itself as a target
+- The governor, timelock, and StakingVault (token) are additionally blocked as targets in `OptimisticSelectorRegistry` (hardcoded, exempt: addRewardToken()/removeRewardToken())
 
-### Deployer
-
-Deploys the complete Reserve Governor system: StakingVault proxy, timelock proxy, selector registry clone, and governor proxy.
-
-- Constructor takes 4 implementation addresses: `stakingVaultImpl`, `governorImpl`, `timelockImpl`, `selectorRegistryImpl`
-- `deploy(DeploymentParams, deploymentNonce)` - Returns `(stakingVault, governor, timelock, selectorRegistry)`
-- StakingVault is initialized with name `"Vote-Locked {Token}"`, symbol `"vl{Symbol}"`, default reward period 1 week, default unstaking delay 1 week
-- StakingVault owner is set to the deployer contract address
-- Configures all timelock roles (`PROPOSER_ROLE`, `EXECUTOR_ROLE`, `CANCELLER_ROLE` → governor; `CANCELLER_ROLE` → guardians; `OPTIMISTIC_PROPOSER_ROLE` → proposers) and renounces admin
 
 ### TimelockControllerOptimistic
 
@@ -424,14 +415,13 @@ Defaults (from Constants.sol):
 
 ## Optimistic Call Restrictions
 
-Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `OptimisticSelectorRegistry`. In addition, two targets are **always** blocked regardless of the registry:
+Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `OptimisticSelectorRegistry`. In addition, the following targets are **always** blocked at registration time (hardcoded in `OptimisticSelectorRegistry`):
 
-- The `ReserveOptimisticGovernor` contract (hardcoded in `OptimisticProposalLib`)
-- The `TimelockControllerOptimistic` contract (hardcoded in `OptimisticProposalLib`)
+- The `ReserveOptimisticGovernor` contract
+- The `TimelockControllerOptimistic` contract
+- The `OptimisticSelectorRegistry` itself
+- The `StakingVault` (token) — except for `addRewardToken()` and `removeRewardToken()` selectors
 
-The `OptimisticSelectorRegistry` also cannot be registered as a target within itself (reverts with `SelfAsTarget`).
-
-Attempting a disallowed call reverts with `InvalidFunctionCall(target, selector)`.
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.
 
@@ -473,12 +463,4 @@ Fast Proposal:
 
 Slow Proposal:
   propose() → [voting delay] → [voting period] → queue() → [timelock] → execute()
-                   │                  │
-                   ▼                  ▼
-               PENDING → ACTIVE → SUCCEEDED → QUEUED → EXECUTED
-                   │       |         │          |
-                   ▼       ▼         ▼          ▼
-               CANCELED  CANCELED  DEFEATED  CANCELED
 ```
-
-Note: Cancellations that occur during the QUEUED state will still incur a slashing. 
