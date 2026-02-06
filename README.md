@@ -401,11 +401,6 @@ The following enforcement limits apply to optimistic governance parameters:
 | `unstakingDelay` | <= 4 weeks          | `MAX_UNSTAKING_DELAY`                     |
 | `rewardHalfLife` | 1 day to 2 weeks    | `MIN_REWARD_HALF_LIFE`, `MAX_REWARD_HALF_LIFE` |
 
-Defaults (from Constants.sol):
-
-- `DEFAULT_REWARD_PERIOD` = 1 week
-- `DEFAULT_UNSTAKING_DELAY` = 1 week
-
 ## Token Requirements
 
 - **Rebasing tokens**: Not compatible with rebasing tokens

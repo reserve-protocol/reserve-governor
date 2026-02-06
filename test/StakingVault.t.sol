@@ -19,7 +19,6 @@ import { TimelockControllerOptimistic } from "@governance/TimelockControllerOpti
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
-import { DEFAULT_UNSTAKING_DELAY } from "@src/utils/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { StakingVaultV2Mock } from "./mocks/StakingVaultV2Mock.sol";
@@ -34,6 +33,7 @@ contract StakingVaultTest is Test {
     address private timelock;
 
     uint256 private constant REWARD_HALF_LIFE = 3 days;
+    uint256 private constant UNSTAKING_DELAY = 1 weeks;
 
     address constant ACTOR_ALICE = address(0x123123001);
     address constant ACTOR_BOB = address(0x123123002);
@@ -76,7 +76,7 @@ contract StakingVaultTest is Test {
                 underlying: IERC20Metadata(address(token)),
                 rewardTokens: rewardTokens,
                 rewardHalfLife: REWARD_HALF_LIFE,
-                unstakingDelay: DEFAULT_UNSTAKING_DELAY
+                unstakingDelay: UNSTAKING_DELAY
             });
 
         // Deploy system
@@ -117,7 +117,7 @@ contract StakingVaultTest is Test {
         assertEq(vault.symbol(), "vlTEST");
         assertEq(address(vault.asset()), address(token));
         assertEq(vault.owner(), address(timelock));
-        assertEq(vault.unstakingDelay(), DEFAULT_UNSTAKING_DELAY);
+        assertEq(vault.unstakingDelay(), UNSTAKING_DELAY);
         assertEq(vault.clock(), block.timestamp);
         assertEq(vault.CLOCK_MODE(), "mode=timestamp");
         assertEq(vault.totalSupply(), 0);
@@ -792,7 +792,7 @@ contract StakingVaultTest is Test {
         _withdrawAs(ACTOR_BOB, bobShares);
 
         // Wait for unstaking delay and claim locks
-        vm.warp(block.timestamp + DEFAULT_UNSTAKING_DELAY);
+        vm.warp(block.timestamp + UNSTAKING_DELAY);
         vault.unstakingManager().claimLock(0);
         vault.unstakingManager().claimLock(1);
 
@@ -939,7 +939,7 @@ contract StakingVaultTest is Test {
         _withdrawAs(ACTOR_BOB, 1000e18);
 
         // Wait for unstaking delay and claim lock
-        vm.warp(block.timestamp + DEFAULT_UNSTAKING_DELAY);
+        vm.warp(block.timestamp + UNSTAKING_DELAY);
         vault.unstakingManager().claimLock(0);
 
         uint256 bobBalanceAfter = token.balanceOf(ACTOR_BOB);
@@ -973,7 +973,7 @@ contract StakingVaultTest is Test {
         assertEq(address(vault.asset()), address(token));
         assertEq(vault.balanceOf(ACTOR_ALICE), 1000e18);
         assertEq(vault.owner(), address(timelock));
-        assertEq(vault.unstakingDelay(), DEFAULT_UNSTAKING_DELAY);
+        assertEq(vault.unstakingDelay(), UNSTAKING_DELAY);
 
         address[] memory _rewardTokens = vault.getAllRewardTokens();
         assertEq(_rewardTokens.length, 1);
