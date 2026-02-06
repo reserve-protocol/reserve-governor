@@ -158,7 +158,7 @@ library OptimisticProposalLib {
 
     function _clearCompletedOptimisticProposals(EnumerableSet.AddressSet storage set) private {
         // this is obviously a bad pattern in general, but with a max
-        // of 5 (MAX_PARALLEL_OPTIMISTIC_PROPOSALS) it's fine and saves many callbacks
+        // of 10 (MAX_PARALLEL_OPTIMISTIC_PROPOSALS) it's fine and saves many callbacks
 
         // Iterate backwards to safely remove while iterating
         for (uint256 i = set.length(); i > 0; i--) {

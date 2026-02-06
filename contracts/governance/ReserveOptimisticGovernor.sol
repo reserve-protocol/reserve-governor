@@ -31,8 +31,8 @@ import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGove
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
 import {
     CANCELLER_ROLE,
+    MAX_PARALLEL_LOCKED_VOTES_FRACTION,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
-    MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
@@ -312,8 +312,8 @@ contract ReserveOptimisticGovernor is
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
         require(
             params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
-                && params.vetoThreshold <= MAX_VETO_THRESHOLD && params.slashingPercentage <= 1e18
-                && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
+                && params.slashingPercentage <= 1e18 && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS
+                && params.vetoThreshold * params.numParallelProposals <= MAX_PARALLEL_LOCKED_VOTES_FRACTION,
             InvalidVetoParameters()
         );
         optimisticParams = params;

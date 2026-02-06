@@ -390,9 +390,11 @@ The following enforcement limits apply to optimistic governance parameters:
 | Parameter              | Constraint       | Constant                              |
 | ---------------------- | ---------------- | ------------------------------------- |
 | `vetoPeriod`           | >= 30 minutes    | `MIN_OPTIMISTIC_VETO_PERIOD`          |
-| `vetoThreshold`        | > 0 and <= 20%   | `MAX_VETO_THRESHOLD`                  |
+| `vetoThreshold`        | > 0%             |                                       |
 | `slashingPercentage`   | >= 0 and <= 100% | Validated in `_setOptimisticParams()` |
-| `numParallelProposals` | <= 5             | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS`   |
+| `numParallelProposals` | <= 10            | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS`   |
+
+Additonal invariant: `vetoThreshold * numParallelProposals <= MAX_PARALLEL_LOCKED_VOTES_FRACTION (66%)`
 
 ### StakingVault Parameters
 
