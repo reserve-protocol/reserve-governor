@@ -132,7 +132,7 @@ HEADER
         local before="${remaining%%${placeholder}*}"
         parts+=("$before")
         remaining="${remaining#*${placeholder}}"
-        ((idx++))
+        ((idx++)) || true
     done
     parts+=("$remaining")
 
