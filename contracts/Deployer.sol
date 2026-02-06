@@ -123,6 +123,6 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Step 6: Renounce admin role
         _timelock.renounceRole(_timelock.DEFAULT_ADMIN_ROLE(), address(this));
 
-        emit ReserveOptimisticGovernorSystemDeployed(address(params.underlying), governor, timelock, selectorRegistry);
+        emit ReserveOptimisticGovernorSystemDeployed(stakingVault, governor, timelock, selectorRegistry);
     }
 }
