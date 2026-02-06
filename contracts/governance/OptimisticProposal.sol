@@ -9,12 +9,7 @@ import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Co
 
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
-import {
-    CANCELLER_ROLE,
-    MAX_VETO_THRESHOLD,
-    MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_PROPOSER_ROLE
-} from "../utils/Constants.sol";
+import { CANCELLER_ROLE } from "../utils/Constants.sol";
 
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
@@ -196,7 +191,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     // === Admin ===
 
     /// Cancel an optimistic proposal WITHOUT a corresponding confirmation proposal
-    /// Caller must have CANCELLER_ROLE or OPTIMISTIC_PROPOSER_ROLE
+    /// Caller must have CANCELLER_ROLE
     function cancel() external {
         TimelockControllerOptimistic timelock = TimelockControllerOptimistic(payable(governor.timelock()));
 
