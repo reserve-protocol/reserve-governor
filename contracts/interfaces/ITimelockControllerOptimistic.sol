@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface ITimelockControllerOptimistic {
+import { IVersioned } from "./IVersioned.sol";
+
+interface ITimelockControllerOptimistic is IVersioned {
     error TimelockControllerOptimistic__OperationConflict();
     error TimelockControllerOptimistic__UnauthorizedUpgrade();
 

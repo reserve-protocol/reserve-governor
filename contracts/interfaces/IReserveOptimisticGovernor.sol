@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface IReserveOptimisticGovernor {
+import { IVersioned } from "./IVersioned.sol";
+
+interface IReserveOptimisticGovernor is IVersioned {
     // === Errors ===
 
     error ExistingOptimisticProposal(uint256 proposalId);

@@ -21,6 +21,7 @@ import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Non
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
+import { IVersioned } from "../interfaces/IVersioned.sol";
 
 import { Versioned } from "../utils/Versioned.sol";
 import { UnstakingManager } from "./UnstakingManager.sol";
@@ -411,6 +412,18 @@ contract StakingVault is
 
     function decimals() public view virtual override(ERC20Upgradeable, ERC4626Upgradeable) returns (uint8) {
         return super.decimals();
+    }
+
+    function owner() public view override(IStakingVault, OwnableUpgradeable) returns (address) {
+        return super.owner();
+    }
+
+    function asset() public view override(IStakingVault, ERC4626Upgradeable) returns (address) {
+        return super.asset();
+    }
+
+    function version() public pure virtual override(IVersioned, Versioned) returns (string memory) {
+        return Versioned.version();
     }
 
     /**
