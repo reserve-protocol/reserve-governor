@@ -11,4 +11,12 @@ interface IStakingVault is IERC20, IVotes {
     function addRewardToken(address rewardToken) external;
 
     function removeRewardToken(address rewardToken) external;
+
+    function asset() external view returns (address);
+
+    function owner() external view returns (address);
+
+    function rewardRatio() external view returns (uint256);
+
+    function unstakingDelay() external view returns (uint256);
 }

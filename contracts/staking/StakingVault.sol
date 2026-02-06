@@ -413,6 +413,14 @@ contract StakingVault is
         return super.decimals();
     }
 
+    function owner() public view override(IStakingVault, OwnableUpgradeable) returns (address) {
+        return super.owner();
+    }
+
+    function asset() public view override(IStakingVault, ERC4626Upgradeable) returns (address) {
+        return super.asset();
+    }
+
     /**
      * ERC5805 Clock
      */
