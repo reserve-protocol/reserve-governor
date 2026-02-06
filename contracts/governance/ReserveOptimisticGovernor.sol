@@ -29,6 +29,8 @@ import {
 
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
+import { IVersioned } from "../interfaces/IVersioned.sol";
+
 import {
     CANCELLER_ROLE,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
@@ -307,6 +309,16 @@ contract ReserveOptimisticGovernor is
         super._tallyUpdated(proposalId);
     }
 
+    function version()
+        public
+        pure
+        virtual
+        override(GovernorUpgradeable, IVersioned, Versioned)
+        returns (string memory)
+    {
+        return Versioned.version();
+    }
+
     // === Private ===
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
@@ -328,8 +340,4 @@ contract ReserveOptimisticGovernor is
 
     /// @dev Upgrades authorized only through timelock
     function _authorizeUpgrade(address) internal override onlyGovernance { }
-
-    function version() public pure virtual override(GovernorUpgradeable, Versioned) returns (string memory) {
-        return Versioned.version();
-    }
 }
