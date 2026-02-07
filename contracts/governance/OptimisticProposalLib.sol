@@ -51,15 +51,15 @@ library OptimisticProposalLib {
             for (uint256 i = 0; i < proposal.targets.length; i++) {
                 address target = proposal.targets[i];
 
-                if (proposal.calldatas[i].length >= 4) {
+                if (proposal.calldatas[i].length != 0) {
                     require(target.code.length != 0, IReserveOptimisticGovernor.InvalidFunctionCallToEOA(target));
 
-                    require(
-                        selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
-                        IReserveOptimisticGovernor.InvalidFunctionCall(target, bytes4(proposal.calldatas[i]))
-                    );
-                } else if (proposal.calldatas[i].length != 0) {
-                    revert IReserveOptimisticGovernor.InvalidFunctionCallToEOA(target);
+                    if (proposal.calldatas[i].length >= 4) {
+                        require(
+                            selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
+                            IReserveOptimisticGovernor.InvalidFunctionCall(target, bytes4(proposal.calldatas[i]))
+                        );
+                    }
                 }
             }
         }
