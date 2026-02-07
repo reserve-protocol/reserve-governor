@@ -102,6 +102,8 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         bytes[] memory _calldatas,
         string memory _description
     ) public initializer {
+        __Context_init();
+
         governor = ReserveOptimisticGovernor(payable(_msgSender()));
         token = IStakingVault(address(governor.token()));
 

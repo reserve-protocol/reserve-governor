@@ -31,6 +31,7 @@ contract TimelockControllerOptimistic is
         initializer
     {
         __TimelockController_init(minDelay, proposers, executors, admin);
+        __AccessControl_init();
     }
 
     function supportsInterface(bytes4 interfaceId)
