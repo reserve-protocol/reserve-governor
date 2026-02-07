@@ -2321,7 +2321,7 @@ contract ReserveOptimisticGovernorTest is Test {
         );
         registry.registerSelectors(selectorData);
 
-        // 4. Cannot target the staking vault with a disallowed selector
+        // 4. Cannot target the staking vault
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(
@@ -2331,16 +2331,15 @@ contract ReserveOptimisticGovernorTest is Test {
         );
         registry.registerSelectors(selectorData);
 
-        // 5. CAN target the staking vault with addRewardToken
-        selectors[0] = IStakingVault.addRewardToken.selector;
+        // 4. Cannot target the staking vault even if using addRewardToken()
+        selectors[0] = StakingVault.addRewardToken.selector;
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
         vm.prank(address(timelock));
-        registry.registerSelectors(selectorData);
-
-        // 6. CAN target the staking vault with removeRewardToken
-        selectors[0] = IStakingVault.removeRewardToken.selector;
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
-        vm.prank(address(timelock));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IOptimisticSelectorRegistry.InvalidCall.selector, address(stakingVault), selectors[0]
+            )
+        );
         registry.registerSelectors(selectorData);
     }
 

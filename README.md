@@ -414,10 +414,10 @@ Additonal invariant: `vetoThreshold * numParallelProposals <= MAX_PARALLEL_LOCKE
 
 Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `OptimisticSelectorRegistry`. In addition, the following targets are **always** blocked at registration time (hardcoded in `OptimisticSelectorRegistry`):
 
+- The `StakingVault` contract
 - The `ReserveOptimisticGovernor` contract
 - The `TimelockControllerOptimistic` contract
 - The `OptimisticSelectorRegistry` itself
-- The `StakingVault` (token) — except for `addRewardToken()` and `removeRewardToken()` selectors
 
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.

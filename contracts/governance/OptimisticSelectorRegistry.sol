@@ -81,16 +81,9 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
         address token = address(governor.token());
 
         for (uint256 i = 0; i < selectors.length; i++) {
-            // target != self, governor, timelock
+            // target != self, governor, timelock, token
             require(
-                target != address(this) && target != address(governor) && target != timelock,
-                InvalidCall(target, selectors[i])
-            );
-
-            // target != token || selector == addRewardToken()/removeRewardToken()
-            require(
-                target != token || selectors[i] == IStakingVault.addRewardToken.selector
-                    || selectors[i] == IStakingVault.removeRewardToken.selector,
+                target != address(this) && target != address(governor) && target != timelock && target != token,
                 InvalidCall(target, selectors[i])
             );
 
