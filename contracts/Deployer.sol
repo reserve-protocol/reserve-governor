@@ -10,14 +10,7 @@ import { OptimisticSelectorRegistry } from "./governance/OptimisticSelectorRegis
 import { ReserveOptimisticGovernor } from "./governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./governance/TimelockControllerOptimistic.sol";
 import { StakingVault } from "./staking/StakingVault.sol";
-import {
-    CANCELLER_ROLE,
-    DEFAULT_REWARD_PERIOD,
-    DEFAULT_UNSTAKING_DELAY,
-    EXECUTOR_ROLE,
-    OPTIMISTIC_PROPOSER_ROLE,
-    PROPOSER_ROLE
-} from "./utils/Constants.sol";
+import { CANCELLER_ROLE, EXECUTOR_ROLE, OPTIMISTIC_PROPOSER_ROLE, PROPOSER_ROLE } from "./utils/Constants.sol";
 import { Versioned } from "./utils/Versioned.sol";
 
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
@@ -130,6 +123,6 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Step 6: Renounce admin role
         _timelock.renounceRole(_timelock.DEFAULT_ADMIN_ROLE(), address(this));
 
-        emit ReserveOptimisticGovernorSystemDeployed(address(params.underlying), governor, timelock, selectorRegistry);
+        emit ReserveOptimisticGovernorSystemDeployed(stakingVault, governor, timelock, selectorRegistry);
     }
 }

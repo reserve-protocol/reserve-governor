@@ -31,6 +31,7 @@ contract TimelockControllerOptimistic is
         initializer
     {
         __TimelockController_init(minDelay, proposers, executors, admin);
+        __AccessControl_init();
     }
 
     function supportsInterface(bytes4 interfaceId)
@@ -70,7 +71,7 @@ contract TimelockControllerOptimistic is
         bytes[] calldata payloads,
         bytes32 predecessor,
         bytes32 salt
-    ) public payable onlyRoleOrOpenRole(PROPOSER_ROLE) {
+    ) public payable onlyRole(PROPOSER_ROLE) {
         bytes32 id = hashOperationBatch(targets, values, payloads, predecessor, salt);
 
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();

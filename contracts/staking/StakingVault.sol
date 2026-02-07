@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 
@@ -139,7 +140,7 @@ contract StakingVault is
     /// Burn a quantity of shares and drip them to remaining holders as native rewards
     /// @dev NOT FOR USE BY REGULAR USERS
     function burn(uint256 _shares) external accrueRewards(msg.sender, msg.sender) {
-        uint256 _assets = convertToAssets(_shares);
+        uint256 _assets = _convertToAssets(_shares, Math.Rounding.Floor);
 
         // reduce share and asset counts, automatically adding `_assets` to the native drip
         totalDeposited -= _assets;

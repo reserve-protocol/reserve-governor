@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
@@ -31,8 +32,8 @@ import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGove
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
 import {
     CANCELLER_ROLE,
+    MAX_PARALLEL_LOCKED_VOTES_FRACTION,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
-    MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
@@ -212,7 +213,7 @@ contract ReserveOptimisticGovernor is
         uint256 proposalThresholdRatio = super.proposalThreshold(); // D18{1}
 
         // {tok}
-        uint256 supply = token().getPastTotalSupply(clock() - 1);
+        uint256 supply = Math.max(1, token().getPastTotalSupply(clock() - 1));
 
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
@@ -307,13 +308,18 @@ contract ReserveOptimisticGovernor is
         super._tallyUpdated(proposalId);
     }
 
+    function _setProposalThreshold(uint256 newProposalThreshold) internal override {
+        require(newProposalThreshold <= 1e18, InvalidProposalThreshold());
+        super._setProposalThreshold(newProposalThreshold);
+    }
+
     // === Private ===
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
         require(
             params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
-                && params.vetoThreshold <= MAX_VETO_THRESHOLD && params.slashingPercentage <= 1e18
-                && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
+                && params.slashingPercentage <= 1e18 && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS
+                && params.vetoThreshold * params.numParallelProposals <= MAX_PARALLEL_LOCKED_VOTES_FRACTION,
             InvalidVetoParameters()
         );
         optimisticParams = params;

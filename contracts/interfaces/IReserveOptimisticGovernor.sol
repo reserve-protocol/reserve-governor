@@ -6,6 +6,7 @@ interface IReserveOptimisticGovernor {
 
     error ExistingOptimisticProposal(uint256 proposalId);
     error OptimisticProposalNotSuccessful(uint256 proposalId);
+    error InvalidProposalThreshold();
     error InvalidVetoParameters();
     error NotOptimisticProposer(address account);
     error NotOptimisticProposal(address account);
