@@ -1882,6 +1882,41 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
+    function test_cannotSetProposalThresholdAbove100Percent() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // proposalThreshold = 1e18 + 1 (> 100%)
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setProposalThreshold, (1e18 + 1));
+
+        string memory description = "Set proposal threshold above 100%";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidProposalThreshold.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
     function test_cannotExceedParallelLockedVotesFraction() public {
         address[] memory targets = new address[](1);
         targets[0] = address(governor);

@@ -308,6 +308,11 @@ contract ReserveOptimisticGovernor is
         super._tallyUpdated(proposalId);
     }
 
+    function _setProposalThreshold(uint256 newProposalThreshold) internal override {
+        require(newProposalThreshold <= 1e18, InvalidProposalThreshold());
+        super._setProposalThreshold(newProposalThreshold);
+    }
+
     // === Private ===
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
