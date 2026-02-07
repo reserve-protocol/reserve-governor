@@ -50,19 +50,17 @@ library OptimisticProposalLib {
         {
             for (uint256 i = 0; i < proposal.targets.length; i++) {
                 address target = proposal.targets[i];
-                bytes4 selector = bytes4(proposal.calldatas[i]);
 
-                require(
-                    selectorRegistry.isAllowed(target, selector),
-                    IReserveOptimisticGovernor.InvalidFunctionCall(target, selector)
-                );
+                if (proposal.calldatas[i].length >= 4) {
+                    require(target.code.length != 0, IReserveOptimisticGovernor.InvalidFunctionCallToEOA(target));
 
-                // ensure no accidental calls to EOAs
-                // limitation: cannot log data to EOAs or interact with a contract within its constructor
-                require(
-                    selector == bytes4(0) || target.code.length != 0,
-                    IReserveOptimisticGovernor.InvalidFunctionCallToEOA(target)
-                );
+                    require(
+                        selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
+                        IReserveOptimisticGovernor.InvalidFunctionCall(target, bytes4(proposal.calldatas[i]))
+                    );
+                } else if (proposal.calldatas[i].length != 0) {
+                    revert IReserveOptimisticGovernor.InvalidFunctionCallToEOA(target);
+                }
             }
         }
 

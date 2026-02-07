@@ -1683,6 +1683,28 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
+    function test_cannotProposeShortCalldataOptimistic() public {
+        address target = makeAddr("target");
+
+        address[] memory targets = new address[](1);
+        targets[0] = target;
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // 3 bytes: too short for a selector but not empty
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = hex"abcdef";
+
+        string memory description = "Short calldata - should fail";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidFunctionCallToEOA.selector, target)
+        );
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
     function test_canSendETHToEOAWithEmptyCalldata_standard() public {
         address eoaTarget = makeAddr("eoaTarget");
         vm.deal(address(timelock), 1 ether);
