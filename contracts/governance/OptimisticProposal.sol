@@ -190,7 +190,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     // === Admin ===
 
     /// Cancel an optimistic proposal WITHOUT a corresponding confirmation proposal
-    /// Caller must have CANCELLER_ROLE
+    /// Caller must have CANCELLER_ROLE or be proposer
     function cancel() external {
         TimelockControllerOptimistic timelock = TimelockControllerOptimistic(payable(governor.timelock()));
 
