@@ -6,7 +6,6 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
-import { IStakingVault } from "../interfaces/IStakingVault.sol";
 
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 
