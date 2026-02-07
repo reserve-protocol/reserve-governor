@@ -38,6 +38,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     event Staked(address indexed staker, uint256 amount);
     event Withdrawn(address indexed staker, uint256 amount);
     event Slashed(uint256 amount);
+    event Canceled();
 
     // === Errors ===
 
@@ -206,6 +207,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         );
 
         canceled = true;
+        emit Canceled();
     }
 
     // === User ===
