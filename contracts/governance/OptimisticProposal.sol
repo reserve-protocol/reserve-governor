@@ -49,6 +49,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     error OptimisticProposal__NotGovernor();
     error OptimisticProposal__NotSlashed();
     error OptimisticProposal__UnderConfirmation();
+    error OptimisticProposal__ZeroVetoThreshold();
 
     // === Enums ===
 
@@ -120,6 +121,8 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         // {tok} = D18{1} * {tok} / D18{1}
         vetoThreshold = (_params.vetoThreshold * supply + (1e18 - 1)) / 1e18;
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
+
+        require(vetoThreshold != 0, OptimisticProposal__ZeroVetoThreshold());
 
         // D18{1}
         slashingPercentage = _params.slashingPercentage;

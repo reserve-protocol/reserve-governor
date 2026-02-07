@@ -237,6 +237,9 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens to alice via optimistic";
 
+        // Warp to ensure we have a snapshot
+        vm.warp(block.timestamp + 1);
+
         // Step 1: Propose optimistically
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -280,6 +283,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens - will be canceled";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -306,6 +311,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens - proposer cancels";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -697,6 +704,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens - late staking";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -828,6 +837,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
 
         vm.startPrank(optimisticProposer);
 
@@ -1217,6 +1228,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -1240,6 +1253,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -1261,6 +1276,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -1553,6 +1570,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -1576,6 +1595,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -1624,6 +1645,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -1759,6 +1782,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = "";
 
         string memory description = "Send ETH to EOA via optimistic - should succeed";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);

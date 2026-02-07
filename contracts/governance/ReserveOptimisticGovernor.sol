@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
@@ -212,7 +213,7 @@ contract ReserveOptimisticGovernor is
         uint256 proposalThresholdRatio = super.proposalThreshold(); // D18{1}
 
         // {tok}
-        uint256 supply = token().getPastTotalSupply(clock() - 1);
+        uint256 supply = Math.max(1, token().getPastTotalSupply(clock() - 1));
 
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
