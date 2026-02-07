@@ -638,6 +638,43 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(stakingVault.balanceOf(alice), aliceStakingBalanceBefore + partialStake);
     }
 
+    function test_withdrawDecrementsTotalStaked() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens - withdraw totalStaked regression";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+        uint256 partialStake = vetoThreshold / 2;
+
+        // Alice stakes
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), partialStake);
+        optProposal.stakeToVeto(partialStake);
+        vm.stopPrank();
+
+        assertEq(optProposal.totalStaked(), partialStake);
+
+        // Alice withdraws
+        vm.prank(alice);
+        optProposal.withdraw();
+
+        // Regression: old code did not decrement totalStaked
+        assertEq(optProposal.totalStaked(), 0);
+    }
+
     function test_multipleStakersReachThreshold() public {
         // Create proposal
         address[] memory targets = new address[](1);
