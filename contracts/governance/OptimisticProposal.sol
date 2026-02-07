@@ -41,10 +41,6 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
 
     // === Errors ===
 
-    error OptimisticProposal__InvalidVetoPeriod();
-    error OptimisticProposal__InvalidVetoThreshold();
-    error OptimisticProposal__InvalidSlashingPercentage();
-    error OptimisticProposal__InvalidProposal();
     error OptimisticProposal__CannotCancel();
     error OptimisticProposal__NotActive();
     error OptimisticProposal__ZeroStake();
