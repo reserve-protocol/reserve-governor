@@ -86,6 +86,9 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
                 InvalidCall(target, selectors[i])
             );
 
+            // no empty selectors
+            require(selectors[i] != bytes4(0), InvalidCall(target, selectors[i]));
+
             bool added = _allowedSelectors[target].add(bytes32(selectors[i]));
 
             if (added) {

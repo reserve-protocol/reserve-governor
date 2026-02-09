@@ -1,33 +1,43 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
+import {
+    GovernorCountingSimpleUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
+
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
     error ExistingOptimisticProposal(uint256 proposalId);
+    error OptimisticProposalNotActive(uint256 proposalId);
     error OptimisticProposalNotSuccessful(uint256 proposalId);
+    error OptimisticProposalAlreadyVetoed(uint256 proposalId);
     error InvalidProposalThreshold();
-    error InvalidVetoParameters();
+    error InvalidOptimisticParameters();
     error NotOptimisticProposer(address account);
-    error NotOptimisticProposal(address account);
+    error InvalidEmptyCall(address target, bytes data);
     error InvalidFunctionCall(address target, bytes4 selector);
     error InvalidFunctionCallToEOA(address target);
-    error TooManyParallelOptimisticProposals();
     error InvalidProposalLengths();
 
     // === Events ===
 
+    /// @param vetoStart {s} Start of the veto period
+    /// @param vetoEnd {s} End of the veto period
+    /// @param vetoThreshold D18{1} Fraction of token supply required to trigger veto and start confirmation process
     event OptimisticProposalCreated(
-        address indexed proposer,
         uint256 indexed proposalId,
+        address indexed proposer,
         address[] targets,
         uint256[] values,
         bytes[] calldatas,
-        string description,
-        uint256 vetoPeriod,
+        uint256 vetoStart,
+        uint256 vetoEnd,
         uint256 vetoThreshold,
-        uint256 slashingPercentage
+        string description
     );
+    event VetoCast(uint256 indexed proposalId, address indexed vetoer, uint256 againstVotes, string reason);
 
     // === Data ===
 
@@ -36,11 +46,21 @@ interface IReserveOptimisticGovernor {
         Standard
     }
 
+    struct OptimisticProposal {
+        uint256 proposalId;
+        address[] targets;
+        uint256[] values;
+        bytes[] calldatas;
+        string description;
+        GovernorUpgradeable.ProposalCore core;
+        GovernorCountingSimpleUpgradeable.ProposalVote vote;
+        uint256 vetoThreshold; // D18{1}
+    }
+
     struct OptimisticGovernanceParams {
+        uint48 vetoDelay; // {s}
         uint32 vetoPeriod; // {s}
         uint256 vetoThreshold; // D18{1}
-        uint256 slashingPercentage; // D18{1}
-        uint256 numParallelProposals; // number of proposals that can be running in parallel
     }
 
     struct StandardGovernanceParams {

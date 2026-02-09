@@ -2,9 +2,8 @@
 pragma solidity ^0.8.28;
 
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
-import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
-import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
-import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
@@ -15,11 +14,7 @@ import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRe
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
 
-import { OptimisticProposal } from "./OptimisticProposal.sol";
-
 library OptimisticProposalLib {
-    using EnumerableSet for EnumerableSet.AddressSet;
-
     // stack-too-deep
     struct ProposalData {
         address[] targets;
@@ -28,18 +23,15 @@ library OptimisticProposalLib {
         string description;
     }
 
-    // === External ===
+    /// === External ===
 
     function createOptimisticProposal(
-        ProposalData memory proposal,
-        mapping(uint256 proposalId => OptimisticProposal) storage optimisticProposals,
-        EnumerableSet.AddressSet storage activeOptimisticProposals,
+        uint256 proposalId,
+        ProposalData calldata proposal,
+        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
         IReserveOptimisticGovernor.OptimisticGovernanceParams calldata optimisticParams,
-        address optimisticProposalImpl,
         IOptimisticSelectorRegistry selectorRegistry
-    ) external returns (uint256 proposalId) {
-        _clearCompletedOptimisticProposals(activeOptimisticProposals);
-
+    ) external {
         require(proposal.targets.length != 0, IReserveOptimisticGovernor.InvalidProposalLengths());
         require(
             proposal.targets.length == proposal.values.length && proposal.targets.length == proposal.calldatas.length,
@@ -51,134 +43,161 @@ library OptimisticProposalLib {
             for (uint256 i = 0; i < proposal.targets.length; i++) {
                 address target = proposal.targets[i];
 
-                if (proposal.calldatas[i].length != 0) {
-                    require(target.code.length != 0, IReserveOptimisticGovernor.InvalidFunctionCallToEOA(target));
+                require(target.code.length != 0, IReserveOptimisticGovernor.InvalidFunctionCallToEOA(target));
 
-                    if (proposal.calldatas[i].length >= 4) {
-                        require(
-                            selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
-                            IReserveOptimisticGovernor.InvalidFunctionCall(target, bytes4(proposal.calldatas[i]))
-                        );
-                    }
-                }
+                require(
+                    proposal.calldatas[i].length >= 4,
+                    IReserveOptimisticGovernor.InvalidEmptyCall(target, proposal.calldatas[i])
+                );
+
+                require(
+                    selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
+                    IReserveOptimisticGovernor.InvalidFunctionCall(target, bytes4(proposal.calldatas[i]))
+                );
+
+                // copy data to storage
+                optimisticProposal.targets.push(proposal.targets[i]);
+                optimisticProposal.values.push(proposal.values[i]);
+                optimisticProposal.calldatas.push(proposal.calldatas[i]);
             }
         }
 
-        OptimisticProposal optimisticProposal = OptimisticProposal(Clones.clone(optimisticProposalImpl));
-
-        // ensure ONLY the OptimisticProposal can create the confirmation proposal
-        proposal.description =
-            string.concat(proposal.description, "#proposer=", Strings.toHexString(address(optimisticProposal)));
-
-        proposalId = IGovernor(payable(address(this)))
-            .getProposalId(
-                proposal.targets, proposal.values, proposal.calldatas, keccak256(bytes(proposal.description))
-            );
-
-        optimisticProposal.initialize(
-            optimisticParams,
-            proposalId,
-            msg.sender,
-            proposal.targets,
-            proposal.values,
-            proposal.calldatas,
-            proposal.description
-        );
-
         require(
-            address(optimisticProposals[proposalId]) == address(0),
-            IReserveOptimisticGovernor.ExistingOptimisticProposal(proposalId)
+            optimisticProposal.core.voteStart == 0, IReserveOptimisticGovernor.ExistingOptimisticProposal(proposalId)
         );
-        optimisticProposals[proposalId] = optimisticProposal;
 
-        require(
-            activeOptimisticProposals.length() < optimisticParams.numParallelProposals,
-            IReserveOptimisticGovernor.TooManyParallelOptimisticProposals()
-        );
-        activeOptimisticProposals.add(address(optimisticProposal));
+        optimisticProposal.proposalId = proposalId;
+        optimisticProposal.description = proposal.description;
+
+        optimisticProposal.core.proposer = msg.sender;
+        optimisticProposal.core.voteStart = uint48(block.timestamp) + optimisticParams.vetoDelay;
+        optimisticProposal.core.voteDuration = SafeCast.toUint32(optimisticParams.vetoPeriod);
+
+        optimisticProposal.vetoThreshold = optimisticParams.vetoThreshold;
 
         emit IReserveOptimisticGovernor.OptimisticProposalCreated(
-            msg.sender,
             proposalId,
+            msg.sender,
             proposal.targets,
             proposal.values,
             proposal.calldatas,
-            proposal.description,
-            optimisticParams.vetoPeriod,
-            optimisticParams.vetoThreshold,
-            optimisticParams.slashingPercentage
+            optimisticProposal.core.voteStart,
+            optimisticProposal.core.voteStart + optimisticParams.vetoPeriod,
+            optimisticProposal.vetoThreshold,
+            proposal.description
         );
+    }
+
+    /// @return If the proposal was vetoed past the veto threshold
+    function castVeto(
+        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
+        IERC5805 token,
+        string memory reason
+    ) external returns (bool) {
+        require(
+            _state(optimisticProposal, token) == IGovernor.ProposalState.Active,
+            IReserveOptimisticGovernor.OptimisticProposalNotActive(optimisticProposal.proposalId)
+        );
+
+        uint256 weight = token.getPastVotes(msg.sender, optimisticProposal.core.voteStart);
+
+        require(
+            !optimisticProposal.vote.hasVoted[msg.sender],
+            IReserveOptimisticGovernor.OptimisticProposalAlreadyVetoed(optimisticProposal.proposalId)
+        );
+        optimisticProposal.vote.hasVoted[msg.sender] = true;
+
+        optimisticProposal.vote.againstVotes += weight;
+        emit IReserveOptimisticGovernor.VetoCast(optimisticProposal.proposalId, msg.sender, weight, reason);
+
+        return _state(optimisticProposal, token) == IGovernor.ProposalState.Defeated;
     }
 
     function executeOptimisticProposal(
-        uint256 proposalId,
-        mapping(uint256 proposalId => OptimisticProposal) storage optimisticProposals,
-        GovernorUpgradeable.GovernorStorage storage governorStorage
+        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
+        IERC5805 token
     ) external {
-        OptimisticProposal optimisticProposal = optimisticProposals[proposalId];
-
         require(
-            optimisticProposal.state() == OptimisticProposal.OptimisticProposalState.Succeeded,
-            IReserveOptimisticGovernor.OptimisticProposalNotSuccessful(proposalId)
+            _state(optimisticProposal, token) == IGovernor.ProposalState.Succeeded,
+            IReserveOptimisticGovernor.OptimisticProposalNotSuccessful(optimisticProposal.proposalId)
         );
-
-        // mark executed in proposal core (for compatibility with legacy offchain monitoring)
-        governorStorage._proposals[proposalId].executed = true;
-
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas, string memory description) =
-            optimisticProposal.proposalData();
 
         emit IGovernor.ProposalCreated(
-            proposalId, msg.sender, targets, values, new string[](targets.length), calldatas, 0, 0, description
+            optimisticProposal.proposalId,
+            msg.sender,
+            optimisticProposal.targets,
+            optimisticProposal.values,
+            new string[](optimisticProposal.targets.length),
+            optimisticProposal.calldatas,
+            block.timestamp,
+            block.timestamp,
+            optimisticProposal.description
         );
-        emit IGovernor.ProposalExecuted(proposalId);
+        emit IGovernor.ProposalExecuted(optimisticProposal.proposalId);
 
-        _timelock().executeBatchBypass{ value: msg.value }(
-            targets, values, calldatas, 0, bytes20(address(this)) ^ keccak256(bytes(description))
+        ITimelockControllerOptimistic timelock = ITimelockControllerOptimistic(
+            payable(GovernorTimelockControlUpgradeable(payable(address(this))).timelock())
+        );
+
+        timelock.executeBatchBypass{ value: msg.value }(
+            optimisticProposal.targets,
+            optimisticProposal.values,
+            optimisticProposal.calldatas,
+            0,
+            bytes20(address(this)) ^ keccak256(bytes(optimisticProposal.description))
         );
     }
 
-    // === View ===
-
-    function activeOptimisticProposalsCount(EnumerableSet.AddressSet storage set)
+    function state(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal, IERC5805 token)
         external
         view
-        returns (uint256 count)
+        returns (IGovernor.ProposalState)
     {
-        for (uint256 i = set.length(); i > 0; i--) {
-            if (!_proposalFinished(OptimisticProposal(set.at(i - 1)).state())) {
-                count++;
-            }
+        return _state(optimisticProposal, token);
+    }
+
+    // === Internal ===
+
+    function _state(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal, IERC5805 token)
+        internal
+        view
+        returns (IGovernor.ProposalState)
+    {
+        if (optimisticProposal.core.executed) {
+            return IGovernor.ProposalState.Executed;
         }
-    }
 
-    // === Private ===
-
-    function _clearCompletedOptimisticProposals(EnumerableSet.AddressSet storage set) private {
-        // this is obviously a bad pattern in general, but with a max
-        // of 10 (MAX_PARALLEL_OPTIMISTIC_PROPOSALS) it's fine and saves many callbacks
-
-        // Iterate backwards to safely remove while iterating
-        for (uint256 i = set.length(); i > 0; i--) {
-            address optimisticProposal = set.at(i - 1);
-
-            if (_proposalFinished(OptimisticProposal(optimisticProposal).state())) {
-                set.remove(optimisticProposal);
-            }
+        if (optimisticProposal.core.canceled) {
+            return IGovernor.ProposalState.Canceled;
         }
-    }
 
-    function _proposalFinished(OptimisticProposal.OptimisticProposalState state) private pure returns (bool) {
-        return state == OptimisticProposal.OptimisticProposalState.Vetoed
-            || state == OptimisticProposal.OptimisticProposalState.Slashed
-            || state == OptimisticProposal.OptimisticProposalState.Canceled
-            || state == OptimisticProposal.OptimisticProposalState.Executed;
-    }
+        uint256 snapshot = optimisticProposal.core.voteStart;
+        require(snapshot != 0, IGovernor.GovernorNonexistentProposal(optimisticProposal.proposalId));
 
-    function _timelock() private view returns (ITimelockControllerOptimistic) {
-        return
-            ITimelockControllerOptimistic(
-                payable(GovernorTimelockControlUpgradeable(payable(address(this))).timelock())
-            );
+        if (snapshot >= block.timestamp) {
+            return IGovernor.ProposalState.Pending;
+        }
+
+        // {tok}
+        uint256 pastSupply = token.getPastTotalSupply(snapshot - 1);
+        if (pastSupply == 0) {
+            return IGovernor.ProposalState.Canceled;
+        }
+
+        // {s}
+        uint256 deadline = optimisticProposal.core.voteStart + optimisticProposal.core.voteDuration;
+
+        if (deadline >= block.timestamp) {
+            return IGovernor.ProposalState.Active;
+        }
+
+        // {tok} = D18{1} * {tok} / D18{1}
+        uint256 vetoThreshold = (optimisticProposal.vetoThreshold * pastSupply + (1e18 - 1)) / 1e18;
+
+        if (optimisticProposal.vote.againstVotes >= vetoThreshold) {
+            return IGovernor.ProposalState.Defeated;
+        } else {
+            return IGovernor.ProposalState.Succeeded;
+        }
     }
 }

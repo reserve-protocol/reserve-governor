@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
@@ -29,18 +29,15 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
-import { IStakingVault } from "../interfaces/IStakingVault.sol";
 import {
     CANCELLER_ROLE,
-    MAX_PARALLEL_LOCKED_VOTES_FRACTION,
-    MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
+    MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
 import { OptimisticProposalLib } from "./OptimisticProposalLib.sol";
 
 import { Versioned } from "../utils/Versioned.sol";
-import { OptimisticProposal } from "./OptimisticProposal.sol";
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 
@@ -48,14 +45,10 @@ import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol
  * @title Reserve Optimistic Governor
  * @notice A hybrid optimistic/pessimistic governor for the Reserve protocol
  *
- * @dev 4 overall components:
+ * @dev 3 overall components:
  *    1. ReserveGovernor: Hybrid governor that unifies proposalIds for optimistic/pessimistic flows
  *    2. OptimisticSelectorRegistry: Registry of allowed selectors for optimistic proposals
  *    3. TimelockControllerOptimistic: Single timelock that executes everything, with bypass for optimistic case
- *    4. OptimisticProposal: One-off contract per optimistic proposal to support staking + slashing
- *
- *   Intended to be used with a 1-governance-system-per-token model, NOT shared.
- *   If tokens belong to multiple governance systems there can be contention for veto staking.
  */
 contract ReserveOptimisticGovernor is
     GovernorUpgradeable,
@@ -69,19 +62,14 @@ contract ReserveOptimisticGovernor is
     UUPSUpgradeable,
     IReserveOptimisticGovernor
 {
-    address public immutable optimisticProposalImpl;
-
     OptimisticGovernanceParams public optimisticParams;
-
-    mapping(uint256 proposalId => OptimisticProposal) public optimisticProposals;
-    EnumerableSet.AddressSet private activeOptimisticProposals;
 
     OptimisticSelectorRegistry public selectorRegistry;
 
+    mapping(uint256 proposalId => OptimisticProposal) private optimisticProposals;
+
     constructor() {
         _disableInitializers();
-
-        optimisticProposalImpl = address(new OptimisticProposal());
     }
 
     modifier onlyOptimisticProposer() {
@@ -89,10 +77,9 @@ contract ReserveOptimisticGovernor is
         _;
     }
 
-    /// @param optimisticGovParams.vetoPeriod {s} Veto period
+    /// @param optimisticGovParams.votingDelay {s} Delay before snapshot for optimistic proposals
+    /// @param optimisticGovParams.vetoPeriod {s} Veto period for optimistic proposals
     /// @param optimisticGovParams.vetoThreshold D18{1} Fraction of tok supply required to start confirmation process
-    /// @param optimisticGovParams.slashingPercentage D18{1} Percentage of staked tokens to be slashed
-    /// @param optimisticGovParams.numParallelProposals Number of optimistic proposals that can be in parallel
     /// @param standardGovParams.votingDelay {s} Delay before snapshot
     /// @param standardGovParams.votingPeriod {s} Voting period
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
@@ -111,7 +98,7 @@ contract ReserveOptimisticGovernor is
         );
         __GovernorPreventLateQuorum_init(standardGovParams.voteExtension);
         __GovernorCountingSimple_init();
-        __GovernorVotes_init(IStakingVault(_token));
+        __GovernorVotes_init(IERC5805(_token));
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
 
@@ -126,47 +113,65 @@ contract ReserveOptimisticGovernor is
 
     // === Optimistic flow ===
 
-    /// @param description Exclude `#proposer=0x???` suffix, it will be ignored
-    /// @return proposalId The ID of the proposed optimistic proposal
     function proposeOptimistic(
         address[] calldata targets,
         uint256[] calldata values,
         bytes[] calldata calldatas,
         string calldata description
     ) external onlyOptimisticProposer returns (uint256 proposalId) {
-        proposalId = OptimisticProposalLib.createOptimisticProposal(
+        require(_isValidDescriptionForProposer(msg.sender, description), GovernorRestrictedProposer(msg.sender));
+
+        proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
+
+        OptimisticProposalLib.createOptimisticProposal(
+            proposalId,
             OptimisticProposalLib.ProposalData(targets, values, calldatas, description),
-            optimisticProposals,
-            activeOptimisticProposals,
+            optimisticProposals[proposalId],
             optimisticParams,
-            optimisticProposalImpl,
             selectorRegistry
         );
     }
 
-    /// Execute an optimistic proposal that passed successfully without confirmation
+    function castVetoOptimistic(uint256 proposalId, string memory reason) external {
+        OptimisticProposal storage optimisticProposal = optimisticProposals[proposalId];
+
+        bool vetoed = OptimisticProposalLib.castVeto(optimisticProposal, token(), reason);
+
+        // trigger confirmation vote if vetoed
+        if (vetoed) {
+            _propose(
+                optimisticProposal.targets,
+                optimisticProposal.values,
+                optimisticProposal.calldatas,
+                optimisticProposal.description,
+                optimisticProposal.core.proposer
+            );
+        }
+    }
+
+    /// Execute an optimistic proposal that passed successfully without going through the confirmation process
     function executeOptimistic(uint256 proposalId) external payable onlyOptimisticProposer {
-        OptimisticProposalLib.executeOptimisticProposal(proposalId, optimisticProposals, _getGovernorStorage());
+        // mark executed in proposal core (for compatibility with legacy offchain monitoring)
+        _getGovernorStorage()._proposals[proposalId].executed = true;
+
+        OptimisticProposalLib.executeOptimisticProposal(optimisticProposals[proposalId], token());
     }
 
-    /// @return The number of active optimistic proposals
-    function activeOptimisticProposalsCount() external view returns (uint256) {
-        return OptimisticProposalLib.activeOptimisticProposalsCount(activeOptimisticProposals);
-    }
-
+    /// @dev If ProposalType.Optimistic, call `stateOptimistic()`
     /// @dev If ProposalType.Standard, call `state()`
-    /// @dev If ProposalType.Optimistic, call `optimisticProposal.state()`
     /// @return ProposalType.Optimistic | ProposalType.Standard
     function proposalType(uint256 proposalId) public view returns (ProposalType) {
         if (proposalSnapshot(proposalId) != 0) {
             return ProposalType.Standard;
         }
 
-        if (address(optimisticProposals[proposalId]) != address(0)) {
-            return ProposalType.Optimistic;
-        }
+        require(optimisticProposals[proposalId].core.voteStart != 0, GovernorNonexistentProposal(proposalId));
 
-        revert GovernorNonexistentProposal(proposalId);
+        return ProposalType.Optimistic;
+    }
+
+    function stateOptimistic(uint256 proposalId) public view returns (ProposalState) {
+        return OptimisticProposalLib.state(optimisticProposals[proposalId], token());
     }
 
     // === Inheritance overrides ===
@@ -219,39 +224,22 @@ contract ReserveOptimisticGovernor is
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
     }
 
-    /// Propose a confirmation proposal, only callable by an OptimisticProposal
-    function proposeConfirmation(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        string memory description,
-        address initialProposer,
-        uint256 initialVotesAgainst
-    ) public returns (uint256 proposalId) {
-        address caller = _msgSender();
-
-        proposalId = _propose(targets, values, calldatas, description, initialProposer);
-
-        require(caller == address(optimisticProposals[proposalId]), NotOptimisticProposal(caller));
-
-        // cast initial AGAINST votes
-        uint256 votedWeight = _countVote(proposalId, caller, uint8(VoteType.Against), initialVotesAgainst, "");
-        emit VoteCast(caller, proposalId, uint8(VoteType.Against), votedWeight, "");
-    }
-
     function propose(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
-    ) public override returns (uint256) {
+    ) public override returns (uint256 proposalId) {
         // ensure no accidental calls to EOAs
         // limitation: cannot log data to EOAs or interact with a contract within its constructor
         for (uint256 i = 0; i < targets.length; i++) {
             require(calldatas[i].length == 0 || targets[i].code.length != 0, InvalidFunctionCallToEOA(targets[i]));
         }
 
-        return super.propose(targets, values, calldatas, description);
+        proposalId = super.propose(targets, values, calldatas, description);
+
+        // ensure no collisions with optimistic proposal
+        require(optimisticProposals[proposalId].core.voteStart == 0, ExistingOptimisticProposal(proposalId));
     }
 
     function _queueOperations(
@@ -271,10 +259,6 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
-        if (address(optimisticProposals[proposalId]) != address(0)) {
-            optimisticProposals[proposalId].slash();
-        }
-
         super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
 
@@ -317,10 +301,9 @@ contract ReserveOptimisticGovernor is
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
         require(
-            params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
-                && params.slashingPercentage <= 1e18 && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS
-                && params.vetoThreshold * params.numParallelProposals <= MAX_PARALLEL_LOCKED_VOTES_FRACTION,
-            InvalidVetoParameters()
+            params.vetoDelay >= MIN_OPTIMISTIC_VETO_DELAY && params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD
+                && params.vetoThreshold != 0 && params.vetoThreshold <= 1e18,
+            InvalidOptimisticParameters()
         );
         optimisticParams = params;
     }

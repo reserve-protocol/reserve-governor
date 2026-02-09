@@ -21,8 +21,6 @@ import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Non
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
-import { IStakingVault } from "../interfaces/IStakingVault.sol";
-
 import { Versioned } from "../utils/Versioned.sol";
 import { UnstakingManager } from "./UnstakingManager.sol";
 
@@ -40,7 +38,6 @@ uint256 constant SCALAR = 1e18; // D18
  * @notice StakingVault is a transferrable vault of an underlying token that uses the ERC4626 interface.
  *         It earns the holder a claimable stream of multi rewards and enables them to vote in (external) governance.
  *         Unstaking is gated by a delay, implemented by an UnstakingManager.
- *         It supports slashing via the burning of shares and accrual of native rewards to the remaining holders.
  *
  * @dev StakingVault also supports native asset() rewards alongside other reward tokens, but are handled independently.
  */
@@ -50,8 +47,7 @@ contract StakingVault is
     ERC20VotesUpgradeable,
     OwnableUpgradeable,
     Versioned,
-    UUPSUpgradeable,
-    IStakingVault
+    UUPSUpgradeable
 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -133,19 +129,6 @@ contract StakingVault is
      * @param newImplementation Address of the new implementation contract
      */
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner { }
-
-    /**
-     * Slashing logic
-     */
-    /// Burn a quantity of shares and drip them to remaining holders as native rewards
-    /// @dev NOT FOR USE BY REGULAR USERS
-    function burn(uint256 _shares) external accrueRewards(msg.sender, msg.sender) {
-        uint256 _assets = _convertToAssets(_shares, Math.Rounding.Floor);
-
-        // reduce share and asset counts, automatically adding `_assets` to the native drip
-        totalDeposited -= _assets;
-        _burn(msg.sender, _shares);
-    }
 
     /**
      * Deposit & Delegate
