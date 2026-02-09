@@ -5,11 +5,11 @@ import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
-import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
     GovernorTimelockControlUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
 
+import { ReserveOptimisticGovernor } from "../governance/ReserveOptimisticGovernor.sol";
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
@@ -89,11 +89,12 @@ library OptimisticProposalLib {
     }
 
     /// @return If the proposal was vetoed past the veto threshold
-    function castVeto(
-        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
-        IERC5805 token,
-        string memory reason
-    ) external returns (bool) {
+    function castVeto(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal, string memory reason)
+        external
+        returns (bool)
+    {
+        IERC5805 token = ReserveOptimisticGovernor(payable(address(this))).token();
+
         require(
             _state(optimisticProposal, token) == IGovernor.ProposalState.Active,
             IReserveOptimisticGovernor.OptimisticProposalNotActive(optimisticProposal.proposalId)
@@ -113,10 +114,11 @@ library OptimisticProposalLib {
         return _state(optimisticProposal, token) == IGovernor.ProposalState.Defeated;
     }
 
-    function executeOptimisticProposal(
-        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
-        IERC5805 token
-    ) external {
+    function executeOptimisticProposal(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal)
+        external
+    {
+        IERC5805 token = ReserveOptimisticGovernor(payable(address(this))).token();
+
         require(
             _state(optimisticProposal, token) == IGovernor.ProposalState.Succeeded,
             IReserveOptimisticGovernor.OptimisticProposalNotSuccessful(optimisticProposal.proposalId)
@@ -148,12 +150,12 @@ library OptimisticProposalLib {
         );
     }
 
-    function state(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal, IERC5805 token)
+    function state(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal)
         external
         view
         returns (IGovernor.ProposalState)
     {
-        return _state(optimisticProposal, token);
+        return _state(optimisticProposal, ReserveOptimisticGovernor(payable(address(this))).token());
     }
 
     // === Internal ===

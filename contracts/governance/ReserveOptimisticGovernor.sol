@@ -135,7 +135,7 @@ contract ReserveOptimisticGovernor is
     function castVetoOptimistic(uint256 proposalId, string memory reason) external {
         OptimisticProposal storage optimisticProposal = optimisticProposals[proposalId];
 
-        bool vetoed = OptimisticProposalLib.castVeto(optimisticProposal, token(), reason);
+        bool vetoed = OptimisticProposalLib.castVeto(optimisticProposal, reason);
 
         // trigger confirmation vote if vetoed
         if (vetoed) {
@@ -154,7 +154,7 @@ contract ReserveOptimisticGovernor is
         // mark executed in proposal core (for compatibility with legacy offchain monitoring)
         _getGovernorStorage()._proposals[proposalId].executed = true;
 
-        OptimisticProposalLib.executeOptimisticProposal(optimisticProposals[proposalId], token());
+        OptimisticProposalLib.executeOptimisticProposal(optimisticProposals[proposalId]);
     }
 
     /// @dev If ProposalType.Optimistic, call `stateOptimistic()`
@@ -171,7 +171,7 @@ contract ReserveOptimisticGovernor is
     }
 
     function stateOptimistic(uint256 proposalId) public view returns (ProposalState) {
-        return OptimisticProposalLib.state(optimisticProposals[proposalId], token());
+        return OptimisticProposalLib.state(optimisticProposals[proposalId]);
     }
 
     // === Inheritance overrides ===
