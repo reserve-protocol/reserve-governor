@@ -254,7 +254,7 @@ contract ReserveOptimisticGovernor is
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
         return TimelockControllerOptimistic(payable(timelock())).hasRole(CANCELLER_ROLE, caller)
-            || super._validateCancel(proposalId, caller);
+            || caller == proposalProposer(proposalId);
     }
 
     function _tallyUpdated(uint256 proposalId)
