@@ -118,12 +118,12 @@ library OptimisticProposalLib {
         ProposalData calldata proposal,
         GovernorUpgradeable.ProposalCore storage proposalCore,
         GovernorCountingSimpleUpgradeable.ProposalVote storage proposalVote,
-        mapping(uint256 proposalId => uint256 vetoThreshold) storage vetoThresholds
+        uint256 vetoThreshold
     ) external {
         require(proposalCore.proposer == msg.sender, IReserveOptimisticGovernor.NotOptimisticProposer(msg.sender));
 
         require(
-            state(proposal.proposalId, proposalCore, proposalVote, vetoThresholds) == IGovernor.ProposalState.Succeeded,
+            state(proposal.proposalId, proposalCore, proposalVote, vetoThreshold) == IGovernor.ProposalState.Succeeded,
             IReserveOptimisticGovernor.OptimisticProposalNotSuccessful(proposal.proposalId)
         );
 
@@ -150,12 +150,13 @@ library OptimisticProposalLib {
         GovernorCountingSimpleUpgradeable.ProposalVote storage proposalVote,
         mapping(uint256 proposalId => uint256 vetoThreshold) storage vetoThresholds
     ) external {
-        // optimistic case, possibly flip pessimistic
+        // check for optimistic -> pessimistic transition
 
-        IGovernor.ProposalState optimisticState = state(proposalId, proposalCore, proposalVote, vetoThresholds);
-
-        if (optimisticState == IGovernor.ProposalState.Defeated) {
-            // flip pessimistic
+        if (
+            state(proposalId, proposalCore, proposalVote, vetoThresholds[proposalId])
+                == IGovernor.ProposalState.Defeated
+        ) {
+            // optimistic -> pessimistic
             vetoThresholds[proposalId] = 0;
 
             GovernorUpgradeable governor = GovernorUpgradeable(payable(address(this)));
@@ -173,9 +174,9 @@ library OptimisticProposalLib {
         uint256 proposalId,
         GovernorUpgradeable.ProposalCore storage proposalCore,
         GovernorCountingSimpleUpgradeable.ProposalVote storage proposalVote,
-        mapping(uint256 proposalId => uint256 vetoThreshold) storage vetoThresholds
+        uint256 vetoThreshold
     ) public view returns (IGovernor.ProposalState) {
-        require(vetoThresholds[proposalId] != 0, IReserveOptimisticGovernor.OptimisticProposalNotOngoing(proposalId));
+        require(vetoThreshold != 0, IReserveOptimisticGovernor.OptimisticProposalNotOngoing(proposalId));
 
         if (proposalCore.executed) {
             return IGovernor.ProposalState.Executed;
@@ -200,9 +201,9 @@ library OptimisticProposalLib {
         }
 
         // {tok} = D18{1} * {tok} / D18{1}
-        uint256 vetoThreshold = (vetoThresholds[proposalId] * pastSupply + (1e18 - 1)) / 1e18;
+        uint256 vetoThresholdTok = (vetoThreshold * pastSupply + (1e18 - 1)) / 1e18;
 
-        if (proposalVote.againstVotes >= vetoThreshold) {
+        if (proposalVote.againstVotes >= vetoThresholdTok) {
             return IGovernor.ProposalState.Defeated;
         }
 

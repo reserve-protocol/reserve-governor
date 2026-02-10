@@ -142,7 +142,7 @@ contract ReserveOptimisticGovernor is
             OptimisticProposalLib.ProposalData(proposalId, targets, values, calldatas, description),
             _getProposalCore(proposalId),
             _getProposalVote(proposalId),
-            vetoThresholds
+            vetoThresholds[proposalId]
         );
     }
 
@@ -167,7 +167,7 @@ contract ReserveOptimisticGovernor is
         // if optimistic proposal is ongoing, return optimistic state
         if (vetoThresholds[proposalId] != 0) {
             return OptimisticProposalLib.state(
-                proposalId, _getProposalCore(proposalId), _getProposalVote(proposalId), vetoThresholds
+                proposalId, _getProposalCore(proposalId), _getProposalVote(proposalId), vetoThresholds[proposalId]
             );
         }
 
@@ -253,8 +253,8 @@ contract ReserveOptimisticGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        return TimelockControllerOptimistic(payable(timelock())).hasRole(CANCELLER_ROLE, caller)
-            || caller == proposalProposer(proposalId);
+        return caller == proposalProposer(proposalId)
+            || TimelockControllerOptimistic(payable(timelock())).hasRole(CANCELLER_ROLE, caller);
     }
 
     function _tallyUpdated(uint256 proposalId)
