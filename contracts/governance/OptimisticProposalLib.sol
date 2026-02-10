@@ -18,9 +18,9 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
 
 import { ReserveOptimisticGovernor } from "../governance/ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "../governance/TimelockControllerOptimistic.sol";
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
-import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
 import { OPTIMISTIC_PROPOSER_ROLE } from "../utils/Constants.sol";
 
 library OptimisticProposalLib {
@@ -43,11 +43,8 @@ library OptimisticProposalLib {
     ) external {
         // validate proposer has OPTIMISTIC_PROPOSER_ROLE
         {
-            GovernorTimelockControlUpgradeable governor = GovernorTimelockControlUpgradeable(payable(address(this)));
-            TimelockControllerUpgradeable timelock = TimelockControllerUpgradeable(payable(governor.timelock()));
-
             require(
-                timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, msg.sender),
+                _timelock().hasRole(OPTIMISTIC_PROPOSER_ROLE, msg.sender),
                 IReserveOptimisticGovernor.NotOptimisticProposer(msg.sender)
             );
         }
@@ -130,10 +127,7 @@ library OptimisticProposalLib {
         proposalCore.executed = true;
         emit IGovernor.ProposalExecuted(proposal.proposalId);
 
-        ITimelockControllerOptimistic timelock =
-            ITimelockControllerOptimistic(payable(ReserveOptimisticGovernor(payable(address(this))).timelock()));
-
-        timelock.executeBatchBypass{ value: msg.value }(
+        _timelock().executeBatchBypass{ value: msg.value }(
             proposal.targets,
             proposal.values,
             proposal.calldatas,
@@ -249,5 +243,9 @@ library OptimisticProposalLib {
         assembly ("memory-safe") {
             value := mload(add(add(buffer, 0x20), offset))
         }
+    }
+
+    function _timelock() private view returns (TimelockControllerOptimistic) {
+        return TimelockControllerOptimistic(payable(ReserveOptimisticGovernor(payable(address(this))).timelock()));
     }
 }
