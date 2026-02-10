@@ -178,6 +178,7 @@ The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessCon
 - Granted via `timelock.grantRole(OPTIMISTIC_PROPOSER_ROLE, address)`
 - Revoked via `timelock.revokeRole(OPTIMISTIC_PROPOSER_ROLE, address)` or `timelock.revokeOptimisticProposer(address)` (callable by CANCELLER_ROLE)
 - Checked via `timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, address)`
+- Revocation blocks execution for all proposals that originated through `proposeOptimistic()` (including those that already transitioned to confirmation votes)
 
 ## Contract Reference
 
@@ -188,7 +189,7 @@ The main hybrid governor contract.
 **Fast Proposal Functions:**
 
 - `proposeOptimistic(targets, values, calldatas, description)` -- Create a fast proposal (requires `OPTIMISTIC_PROPOSER_ROLE`)
-- `executeOptimistic(targets, values, calldatas, description)` -- Execute a succeeded fast proposal (requires original proposer)
+- `executeOptimistic(targets, values, calldatas, description)` -- Execute a succeeded fast proposal (requires original proposer with active `OPTIMISTIC_PROPOSER_ROLE`)
 
 **Standard Proposal Functions (inherited from OZ Governor):**
 
@@ -319,11 +320,21 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `unstakingDelay` | <= 4 weeks       | `MAX_UNSTAKING_DELAY`                         |
 | `rewardHalfLife` | 1 day to 2 weeks | `MIN_REWARD_HALF_LIFE`, `MAX_REWARD_HALF_LIFE` |
 
-## Token Requirements
+## Token Support
 
-- **Rebasing tokens**: Not compatible with rebasing tokens
-- **Supply limit**: Token supply should be less than 1e59
-- **Voting power**: Voting power is denominated in StakingVault shares, not the underlying token directly. Users must deposit into StakingVault and delegate to participate in governance.
+| Feature                         | Supported    |
+| --------------------------------| ------------ |
+| Multiple Entrypoints            | ❌           |
+| Pausable / Blocklist            | ❌           |
+| Fee-on-transfer                 | ❌           |
+| ERC777 / Callback               | ❌           |
+| Upward-rebasing                 | ❌           |
+| Downward-rebasing               | ❌           |
+| Revert on zero-value transfers  | ✅           |
+| Flash mint                      | ✅           |
+| Missing return values           | ✅           |
+| No revert on failure            | ✅           |
+
 
 ## Optimistic Call Restrictions
 
