@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
@@ -40,7 +41,7 @@ library OptimisticProposalLib {
         GovernorUpgradeable.ProposalCore storage proposalCore,
         IOptimisticSelectorRegistry selectorRegistry
     ) external {
-        // validate caller has OPTIMISTIC_PROPOSER_ROLE
+        // validate proposer has OPTIMISTIC_PROPOSER_ROLE
         {
             GovernorTimelockControlUpgradeable governor = GovernorTimelockControlUpgradeable(payable(address(this)));
             TimelockControllerUpgradeable timelock = TimelockControllerUpgradeable(payable(governor.timelock()));
@@ -50,6 +51,12 @@ library OptimisticProposalLib {
                 IReserveOptimisticGovernor.NotOptimisticProposer(msg.sender)
             );
         }
+
+        // validate description is restricted to proposer
+        require(
+            _isValidDescriptionForProposer(msg.sender, proposal.description),
+            IGovernor.GovernorRestrictedProposer(msg.sender)
+        );
 
         // validate proposal lengths
         {
@@ -213,5 +220,39 @@ library OptimisticProposalLib {
         }
 
         return IGovernor.ProposalState.Succeeded;
+    }
+
+    // === Private ===
+
+    /// @dev GovernorUpgradeable._isValidDescriptionForProposer
+    function _isValidDescriptionForProposer(address proposer, string memory description) private pure returns (bool) {
+        unchecked {
+            uint256 length = bytes(description).length;
+
+            // Length is too short to contain a valid proposer suffix
+            if (length < 52) {
+                return true;
+            }
+
+            // Extract what would be the `#proposer=` marker beginning the suffix
+            bytes10 marker = bytes10(_unsafeReadBytesOffset(bytes(description), length - 52));
+
+            // If the marker is not found, there is no proposer suffix to check
+            if (marker != bytes10("#proposer=")) {
+                return true;
+            }
+
+            // Check that the last 42 characters (after the marker) are a properly formatted address.
+            (bool success, address recovered) = Strings.tryParseAddress(description, length - 42, length);
+            return !success || recovered == proposer;
+        }
+    }
+
+    /// @dev GovernorUpgradeable._unsafeReadBytesOffset
+    function _unsafeReadBytesOffset(bytes memory buffer, uint256 offset) private pure returns (bytes32 value) {
+        // This is not memory safe in the general case, but all calls to this private function are within bounds.
+        assembly ("memory-safe") {
+            value := mload(add(add(buffer, 0x20), offset))
+        }
     }
 }

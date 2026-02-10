@@ -116,8 +116,6 @@ contract ReserveOptimisticGovernor is
         bytes[] calldata calldatas,
         string calldata description
     ) external returns (uint256 proposalId) {
-        require(_isValidDescriptionForProposer(msg.sender, description), GovernorRestrictedProposer(msg.sender));
-
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         OptimisticProposalLib.proposeOptimistic(
