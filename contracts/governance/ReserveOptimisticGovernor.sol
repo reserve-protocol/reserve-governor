@@ -67,7 +67,7 @@ contract ReserveOptimisticGovernor is
 
     OptimisticSelectorRegistry public selectorRegistry;
 
-    mapping(uint256 proposalId => OptimisticProposal) private optimisticProposals;
+    mapping(uint256 proposalId => uint256 vetoThreshold) public vetoThresholds; // D18{1}
 
     constructor() {
         _disableInitializers();
@@ -118,15 +118,15 @@ contract ReserveOptimisticGovernor is
     ) external returns (uint256 proposalId) {
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
+        // mark proposal as optimistic
+        vetoThresholds[proposalId] = optimisticParams.vetoThreshold;
+
         OptimisticProposalLib.proposeOptimistic(
             OptimisticProposalLib.ProposalData(proposalId, targets, values, calldatas, description),
             optimisticParams,
-            _getGovernorStorage()._proposals[proposalId],
+            _getProposalCore(proposalId),
             selectorRegistry
         );
-
-        // mark optimistic
-        optimisticProposals[proposalId].vetoThreshold = optimisticParams.vetoThreshold;
     }
 
     /// Execute an optimistic proposal that succeeded without going through the confirmation process
@@ -140,9 +140,9 @@ contract ReserveOptimisticGovernor is
 
         OptimisticProposalLib.executeOptimisticProposal(
             OptimisticProposalLib.ProposalData(proposalId, targets, values, calldatas, description),
-            optimisticProposals[proposalId],
-            _getGovernorStorage()._proposals[proposalId],
-            _getGovernorCountingSimpleStorage()._proposalVotes[proposalId]
+            _getProposalCore(proposalId),
+            _getProposalVote(proposalId),
+            vetoThresholds
         );
     }
 
@@ -153,7 +153,9 @@ contract ReserveOptimisticGovernor is
     }
 
     function proposalType(uint256 proposalId) public view returns (ProposalType) {
-        return optimisticProposals[proposalId].vetoThreshold != 0 ? ProposalType.Optimistic : ProposalType.Standard;
+        require(_getProposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
+
+        return vetoThresholds[proposalId] != 0 ? ProposalType.Optimistic : ProposalType.Standard;
     }
 
     function state(uint256 proposalId)
@@ -163,12 +165,9 @@ contract ReserveOptimisticGovernor is
         returns (ProposalState)
     {
         // if optimistic proposal is ongoing, return optimistic state
-        if (optimisticProposals[proposalId].vetoThreshold != 0) {
+        if (vetoThresholds[proposalId] != 0) {
             return OptimisticProposalLib.state(
-                proposalId,
-                optimisticProposals[proposalId],
-                _getGovernorStorage()._proposals[proposalId],
-                _getGovernorCountingSimpleStorage()._proposalVotes[proposalId]
+                proposalId, _getProposalCore(proposalId), _getProposalVote(proposalId), vetoThresholds
             );
         }
 
@@ -262,17 +261,14 @@ contract ReserveOptimisticGovernor is
         internal
         override(GovernorUpgradeable, GovernorPreventLateQuorumUpgradeable)
     {
-        if (optimisticProposals[proposalId].vetoThreshold != 0) {
-            // optimistic case, possibly flip pessimistic
+        if (vetoThresholds[proposalId] != 0) {
+            // optimistic case: possibly transition to pessimistic
 
             OptimisticProposalLib.tallyUpdated(
-                proposalId,
-                optimisticProposals[proposalId],
-                _getGovernorStorage()._proposals[proposalId],
-                _getGovernorCountingSimpleStorage()._proposalVotes[proposalId]
+                proposalId, _getProposalCore(proposalId), _getProposalVote(proposalId), vetoThresholds
             );
         } else {
-            // pessimistic case, possibly extend quorum
+            // pessimistic case: possibly extend quorum
 
             super._tallyUpdated(proposalId);
         }
@@ -293,6 +289,18 @@ contract ReserveOptimisticGovernor is
     }
 
     // === Private ===
+
+    function _getProposalCore(uint256 proposalId) private view returns (GovernorUpgradeable.ProposalCore storage) {
+        return _getGovernorStorage()._proposals[proposalId];
+    }
+
+    function _getProposalVote(uint256 proposalId)
+        private
+        view
+        returns (GovernorCountingSimpleUpgradeable.ProposalVote storage)
+    {
+        return _getGovernorCountingSimpleStorage()._proposalVotes[proposalId];
+    }
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
         require(

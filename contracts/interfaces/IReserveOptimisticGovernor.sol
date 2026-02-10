@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
     GovernorCountingSimpleUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
@@ -12,7 +11,6 @@ interface IReserveOptimisticGovernor {
     error ExistingProposal(uint256 proposalId);
     error OptimisticProposalNotOngoing(uint256 proposalId);
     error OptimisticProposalNotSuccessful(uint256 proposalId);
-    error OptimisticProposalAlreadyVetoed(uint256 proposalId);
     error InvalidProposalThreshold();
     error InvalidOptimisticParameters();
     error NotOptimisticProposer(address account);
@@ -36,10 +34,6 @@ interface IReserveOptimisticGovernor {
     enum ProposalType {
         Optimistic,
         Standard
-    }
-
-    struct OptimisticProposal {
-        uint256 vetoThreshold; // D18{1} != 0 when optimistic proposal is ongoing
     }
 
     struct OptimisticGovernanceParams {
