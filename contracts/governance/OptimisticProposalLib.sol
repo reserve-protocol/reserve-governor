@@ -199,18 +199,18 @@ library OptimisticProposalLib {
             return IGovernor.ProposalState.Canceled;
         }
 
-        // {s}
-        uint256 deadline = proposalCore.voteStart + proposalCore.voteDuration;
-
-        if (deadline >= block.timestamp) {
-            return IGovernor.ProposalState.Active;
-        }
-
         // {tok} = D18{1} * {tok} / D18{1}
         uint256 vetoThreshold = (vetoThresholds[proposalId] * pastSupply + (1e18 - 1)) / 1e18;
 
         if (proposalVote.againstVotes >= vetoThreshold) {
             return IGovernor.ProposalState.Defeated;
+        }
+
+        // {s}
+        uint256 deadline = proposalCore.voteStart + proposalCore.voteDuration;
+
+        if (deadline >= block.timestamp) {
+            return IGovernor.ProposalState.Active;
         }
 
         return IGovernor.ProposalState.Succeeded;
