@@ -9,8 +9,8 @@ import {
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error ExistingOptimisticProposal(uint256 proposalId);
-    error OptimisticProposalNotActive(uint256 proposalId);
+    error ExistingProposal(uint256 proposalId);
+    error OptimisticProposalNotOngoing(uint256 proposalId);
     error OptimisticProposalNotSuccessful(uint256 proposalId);
     error OptimisticProposalAlreadyVetoed(uint256 proposalId);
     error InvalidProposalThreshold();
@@ -27,17 +27,9 @@ interface IReserveOptimisticGovernor {
     /// @param vetoEnd {s} End of the veto period
     /// @param vetoThreshold D18{1} Fraction of token supply required to trigger veto and start confirmation process
     event OptimisticProposalCreated(
-        uint256 indexed proposalId,
-        address indexed proposer,
-        address[] targets,
-        uint256[] values,
-        bytes[] calldatas,
-        uint256 vetoStart,
-        uint256 vetoEnd,
-        uint256 vetoThreshold,
-        string description
+        uint256 indexed proposalId, uint256 vetoStart, uint256 vetoEnd, uint256 vetoThreshold
     );
-    event VetoCast(uint256 indexed proposalId, address indexed vetoer, uint256 againstVotes, string reason);
+    event ConfirmationVoteScheduled(uint256 indexed proposalId, uint256 voteStart, uint256 voteEnd);
 
     // === Data ===
 
@@ -47,14 +39,7 @@ interface IReserveOptimisticGovernor {
     }
 
     struct OptimisticProposal {
-        uint256 proposalId;
-        address[] targets;
-        uint256[] values;
-        bytes[] calldatas;
-        string description;
-        GovernorUpgradeable.ProposalCore core;
-        GovernorCountingSimpleUpgradeable.ProposalVote vote;
-        uint256 vetoThreshold; // D18{1}
+        uint256 vetoThreshold; // D18{1} != 0 when optimistic proposal is ongoing
     }
 
     struct OptimisticGovernanceParams {

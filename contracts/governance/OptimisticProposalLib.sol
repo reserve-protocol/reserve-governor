@@ -5,6 +5,13 @@ import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
+import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
+import {
+    TimelockControllerUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
+import {
+    GovernorCountingSimpleUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
 import {
     GovernorTimelockControlUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorTimelockControlUpgradeable.sol";
@@ -13,10 +20,12 @@ import { ReserveOptimisticGovernor } from "../governance/ReserveOptimisticGovern
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
+import { OPTIMISTIC_PROPOSER_ROLE } from "../utils/Constants.sol";
 
 library OptimisticProposalLib {
     // stack-too-deep
     struct ProposalData {
+        uint256 proposalId;
         address[] targets;
         uint256[] values;
         bytes[] calldatas;
@@ -25,18 +34,33 @@ library OptimisticProposalLib {
 
     /// === External ===
 
-    function createOptimisticProposal(
-        uint256 proposalId,
+    function proposeOptimistic(
         ProposalData calldata proposal,
-        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
         IReserveOptimisticGovernor.OptimisticGovernanceParams calldata optimisticParams,
+        GovernorUpgradeable.ProposalCore storage proposalCore,
         IOptimisticSelectorRegistry selectorRegistry
     ) external {
-        require(proposal.targets.length != 0, IReserveOptimisticGovernor.InvalidProposalLengths());
-        require(
-            proposal.targets.length == proposal.values.length && proposal.targets.length == proposal.calldatas.length,
-            IReserveOptimisticGovernor.InvalidProposalLengths()
-        );
+        // validate caller has OPTIMISTIC_PROPOSER_ROLE
+        {
+            GovernorTimelockControlUpgradeable governor = GovernorTimelockControlUpgradeable(payable(address(this)));
+            TimelockControllerUpgradeable timelock = TimelockControllerUpgradeable(payable(governor.timelock()));
+
+            require(
+                timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, msg.sender),
+                IReserveOptimisticGovernor.NotOptimisticProposer(msg.sender)
+            );
+        }
+
+        // validate proposal lengths
+        {
+
+            require(proposal.targets.length != 0, IReserveOptimisticGovernor.InvalidProposalLengths());
+            require(
+                proposal.targets.length == proposal.values.length
+                    && proposal.targets.length == proposal.calldatas.length,
+                IReserveOptimisticGovernor.InvalidProposalLengths()
+            );
+        }
 
         // validate function calls
         {
@@ -54,131 +78,119 @@ library OptimisticProposalLib {
                     selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
                     IReserveOptimisticGovernor.InvalidFunctionCall(target, bytes4(proposal.calldatas[i]))
                 );
-
-                // copy data to storage
-                optimisticProposal.targets.push(proposal.targets[i]);
-                optimisticProposal.values.push(proposal.values[i]);
-                optimisticProposal.calldatas.push(proposal.calldatas[i]);
             }
         }
 
+        // create optimistic proposal
+        {
+
+            require(proposalCore.voteStart == 0, IReserveOptimisticGovernor.ExistingProposal(proposal.proposalId));
+
+            proposalCore.proposer = msg.sender;
+            proposalCore.voteStart = SafeCast.toUint48(block.timestamp) + optimisticParams.vetoDelay;
+            proposalCore.voteDuration = SafeCast.toUint32(optimisticParams.vetoPeriod);
+
+            emit IReserveOptimisticGovernor.OptimisticProposalCreated(
+                proposal.proposalId,
+                proposalCore.voteStart,
+                proposalCore.voteStart + proposalCore.voteDuration,
+                optimisticParams.vetoThreshold
+            );
+            emit IGovernor.ProposalCreated(
+                proposal.proposalId,
+                msg.sender,
+                proposal.targets,
+                proposal.values,
+                new string[](proposal.targets.length),
+                proposal.calldatas,
+                proposalCore.voteStart,
+                proposalCore.voteStart + proposalCore.voteDuration,
+                proposal.description
+            );
+        }
+    }
+
+    function executeOptimisticProposal(
+        ProposalData calldata proposal,
+        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
+        GovernorUpgradeable.ProposalCore storage proposalCore,
+        GovernorCountingSimpleUpgradeable.ProposalVote storage proposalVote
+    ) external {
+        require(proposalCore.proposer == msg.sender, IReserveOptimisticGovernor.NotOptimisticProposer(msg.sender));
+
+        IGovernor.ProposalState s = state(proposal.proposalId, optimisticProposal, proposalCore, proposalVote);
+
         require(
-            optimisticProposal.core.voteStart == 0, IReserveOptimisticGovernor.ExistingOptimisticProposal(proposalId)
+            s == IGovernor.ProposalState.Succeeded,
+            IReserveOptimisticGovernor.OptimisticProposalNotSuccessful(proposal.proposalId)
         );
 
-        optimisticProposal.proposalId = proposalId;
-        optimisticProposal.description = proposal.description;
+        proposalCore.executed = true;
+        emit IGovernor.ProposalExecuted(proposal.proposalId);
 
-        optimisticProposal.core.proposer = msg.sender;
-        optimisticProposal.core.voteStart = uint48(block.timestamp) + optimisticParams.vetoDelay;
-        optimisticProposal.core.voteDuration = SafeCast.toUint32(optimisticParams.vetoPeriod);
+        ITimelockControllerOptimistic timelock =
+            ITimelockControllerOptimistic(payable(ReserveOptimisticGovernor(payable(address(this))).timelock()));
 
-        optimisticProposal.vetoThreshold = optimisticParams.vetoThreshold;
-
-        emit IReserveOptimisticGovernor.OptimisticProposalCreated(
-            proposalId,
-            msg.sender,
+        timelock.executeBatchBypass{ value: msg.value }(
             proposal.targets,
             proposal.values,
             proposal.calldatas,
-            optimisticProposal.core.voteStart,
-            optimisticProposal.core.voteStart + optimisticParams.vetoPeriod,
-            optimisticProposal.vetoThreshold,
-            proposal.description
-        );
-    }
-
-    /// @return If the proposal was vetoed past the veto threshold
-    function castVeto(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal, string memory reason)
-        external
-        returns (bool)
-    {
-        IERC5805 token = ReserveOptimisticGovernor(payable(address(this))).token();
-
-        require(
-            _state(optimisticProposal, token) == IGovernor.ProposalState.Active,
-            IReserveOptimisticGovernor.OptimisticProposalNotActive(optimisticProposal.proposalId)
-        );
-
-        uint256 weight = token.getPastVotes(msg.sender, optimisticProposal.core.voteStart);
-
-        require(
-            !optimisticProposal.vote.hasVoted[msg.sender],
-            IReserveOptimisticGovernor.OptimisticProposalAlreadyVetoed(optimisticProposal.proposalId)
-        );
-        optimisticProposal.vote.hasVoted[msg.sender] = true;
-
-        optimisticProposal.vote.againstVotes += weight;
-        emit IReserveOptimisticGovernor.VetoCast(optimisticProposal.proposalId, msg.sender, weight, reason);
-
-        return _state(optimisticProposal, token) == IGovernor.ProposalState.Defeated;
-    }
-
-    function executeOptimisticProposal(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal)
-        external
-    {
-        IERC5805 token = ReserveOptimisticGovernor(payable(address(this))).token();
-
-        require(
-            _state(optimisticProposal, token) == IGovernor.ProposalState.Succeeded,
-            IReserveOptimisticGovernor.OptimisticProposalNotSuccessful(optimisticProposal.proposalId)
-        );
-
-        emit IGovernor.ProposalCreated(
-            optimisticProposal.proposalId,
-            msg.sender,
-            optimisticProposal.targets,
-            optimisticProposal.values,
-            new string[](optimisticProposal.targets.length),
-            optimisticProposal.calldatas,
-            block.timestamp,
-            block.timestamp,
-            optimisticProposal.description
-        );
-        emit IGovernor.ProposalExecuted(optimisticProposal.proposalId);
-
-        ITimelockControllerOptimistic timelock = ITimelockControllerOptimistic(
-            payable(GovernorTimelockControlUpgradeable(payable(address(this))).timelock())
-        );
-
-        timelock.executeBatchBypass{ value: msg.value }(
-            optimisticProposal.targets,
-            optimisticProposal.values,
-            optimisticProposal.calldatas,
             0,
-            bytes20(address(this)) ^ keccak256(bytes(optimisticProposal.description))
+            bytes20(address(this)) ^ keccak256(bytes(proposal.description))
         );
     }
 
-    function state(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal)
-        external
-        view
-        returns (IGovernor.ProposalState)
-    {
-        return _state(optimisticProposal, ReserveOptimisticGovernor(payable(address(this))).token());
+    /// @dev Called by ReserveOptimisticGovernor._tallyUpdated in optimistic case
+    function tallyUpdated(
+        uint256 proposalId,
+        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
+        GovernorUpgradeable.ProposalCore storage proposalCore,
+        GovernorCountingSimpleUpgradeable.ProposalVote storage proposalVote
+    ) external {
+        // optimistic case, possibly flip pessimistic
+
+        IGovernor.ProposalState optimisticState = state(proposalId, optimisticProposal, proposalCore, proposalVote);
+
+        if (optimisticState == IGovernor.ProposalState.Defeated) {
+            // flip pessimistic
+            optimisticProposal.vetoThreshold = 0;
+
+            GovernorUpgradeable governor = GovernorUpgradeable(payable(address(this)));
+            uint256 snapshot = block.timestamp + governor.votingDelay();
+            uint256 duration = governor.votingPeriod();
+
+            proposalCore.voteStart = SafeCast.toUint48(snapshot);
+            proposalCore.voteDuration = SafeCast.toUint32(duration);
+
+            emit IReserveOptimisticGovernor.ConfirmationVoteScheduled(proposalId, snapshot, snapshot + duration);
+        }
     }
 
-    // === Internal ===
+    function state(
+        uint256 proposalId,
+        IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal,
+        GovernorUpgradeable.ProposalCore storage proposalCore,
+        GovernorCountingSimpleUpgradeable.ProposalVote storage proposalVote
+    ) public view returns (IGovernor.ProposalState) {
+        require(
+            optimisticProposal.vetoThreshold != 0, IReserveOptimisticGovernor.OptimisticProposalNotOngoing(proposalId)
+        );
 
-    function _state(IReserveOptimisticGovernor.OptimisticProposal storage optimisticProposal, IERC5805 token)
-        internal
-        view
-        returns (IGovernor.ProposalState)
-    {
-        if (optimisticProposal.core.executed) {
+        if (proposalCore.executed) {
             return IGovernor.ProposalState.Executed;
         }
 
-        if (optimisticProposal.core.canceled) {
+        if (proposalCore.canceled) {
             return IGovernor.ProposalState.Canceled;
         }
 
-        uint256 snapshot = optimisticProposal.core.voteStart;
-        require(snapshot != 0, IGovernor.GovernorNonexistentProposal(optimisticProposal.proposalId));
+        uint256 snapshot = proposalCore.voteStart;
 
         if (snapshot >= block.timestamp) {
             return IGovernor.ProposalState.Pending;
         }
+
+        IERC5805 token = ReserveOptimisticGovernor(payable(address(this))).token();
 
         // {tok}
         uint256 pastSupply = token.getPastTotalSupply(snapshot - 1);
@@ -187,7 +199,7 @@ library OptimisticProposalLib {
         }
 
         // {s}
-        uint256 deadline = optimisticProposal.core.voteStart + optimisticProposal.core.voteDuration;
+        uint256 deadline = proposalCore.voteStart + proposalCore.voteDuration;
 
         if (deadline >= block.timestamp) {
             return IGovernor.ProposalState.Active;
@@ -196,10 +208,10 @@ library OptimisticProposalLib {
         // {tok} = D18{1} * {tok} / D18{1}
         uint256 vetoThreshold = (optimisticProposal.vetoThreshold * pastSupply + (1e18 - 1)) / 1e18;
 
-        if (optimisticProposal.vote.againstVotes >= vetoThreshold) {
+        if (proposalVote.againstVotes >= vetoThreshold) {
             return IGovernor.ProposalState.Defeated;
-        } else {
-            return IGovernor.ProposalState.Succeeded;
         }
+
+        return IGovernor.ProposalState.Succeeded;
     }
 }

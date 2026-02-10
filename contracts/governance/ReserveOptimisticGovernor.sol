@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
@@ -72,11 +73,6 @@ contract ReserveOptimisticGovernor is
         _disableInitializers();
     }
 
-    modifier onlyOptimisticProposer() {
-        _requireOptimisticProposer(_msgSender());
-        _;
-    }
-
     /// @param optimisticGovParams.votingDelay {s} Delay before snapshot for optimistic proposals
     /// @param optimisticGovParams.vetoPeriod {s} Veto period for optimistic proposals
     /// @param optimisticGovParams.vetoThreshold D18{1} Fraction of tok supply required to start confirmation process
@@ -113,65 +109,43 @@ contract ReserveOptimisticGovernor is
 
     // === Optimistic flow ===
 
+    /// @dev Only callable by OPTIMISTIC_PROPOSER_ROLE
     function proposeOptimistic(
         address[] calldata targets,
         uint256[] calldata values,
         bytes[] calldata calldatas,
         string calldata description
-    ) external onlyOptimisticProposer returns (uint256 proposalId) {
+    ) external returns (uint256 proposalId) {
         require(_isValidDescriptionForProposer(msg.sender, description), GovernorRestrictedProposer(msg.sender));
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        OptimisticProposalLib.createOptimisticProposal(
-            proposalId,
-            OptimisticProposalLib.ProposalData(targets, values, calldatas, description),
-            optimisticProposals[proposalId],
+        OptimisticProposalLib.proposeOptimistic(
+            OptimisticProposalLib.ProposalData(proposalId, targets, values, calldatas, description),
             optimisticParams,
+            _getGovernorStorage()._proposals[proposalId],
             selectorRegistry
         );
+
+        // mark optimistic
+        optimisticProposals[proposalId].vetoThreshold = optimisticParams.vetoThreshold;
     }
 
-    function castVetoOptimistic(uint256 proposalId, string memory reason) external {
-        OptimisticProposal storage optimisticProposal = optimisticProposals[proposalId];
+    /// Execute an optimistic proposal that succeeded without going through the confirmation process
+    function executeOptimistic(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] calldata calldatas,
+        string calldata description
+    ) external returns (uint256 proposalId) {
+        proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        bool vetoed = OptimisticProposalLib.castVeto(optimisticProposal, reason);
-
-        // trigger confirmation vote if vetoed
-        if (vetoed) {
-            _propose(
-                optimisticProposal.targets,
-                optimisticProposal.values,
-                optimisticProposal.calldatas,
-                optimisticProposal.description,
-                optimisticProposal.core.proposer
-            );
-        }
-    }
-
-    /// Execute an optimistic proposal that passed successfully without going through the confirmation process
-    function executeOptimistic(uint256 proposalId) external payable onlyOptimisticProposer {
-        // mark executed in proposal core (for compatibility with legacy offchain monitoring)
-        _getGovernorStorage()._proposals[proposalId].executed = true;
-
-        OptimisticProposalLib.executeOptimisticProposal(optimisticProposals[proposalId]);
-    }
-
-    /// @dev If ProposalType.Optimistic, call `stateOptimistic()`
-    /// @dev If ProposalType.Standard, call `state()`
-    /// @return ProposalType.Optimistic | ProposalType.Standard
-    function proposalType(uint256 proposalId) public view returns (ProposalType) {
-        if (proposalSnapshot(proposalId) != 0) {
-            return ProposalType.Standard;
-        }
-
-        require(optimisticProposals[proposalId].core.voteStart != 0, GovernorNonexistentProposal(proposalId));
-
-        return ProposalType.Optimistic;
-    }
-
-    function stateOptimistic(uint256 proposalId) public view returns (ProposalState) {
-        return OptimisticProposalLib.state(optimisticProposals[proposalId]);
+        OptimisticProposalLib.executeOptimisticProposal(
+            OptimisticProposalLib.ProposalData(proposalId, targets, values, calldatas, description),
+            optimisticProposals[proposalId],
+            _getGovernorStorage()._proposals[proposalId],
+            _getGovernorCountingSimpleStorage()._proposalVotes[proposalId]
+        );
     }
 
     // === Inheritance overrides ===
@@ -180,13 +154,26 @@ contract ReserveOptimisticGovernor is
         return 1e18;
     }
 
-    /// @dev Call proposalType() to determine whether to call `state()` or `optimisticProposal.state()`
+    function proposalType(uint256 proposalId) public view returns (ProposalType) {
+        return optimisticProposals[proposalId].vetoThreshold != 0 ? ProposalType.Optimistic : ProposalType.Standard;
+    }
+
     function state(uint256 proposalId)
         public
         view
         override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
         returns (ProposalState)
     {
+        // if optimistic proposal is ongoing, return optimistic state
+        if (optimisticProposals[proposalId].vetoThreshold != 0) {
+            return OptimisticProposalLib.state(
+                proposalId,
+                optimisticProposals[proposalId],
+                _getGovernorStorage()._proposals[proposalId],
+                _getGovernorCountingSimpleStorage()._proposalVotes[proposalId]
+            );
+        }
+
         return super.state(proposalId);
     }
 
@@ -229,17 +216,14 @@ contract ReserveOptimisticGovernor is
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
-    ) public override returns (uint256 proposalId) {
+    ) public override returns (uint256) {
         // ensure no accidental calls to EOAs
         // limitation: cannot log data to EOAs or interact with a contract within its constructor
         for (uint256 i = 0; i < targets.length; i++) {
             require(calldatas[i].length == 0 || targets[i].code.length != 0, InvalidFunctionCallToEOA(targets[i]));
         }
 
-        proposalId = super.propose(targets, values, calldatas, description);
-
-        // ensure no collisions with optimistic proposal
-        require(optimisticProposals[proposalId].core.voteStart == 0, ExistingOptimisticProposal(proposalId));
+        return super.propose(targets, values, calldatas, description);
     }
 
     function _queueOperations(
@@ -267,13 +251,33 @@ contract ReserveOptimisticGovernor is
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
-    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint256 proposalId) {
-        proposalId = super._cancel(targets, values, calldatas, descriptionHash);
+    ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint256) {
+        return super._cancel(targets, values, calldatas, descriptionHash);
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
         return TimelockControllerOptimistic(payable(timelock())).hasRole(CANCELLER_ROLE, caller)
             || super._validateCancel(proposalId, caller);
+    }
+
+    function _tallyUpdated(uint256 proposalId)
+        internal
+        override(GovernorUpgradeable, GovernorPreventLateQuorumUpgradeable)
+    {
+        if (optimisticProposals[proposalId].vetoThreshold != 0) {
+            // optimistic case, possibly flip pessimistic
+
+            OptimisticProposalLib.tallyUpdated(
+                proposalId,
+                optimisticProposals[proposalId],
+                _getGovernorStorage()._proposals[proposalId],
+                _getGovernorCountingSimpleStorage()._proposalVotes[proposalId]
+            );
+        } else {
+            // pessimistic case, possibly extend quorum
+
+            super._tallyUpdated(proposalId);
+        }
     }
 
     function _executor()
@@ -283,13 +287,6 @@ contract ReserveOptimisticGovernor is
         returns (address)
     {
         return super._executor();
-    }
-
-    function _tallyUpdated(uint256 proposalId)
-        internal
-        override(GovernorUpgradeable, GovernorPreventLateQuorumUpgradeable)
-    {
-        super._tallyUpdated(proposalId);
     }
 
     function _setProposalThreshold(uint256 newProposalThreshold) internal override {
@@ -306,13 +303,6 @@ contract ReserveOptimisticGovernor is
             InvalidOptimisticParameters()
         );
         optimisticParams = params;
-    }
-
-    function _requireOptimisticProposer(address account) private view {
-        require(
-            TimelockControllerOptimistic(payable(timelock())).hasRole(OPTIMISTIC_PROPOSER_ROLE, account),
-            NotOptimisticProposer(account)
-        );
     }
 
     /// @dev Upgrades authorized only through timelock
