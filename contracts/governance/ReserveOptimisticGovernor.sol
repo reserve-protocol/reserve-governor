@@ -189,14 +189,13 @@ contract ReserveOptimisticGovernor is
         override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
         returns (ProposalState)
     {
-        // if optimistic proposal is ongoing, return optimistic state
-        if (vetoThresholds[proposalId] != 0) {
-            return OptimisticProposalLib.state(
-                proposalId, _getProposalCore(proposalId), _getProposalVote(proposalId), vetoThresholds[proposalId]
-            );
+        if (vetoThresholds[proposalId] == 0) {
+            return super.state(proposalId);
         }
 
-        return super.state(proposalId);
+        return OptimisticProposalLib.state(
+            proposalId, _getProposalCore(proposalId), _getProposalVote(proposalId), vetoThresholds[proposalId]
+        );
     }
 
     function proposalDeadline(uint256 proposalId)
