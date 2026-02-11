@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
@@ -37,6 +36,7 @@ import {
     OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
 import { OptimisticProposalLib } from "./OptimisticProposalLib.sol";
+import { ProposalThrottleLib } from "./ProposalThrottleLib.sol";
 
 import { Versioned } from "../utils/Versioned.sol";
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
@@ -68,6 +68,7 @@ contract ReserveOptimisticGovernor is
     OptimisticSelectorRegistry public selectorRegistry;
 
     mapping(uint256 proposalId => uint256 vetoThreshold) public vetoThresholds; // D18{1}
+    ProposalThrottleLib.ProposalThrottleStorage private proposalThrottle;
 
     constructor() {
         _disableInitializers();
@@ -81,6 +82,7 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
+    /// @param standardGovParams.proposalThrottleCapacity Proposals per 24h
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
@@ -99,12 +101,17 @@ contract ReserveOptimisticGovernor is
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
 
         _setOptimisticParams(optimisticGovParams);
+        _setProposalThrottle(standardGovParams.proposalThrottleCapacity);
 
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
     }
 
     function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
         _setOptimisticParams(params);
+    }
+
+    function setProposalThrottle(uint256 proposalThrottleCapacity) external onlyGovernance {
+        _setProposalThrottle(proposalThrottleCapacity);
     }
 
     // === Optimistic flow ===
@@ -116,6 +123,8 @@ contract ReserveOptimisticGovernor is
         bytes[] calldata calldatas,
         string calldata description
     ) external returns (uint256 proposalId) {
+        _consumeProposalCharge(msg.sender);
+
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         // mark proposal as optimistic
@@ -214,6 +223,8 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256) {
+        _consumeProposalCharge(msg.sender);
+
         // ensure no accidental calls to EOAs
         // limitation: cannot log data to EOAs or interact with a contract within its constructor
         for (uint256 i = 0; i < targets.length; i++) {
@@ -309,6 +320,14 @@ contract ReserveOptimisticGovernor is
             InvalidOptimisticParameters()
         );
         optimisticParams = params;
+    }
+
+    function _setProposalThrottle(uint256 newCapacity) private {
+        ProposalThrottleLib.setProposalThrottle(proposalThrottle, newCapacity);
+    }
+
+    function _consumeProposalCharge(address account) private {
+        ProposalThrottleLib.consumeProposalCharge(proposalThrottle, account);
     }
 
     /// @dev Upgrades authorized only through timelock

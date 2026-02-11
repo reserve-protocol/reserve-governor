@@ -12,12 +12,14 @@ interface IReserveOptimisticGovernor {
     error OptimisticProposalNotOngoing(uint256 proposalId);
     error OptimisticProposalNotSuccessful(uint256 proposalId);
     error InvalidProposalThreshold();
+    error InvalidProposalThrottle();
     error InvalidOptimisticParameters();
     error NotOptimisticProposer(address account);
     error InvalidEmptyCall(address target, bytes data);
     error InvalidFunctionCall(address target, bytes4 selector);
     error InvalidFunctionCallToEOA(address target);
     error InvalidProposalLengths();
+    error ProposalThrottleExceeded();
 
     // === Events ===
 
@@ -28,6 +30,7 @@ interface IReserveOptimisticGovernor {
         uint256 indexed proposalId, uint256 vetoStart, uint256 vetoEnd, uint256 vetoThreshold
     );
     event ConfirmationVoteScheduled(uint256 indexed proposalId, uint256 voteStart, uint256 voteEnd);
+    event ProposalThrottleUpdated(uint256 proposalThrottle);
 
     // === Data ===
 
@@ -48,6 +51,7 @@ interface IReserveOptimisticGovernor {
         uint48 voteExtension; // {s}
         uint256 proposalThreshold; // D18{1}
         uint256 quorumNumerator; // D18{1}
+        uint256 proposalThrottleCapacity; // max proposals per 24h
     }
 
     function initialize(
