@@ -31,13 +31,13 @@ library ProposalThrottleLib {
         ProposalThrottle storage throttle = self.throttles[account];
 
         uint256 elapsed = block.timestamp - throttle.lastUpdated;
-        uint256 charge = throttle.currentCharge + (elapsed * self.capacity / THROTTLE_PERIOD);
+        uint256 charge = throttle.currentCharge + (elapsed * 1e18) / THROTTLE_PERIOD;
 
         if (charge > 1e18) {
             charge = 1e18;
         }
 
-        uint256 proposalsAvailable = self.capacity * charge / 1e18;
+        uint256 proposalsAvailable = (self.capacity * charge) / 1e18;
         require(proposalsAvailable >= 1, IReserveOptimisticGovernor.ProposalThrottleExceeded());
 
         throttle.currentCharge = charge - (1e18 / self.capacity);

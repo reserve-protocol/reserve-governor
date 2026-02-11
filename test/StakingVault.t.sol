@@ -68,7 +68,7 @@ contract StakingVaultTest is Test {
                     voteExtension: 1 days,
                     proposalThreshold: 0.01e18,
                     quorumNumerator: 0.1e18,
-                    proposalThrottleCapacity: 100
+                    proposalThrottleCapacity: 10
                 }),
                 selectorData: new IOptimisticSelectorRegistry.SelectorData[](0),
                 optimisticProposers: new address[](0),

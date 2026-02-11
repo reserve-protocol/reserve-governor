@@ -765,7 +765,7 @@ contract ReserveOptimisticGovernorTest is Test {
 
     // ===== Proposal Throttle =====
 
-    function test_proposalThrottle_consumesAcrossOptimisticAndStandard() public {
+    function test_proposalThrottle_isIsolatedPerAccountAcrossOptimisticAndStandard() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
@@ -775,9 +775,13 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(optimisticProposer);
         governor.proposeOptimistic(targets, values, calldatas, "Throttle charge #2 optimistic");
 
+        // Alice still has one proposal charge left because proposer throttles are isolated per account.
+        vm.prank(alice);
+        governor.propose(targets, values, calldatas, "Throttle charge #2 standard");
+
         vm.prank(alice);
         vm.expectRevert(IReserveOptimisticGovernor.ProposalThrottleExceeded.selector);
-        governor.propose(targets, values, calldatas, "Throttle should block #3");
+        governor.propose(targets, values, calldatas, "Throttle should block alice #3");
     }
 
     function test_proposalThrottle_rechargesLinearlyOverTime() public {
@@ -793,7 +797,7 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.expectRevert(IReserveOptimisticGovernor.ProposalThrottleExceeded.selector);
         governor.propose(targets, values, calldatas, "No charge available");
 
-        // With 2 proposals per 24h, 12h recharges exactly 1 proposal charge.
+        // With capacity=2/day, each proposal charge refills in 12h.
         vm.warp(block.timestamp + 12 hours);
 
         vm.prank(alice);
