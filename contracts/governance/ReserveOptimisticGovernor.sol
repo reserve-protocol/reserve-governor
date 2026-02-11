@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
-import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
@@ -27,6 +26,7 @@ import {
 import {
     GovernorVotesUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import {
@@ -100,6 +100,7 @@ contract ReserveOptimisticGovernor is
         __GovernorVotes_init(IERC5805(_token));
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
+        __UUPSUpgradeable_init();
 
         _setOptimisticParams(optimisticGovParams);
         _setProposalThrottle(standardGovParams.proposalThrottleCapacity);
@@ -160,18 +161,28 @@ contract ReserveOptimisticGovernor is
         );
     }
 
-    // === Inheritance overrides ===
-
-    function quorumDenominator() public pure override returns (uint256) {
-        return 1e18;
-    }
-
     function proposalType(uint256 proposalId) public view returns (ProposalType) {
         require(_getProposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
 
         return vetoThresholds[proposalId] != 0 ? ProposalType.Optimistic : ProposalType.Standard;
     }
 
+    // === Inheritance overrides ===
+
+    function quorumDenominator() public pure override returns (uint256) {
+        return 1e18;
+    }
+
+    function quorum(uint256 timepoint)
+        public
+        view
+        override(GovernorUpgradeable, GovernorVotesQuorumFractionUpgradeable)
+        returns (uint256)
+    {
+        return Math.max(1, super.quorum(timepoint));
+    }
+
+    /// @dev Call proposalType() to determine whether to call `state()` or `optimisticProposal.state()`
     function state(uint256 proposalId)
         public
         view
