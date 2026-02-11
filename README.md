@@ -11,9 +11,11 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically transitions into a full confirmation vote (the slow path). This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
+Both proposal paths are also protected by a shared proposer throttle that limits how many proposals each account can create per 24-hour window.
+
 ## Architecture
 
-The system consists of five components:
+The system consists of six components:
 
 1. **StakingVault** -- ERC4626 vault with vote-locking, multi-token rewards, and unstaking delay
 2. **UnstakingManager** -- Time-locked withdrawal manager created by StakingVault during initialization
@@ -60,6 +62,8 @@ The system consists of five components:
 ```
 
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
+
+The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers vault ownership to the timelock, grants governor timelock roles, grants guardian/proposer roles, and renounces admin.
 
 ## Governance Flows
 
@@ -164,7 +168,7 @@ enum ProposalType {
 
 | Role                       | Held By                                | Permissions                                                             |
 | -------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
-| `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs               | Create and execute fast proposals                                       |
+| `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs               | Create fast proposals (`proposeOptimistic`)                             |
 | `PROPOSER_ROLE`            | Governor contract                      | Schedule operations on the timelock (granted automatically by Deployer) |
 | `EXECUTOR_ROLE`            | Governor contract                      | Execute queued slow proposals via the timelock                          |
 | `CANCELLER_ROLE`           | Governor contract + Guardian addresses | Cancel proposals (fast or slow), revoke optimistic proposers            |
@@ -178,7 +182,8 @@ The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessCon
 - Granted via `timelock.grantRole(OPTIMISTIC_PROPOSER_ROLE, address)`
 - Revoked via `timelock.revokeRole(OPTIMISTIC_PROPOSER_ROLE, address)` or `timelock.revokeOptimisticProposer(address)` (callable by CANCELLER_ROLE)
 - Checked via `timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, address)`
-- Revocation blocks execution for all proposals that originated through `proposeOptimistic()` (including those that already transitioned to confirmation votes)
+- Revocation blocks new `proposeOptimistic()` calls by that account
+- Execution of a succeeded optimistic proposal is restricted to the original proposal proposer address (`proposalProposer(proposalId)`)
 
 ## Contract Reference
 
@@ -189,7 +194,7 @@ The main hybrid governor contract.
 **Fast Proposal Functions:**
 
 - `proposeOptimistic(targets, values, calldatas, description)` -- Create a fast proposal (requires `OPTIMISTIC_PROPOSER_ROLE`)
-- `executeOptimistic(targets, values, calldatas, description)` -- Execute a succeeded fast proposal (requires original proposer with active `OPTIMISTIC_PROPOSER_ROLE`)
+- `executeOptimistic(targets, values, calldatas, description)` -- Execute a succeeded fast proposal (requires the original proposal proposer address)
 
 **Standard Proposal Functions (inherited from OZ Governor):**
 
@@ -198,6 +203,12 @@ The main hybrid governor contract.
 - `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal
 - `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal
 - `cancel(targets, values, calldatas, descriptionHash)` -- Cancel a proposal
+
+**Proposal Creation Rules:**
+
+- `propose()` and `proposeOptimistic()` both consume proposer throttle charge
+- `propose()` rejects non-empty calldata calls to EOAs (`InvalidFunctionCallToEOA`) but allows pure ETH transfers to EOAs with empty calldata
+- `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 
 **State Query:**
 
@@ -209,6 +220,8 @@ The main hybrid governor contract.
 **Configuration:**
 
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
+- `setProposalThrottle(capacity)` -- Update proposals-per-24h throttle capacity (onlyGovernance)
+- `getProposalThrottleCapacity()` -- Read current throttle capacity
 
 ### OptimisticSelectorRegistry
 
@@ -235,7 +248,7 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 Extended timelock supporting both flows.
 
 - Slow proposals use standard `scheduleBatch()` + `executeBatch()`
-- Fast proposals use `executeBatchBypass()` for immediate execution (requires `PROPOSER_ROLE`)
+- Fast proposals use `executeBatchBypass()` for immediate execution (governor must hold `PROPOSER_ROLE` and `EXECUTOR_ROLE`)
 - `revokeOptimisticProposer(account)` -- Revoke an optimistic proposer (requires `CANCELLER_ROLE`)
 
 ### StakingVault
@@ -303,6 +316,7 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `voteExtension`     | `uint48`  | Late quorum time extension                 |
 | `proposalThreshold` | `uint256` | Fraction of supply needed to propose (D18) |
 | `quorumNumerator`   | `uint256` | Fraction of supply needed for quorum (D18) |
+| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer per 24h |
 
 ### Parameter Constraints
 
@@ -312,6 +326,14 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `vetoPeriod`        | >= 30 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
 | `vetoThreshold`     | > 0 and <= 100% |                            |
 | `proposalThreshold` | <= 100%       |                              |
+| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_CAPACITY` (in `ProposalThrottleLib`) |
+
+### Proposal Throttle Behavior
+
+- Throttle is tracked per proposer account and shared across `propose()` and `proposeOptimistic()`
+- Capacity is measured as proposals per 24 hours
+- Each submitted proposal consumes one unit of capacity
+- Capacity recharges linearly over time (full recharge over 24 hours)
 
 ### StakingVault Parameters
 
@@ -346,6 +368,11 @@ Fast (optimistic) proposals can **only** call `(target, selector)` pairs registe
 - The `OptimisticSelectorRegistry` itself
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.
+
+Additional optimistic validations:
+
+- Every optimistic target must be a contract (no EOAs)
+- Every optimistic calldata entry must be non-empty (>= 4 bytes selector)
 
 ## Upgradeability
 
