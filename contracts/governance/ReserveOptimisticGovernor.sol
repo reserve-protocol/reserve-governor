@@ -67,8 +67,9 @@ contract ReserveOptimisticGovernor is
 
     OptimisticSelectorRegistry public selectorRegistry;
 
-    mapping(uint256 proposalId => uint256 vetoThreshold) public vetoThresholds; // D18{1}
     ProposalThrottleLib.ProposalThrottleStorage private proposalThrottle;
+
+    mapping(uint256 proposalId => uint256 vetoThreshold) public vetoThresholds; // D18{1}
 
     constructor() {
         _disableInitializers();
@@ -112,6 +113,10 @@ contract ReserveOptimisticGovernor is
 
     function setProposalThrottle(uint256 proposalThrottleCapacity) external onlyGovernance {
         _setProposalThrottle(proposalThrottleCapacity);
+    }
+
+    function getProposalThrottleCapacity() external view returns (uint256) {
+        return proposalThrottle.capacity;
     }
 
     // === Optimistic flow ===
@@ -299,6 +304,9 @@ contract ReserveOptimisticGovernor is
         super._setProposalThreshold(newProposalThreshold);
     }
 
+    /// @dev Upgrades authorized only through timelock
+    function _authorizeUpgrade(address) internal override onlyGovernance { }
+
     // === Private ===
 
     function _getProposalCore(uint256 proposalId) private view returns (GovernorUpgradeable.ProposalCore storage) {
@@ -330,8 +338,7 @@ contract ReserveOptimisticGovernor is
         ProposalThrottleLib.consumeProposalCharge(proposalThrottle, account);
     }
 
-    /// @dev Upgrades authorized only through timelock
-    function _authorizeUpgrade(address) internal override onlyGovernance { }
+    // === Version ===
 
     function version() public pure virtual override(GovernorUpgradeable, Versioned) returns (string memory) {
         return Versioned.version();
