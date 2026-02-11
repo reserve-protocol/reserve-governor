@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
@@ -27,6 +26,7 @@ import {
 import {
     GovernorVotesUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
@@ -114,6 +114,7 @@ contract ReserveOptimisticGovernor is
         __GovernorVotes_init(IStakingVault(_token));
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
+        __UUPSUpgradeable_init();
 
         _setOptimisticParams(optimisticGovParams);
 
