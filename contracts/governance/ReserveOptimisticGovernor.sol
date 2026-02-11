@@ -176,6 +176,15 @@ contract ReserveOptimisticGovernor is
         return 1e18;
     }
 
+    function quorum(uint256 timepoint)
+        public
+        view
+        override(GovernorUpgradeable, GovernorVotesQuorumFractionUpgradeable)
+        returns (uint256)
+    {
+        return Math.max(1, super.quorum(timepoint));
+    }
+
     /// @dev Call proposalType() to determine whether to call `state()` or `optimisticProposal.state()`
     function state(uint256 proposalId)
         public
