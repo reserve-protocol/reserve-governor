@@ -3,10 +3,9 @@ pragma solidity ^0.8.28;
 
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 
-library ProposalThrottleLib {
-    uint256 private constant MAX_CAPACITY = 10; // 10 per day
-    uint256 private constant THROTTLE_PERIOD = 1 days;
+import { THROTTLE_PERIOD } from "../utils/Constants.sol";
 
+library ProposalThrottleLib {
     struct ProposalThrottleStorage {
         uint256 capacity; // max number of proposals per 24h
         mapping(address account => ProposalThrottle) throttles;
@@ -15,16 +14,6 @@ library ProposalThrottleLib {
     struct ProposalThrottle {
         uint256 currentCharge; // D18{1}
         uint256 lastUpdated; // {s}
-    }
-
-    /// @dev Changes to `newCapacity` are effective immediately and impact the past
-    ///      This is acceptable given the THROTTLE_PERIOD is only 1 day long and this is a governance action
-    /// @param newCapacity Proposals-per-account per 24h
-    function setProposalThrottle(ProposalThrottleStorage storage self, uint256 newCapacity) external {
-        require(newCapacity != 0 && newCapacity <= MAX_CAPACITY, IReserveOptimisticGovernor.InvalidProposalThrottle());
-
-        self.capacity = newCapacity;
-        emit IReserveOptimisticGovernor.ProposalThrottleUpdated(newCapacity);
     }
 
     /// Consume one proposal charge for an account

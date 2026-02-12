@@ -32,6 +32,7 @@ import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import {
     CANCELLER_ROLE,
+    MAX_PROPOSAL_THROTTLE_CAPACITY,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
@@ -393,6 +394,7 @@ contract ReserveOptimisticGovernor is
 
     function _setProposalThreshold(uint256 newProposalThreshold) internal override {
         require(newProposalThreshold <= 1e18, InvalidProposalThreshold());
+
         super._setProposalThreshold(newProposalThreshold);
     }
 
@@ -423,7 +425,13 @@ contract ReserveOptimisticGovernor is
     }
 
     function _setProposalThrottle(uint256 newCapacity) private {
-        ProposalThrottleLib.setProposalThrottle(proposalThrottle, newCapacity);
+        require(
+            newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY,
+            IReserveOptimisticGovernor.InvalidProposalThrottle()
+        );
+
+        proposalThrottle.capacity = newCapacity;
+        emit IReserveOptimisticGovernor.ProposalThrottleUpdated(newCapacity);
     }
 
     function _consumeProposalCharge(address account) private {
