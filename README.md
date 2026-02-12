@@ -397,18 +397,14 @@ Three contracts are UUPS upgradeable:
 
 ```
 Fast Proposal:
-  proposeOptimistic() → [vetoDelay: PENDING] → [vetoPeriod: ACTIVE]
-                                                       │
-                                 [threshold not met] ─┼─► SUCCEEDED → execute() → EXECUTED (bypass)
-                                                       │
-                               [threshold reached] ───┘
-                                                                   ▼
-                                                               DEFEATED
-                                                                   │
-                                                                   ▼
-                                                      Confirmation Vote (ACTIVE)
-                                                          (standard flow below)
+  proposeOptimistic() -> [vetoDelay: PENDING] -> [vetoPeriod: ACTIVE]
+                                                    |
+                                                    +-- threshold not met --> SUCCEEDED -> execute() -> EXECUTED (bypass)
+                                                    |
+                                                    +-- threshold reached --> DEFEATED -> Confirmation Vote (ACTIVE)
+                                                                                |
+                                                                                +-- follows slow proposal path below
 
 Slow Proposal:
-  propose() → [voting delay] → [voting period] → queue() → [timelock] → execute()
+  propose() -> [voting delay] -> [voting period] -> queue() -> [timelock] -> execute()
 ```
