@@ -280,6 +280,30 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 - Clock: timestamp-based (ERC5805)
 - Creates an `UnstakingManager` during initialization
 
+
+#### Token Support
+
+| Feature                         | Supported    |
+| --------------------------------| ------------ |
+| Multiple Entrypoints            | ❌           |
+| Pausable / Blocklist            | ❌           |
+| Fee-on-transfer                 | ❌           |
+| ERC777 / Callback               | ❌           |
+| Upward-rebasing                 | ❌           |
+| Downward-rebasing               | ❌           |
+| Revert on zero-value transfers  | ✅           |
+| Flash mint                      | ✅           |
+| Missing return values           | ✅           |
+| No revert on failure            | ✅           |
+
+#### Valid Ranges
+
+StakingVault asset tokens are assumed to be maximum 1e36 supply and up to 27 decimals.
+
+#### Governance Guidelines
+ 
+If governors plan to remove a token from the basket via Folio.removeFromBasket(), users will only have a limited amount of time to redeem before the token becomes inaccessible. Removal should only be used if the reward token has become malicious or otherwise compromised.
+ 
 ### UnstakingManager
 
 Time-locked withdrawal manager, created by StakingVault during initialization.
@@ -341,21 +365,6 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | ---------------- | ---------------- | --------------------------------------------- |
 | `unstakingDelay` | <= 4 weeks       | `MAX_UNSTAKING_DELAY`                         |
 | `rewardHalfLife` | 1 day to 2 weeks | `MIN_REWARD_HALF_LIFE`, `MAX_REWARD_HALF_LIFE` |
-
-## Token Support
-
-| Feature                         | Supported    |
-| --------------------------------| ------------ |
-| Multiple Entrypoints            | ❌           |
-| Pausable / Blocklist            | ❌           |
-| Fee-on-transfer                 | ❌           |
-| ERC777 / Callback               | ❌           |
-| Upward-rebasing                 | ❌           |
-| Downward-rebasing               | ❌           |
-| Revert on zero-value transfers  | ✅           |
-| Flash mint                      | ✅           |
-| Missing return values           | ✅           |
-| No revert on failure            | ✅           |
 
 
 ## Optimistic Call Restrictions
