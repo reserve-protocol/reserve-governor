@@ -433,6 +433,13 @@ contract ReserveOptimisticGovernor is
         optimisticParams = params;
     }
 
+    function _setVotingPeriod(uint32 newVotingPeriod) internal override {
+        // voting periods near uint32.max can overflow in _tallyUpdated()
+        require(newVotingPeriod < type(uint32).max / 2, InvalidVotingPeriod());
+
+        super._setVotingPeriod(newVotingPeriod);
+    }
+
     function _proposalCore(uint256 proposalId) private view returns (ProposalCore storage) {
         return _getGovernorStorage()._proposals[proposalId];
     }

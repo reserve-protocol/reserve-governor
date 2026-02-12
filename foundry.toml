@@ -13,7 +13,7 @@ memory_limit = 1073741824 # 1 GB
 bytecode_hash = "none"
 evm_version = "cancun"
 optimizer = true
-optimizer_runs = 159
+optimizer_runs = 140
 solc_version = "0.8.33"
 via_ir = false
 

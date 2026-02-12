@@ -8,6 +8,7 @@ import {
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
+    error InvalidVotingPeriod();
     error InvalidProposalThreshold();
     error InvalidProposalThrottle();
     error InvalidOptimisticParameters();
