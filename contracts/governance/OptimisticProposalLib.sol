@@ -111,7 +111,7 @@ library OptimisticProposalLib {
         }
     }
 
-    function executeOptimisticProposal(
+    function executeOptimistic(
         ProposalData calldata proposal,
         GovernorUpgradeable.ProposalCore storage proposalCore,
         GovernorCountingSimpleUpgradeable.ProposalVote storage proposalVote,
@@ -119,8 +119,10 @@ library OptimisticProposalLib {
     ) external {
         require(proposalCore.proposer == msg.sender, IReserveOptimisticGovernor.NotOptimisticProposer(msg.sender));
 
+        IGovernor.ProposalState s = stateOptimistic(proposal.proposalId, proposalCore, proposalVote, vetoThreshold);
+
         require(
-            state(proposal.proposalId, proposalCore, proposalVote, vetoThreshold) == IGovernor.ProposalState.Succeeded,
+            s == IGovernor.ProposalState.Succeeded,
             IReserveOptimisticGovernor.OptimisticProposalNotSuccessful(proposal.proposalId)
         );
 
@@ -146,10 +148,9 @@ library OptimisticProposalLib {
     ) external {
         // check for optimistic -> pessimistic transition
 
-        if (
-            state(proposalId, proposalCore, proposalVote, vetoThresholds[proposalId])
-                == IGovernor.ProposalState.Defeated
-        ) {
+        IGovernor.ProposalState s = stateOptimistic(proposalId, proposalCore, proposalVote, vetoThresholds[proposalId]);
+
+        if (s == IGovernor.ProposalState.Defeated) {
             // optimistic -> pessimistic
             vetoThresholds[proposalId] = 0;
 
@@ -164,7 +165,7 @@ library OptimisticProposalLib {
         }
     }
 
-    function state(
+    function stateOptimistic(
         uint256 proposalId,
         GovernorUpgradeable.ProposalCore storage proposalCore,
         GovernorCountingSimpleUpgradeable.ProposalVote storage proposalVote,

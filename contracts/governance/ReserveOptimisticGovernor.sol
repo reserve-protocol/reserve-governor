@@ -153,7 +153,7 @@ contract ReserveOptimisticGovernor is
     ) external returns (uint256 proposalId) {
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        OptimisticProposalLib.executeOptimisticProposal(
+        OptimisticProposalLib.executeOptimistic(
             OptimisticProposalLib.ProposalData(proposalId, targets, values, calldatas, description),
             _getProposalCore(proposalId),
             _getProposalVote(proposalId),
@@ -193,7 +193,7 @@ contract ReserveOptimisticGovernor is
             return super.state(proposalId);
         }
 
-        return OptimisticProposalLib.state(
+        return OptimisticProposalLib.stateOptimistic(
             proposalId, _getProposalCore(proposalId), _getProposalVote(proposalId), vetoThresholds[proposalId]
         );
     }
