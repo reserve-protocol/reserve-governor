@@ -11,7 +11,7 @@ import {
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
-
+import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "../utils/Constants.sol";
 import { Versioned } from "../utils/Versioned.sol";
 
 contract TimelockControllerOptimistic is
@@ -62,6 +62,11 @@ contract TimelockControllerOptimistic is
         returns (bool)
     {
         return super._revokeRole(role, account);
+    }
+
+    /// @dev Guardian can revoke OPTIMISTIC_PROPOSER_ROLE
+    function revokeOptimisticProposer(address account) external onlyRole(CANCELLER_ROLE) {
+        _revokeRole(OPTIMISTIC_PROPOSER_ROLE, account);
     }
 
     /// @dev Danger!

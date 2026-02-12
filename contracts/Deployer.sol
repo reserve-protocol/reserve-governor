@@ -32,15 +32,15 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     }
 
     /// @notice Deploy a complete Reserve Governor system via proxies
+    /// @param params.optimisticParams.vetoDelay {s} Delay before optimistic veto period starts
     /// @param params.optimisticParams.vetoPeriod {s} Veto period
     /// @param params.optimisticParams.vetoThreshold D18{1} Fraction of staked supply required to start confirmation
-    /// @param params.optimisticParams.slashingPercentage D18{1} Fraction of staked tokens to be slashed
-    /// @param params.optimisticParams.numParallelProposals Number of optimistic proposals that can be live in parallel
     /// @param params.standardParams.votingDelay {s} Delay before snapshot
     /// @param params.standardParams.votingPeriod {s} Voting period
     /// @param params.standardParams.voteExtension {s} Time extension for late quorum
     /// @param params.standardParams.proposalThreshold D18{1} Fraction of staked supply required to propose
     /// @param params.standardParams.quorumNumerator D18{1} Fraction of staked supply required to reach quorum
+    /// @param params.standardParams.proposalThrottleCapacity
     /// @param params.optimisticProposers Addresses that can propose optimistic proposals
     /// @param params.guardians Addresses that can cancel proposals
     /// @param params.timelockDelay {s} Delay before timelock can execute

@@ -60,14 +60,15 @@ contract StakingVaultTest is Test {
         IReserveOptimisticGovernorDeployer.DeploymentParams memory params =
             IReserveOptimisticGovernorDeployer.DeploymentParams({
                 optimisticParams: IReserveOptimisticGovernor.OptimisticGovernanceParams({
-                    vetoPeriod: 2 hours, vetoThreshold: 0.05e18, slashingPercentage: 0.1e18, numParallelProposals: 3
+                    vetoDelay: 1 hours, vetoPeriod: 2 hours, vetoThreshold: 0.05e18
                 }),
                 standardParams: IReserveOptimisticGovernor.StandardGovernanceParams({
                     votingDelay: 1 days,
                     votingPeriod: 1 weeks,
                     voteExtension: 1 days,
                     proposalThreshold: 0.01e18,
-                    quorumNumerator: 0.1e18
+                    quorumNumerator: 0.1e18,
+                    proposalThrottleCapacity: 10
                 }),
                 selectorData: new IOptimisticSelectorRegistry.SelectorData[](0),
                 optimisticProposers: new address[](0),
@@ -165,7 +166,7 @@ contract StakingVaultTest is Test {
         uint8[4] memory rewardTokens = [1, 10, 25, 50];
 
         for (uint8 i = 0; i < rewardTokens.length; i++) {
-            uint256 snap = vm.snapshot();
+            uint256 snap = vm.snapshotState();
 
             vm.prank(address(timelock));
             vault.setUnstakingDelay(0);
@@ -197,7 +198,7 @@ contract StakingVaultTest is Test {
             vault.poke();
             vm.snapshotGasLastCall(gasTag2);
 
-            vm.revertToAndDelete(snap);
+            vm.revertToStateAndDelete(snap);
         }
     }
 
@@ -875,76 +876,6 @@ contract StakingVaultTest is Test {
         // Owner should have received their rewards (not lost due to missing accrual)
         assertApproxEqRel(claimedRewards[0], expectedOwnerRewards, 0.001e18);
         assertApproxEqRel(reward.balanceOf(address(this)), expectedOwnerRewards, 0.001e18);
-    }
-
-    function test_burn_dripsAssetsToRemainingHolders() public {
-        // Setup: Alice and Bob each deposit 1000e18 tokens
-        _mintAndDepositFor(ACTOR_ALICE, 1000e18);
-        _mintAndDepositFor(ACTOR_BOB, 1000e18);
-
-        // Warp 1 second to separate deposit from burn
-        vm.warp(block.timestamp + 1);
-        vault.poke();
-
-        // Verify initial state
-        assertEq(vault.balanceOf(ACTOR_ALICE), 1000e18);
-        assertEq(vault.balanceOf(ACTOR_BOB), 1000e18);
-        assertEq(vault.totalSupply(), 2000e18);
-        assertEq(vault.totalAssets(), 2000e18);
-
-        // Action: Alice burns all her shares
-        vm.prank(ACTOR_ALICE);
-        vault.burn(1000e18);
-
-        // Verify Alice's shares are burned
-        assertEq(vault.balanceOf(ACTOR_ALICE), 0);
-        // Verify only Bob's shares remain
-        assertEq(vault.totalSupply(), 1000e18);
-        // totalDeposited decreased, but underlying assets still in vault
-        // totalAssets = totalDeposited + currentAccountedNativeRewards
-        // Right after burn: totalDeposited = 1000e18, nativeRewards not yet dripped
-        assertEq(vault.totalAssets(), 1000e18);
-
-        // The vault still holds 2000e18 tokens (nothing was transferred out)
-        assertEq(token.balanceOf(address(vault)), 2000e18);
-
-        // Verification: After one reward half-life, Bob should get dripped assets
-        _payoutRewards(1);
-        vault.poke();
-
-        // Bob's shares should now be worth more (dripped assets)
-        uint256 bobRedeemable = vault.previewRedeem(1000e18);
-        // After 1 half-life, ~50% of the 1000e18 burned assets should drip to Bob
-        assertGt(bobRedeemable, 1000e18);
-        assertApproxEqRel(bobRedeemable, 1500e18, 0.001e18);
-
-        // After another half-life, more assets drip
-        _payoutRewards(1);
-        vault.poke();
-
-        bobRedeemable = vault.previewRedeem(1000e18);
-        // After 2 half-lives, ~75% of the 1000e18 burned assets should drip to Bob
-        assertApproxEqRel(bobRedeemable, 1750e18, 0.001e18);
-
-        // After many half-lives, Bob should be able to redeem close to 2000e18
-        _payoutRewards(10);
-        vault.poke();
-
-        bobRedeemable = vault.previewRedeem(1000e18);
-        // After 12 total half-lives, nearly all burned assets should have dripped
-        assertApproxEqRel(bobRedeemable, 2000e18, 0.001e18);
-
-        // Bob can actually redeem and receive the full amount
-        uint256 bobBalanceBefore = token.balanceOf(ACTOR_BOB);
-        _withdrawAs(ACTOR_BOB, 1000e18);
-
-        // Wait for unstaking delay and claim lock
-        vm.warp(block.timestamp + UNSTAKING_DELAY);
-        vault.unstakingManager().claimLock(0);
-
-        uint256 bobBalanceAfter = token.balanceOf(ACTOR_BOB);
-
-        assertApproxEqRel(bobBalanceAfter - bobBalanceBefore, 2000e18, 0.001e18);
     }
 
     // ============ UUPS Upgrade Tests ============

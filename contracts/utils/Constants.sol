@@ -8,6 +8,9 @@ bytes32 constant CANCELLER_ROLE = keccak256("CANCELLER_ROLE"); // 0xfd643c72710c
 bytes32 constant OPTIMISTIC_PROPOSER_ROLE = keccak256("OPTIMISTIC_PROPOSER_ROLE"); // 0x26f49d08685d9cdd4951a7470bc8fbe9dd0f00419c1a44c1b89f845867ae12e0
 
 // ReserveOptimisticGovernor
-uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 30 minutes;
-uint256 constant MAX_PARALLEL_LOCKED_VOTES_FRACTION = 0.666666666666666666e18; // 66%
-uint256 constant MAX_PARALLEL_OPTIMISTIC_PROPOSALS = 10;
+uint256 constant MIN_OPTIMISTIC_VETO_DELAY = 1 seconds;
+uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 15 minutes;
+
+// ProposalThrottle
+uint256 constant MAX_PROPOSAL_THROTTLE_CAPACITY = 10; // 10 per day
+uint256 constant PROPOSAL_THROTTLE_PERIOD = 1 days;
