@@ -45,6 +45,16 @@ interface IReserveOptimisticGovernor {
         uint256 proposalThrottleCapacity; // proposals-per-account per 24h
     }
 
+    struct ProposalThrottleStorage {
+        uint256 capacity; // max number of proposals per 24h
+        mapping(address account => ProposalThrottle) throttles;
+    }
+
+    struct ProposalThrottle {
+        uint256 currentCharge; // D18{1}
+        uint256 lastUpdated; // {s}
+    }
+
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,

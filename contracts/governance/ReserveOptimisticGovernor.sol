@@ -35,9 +35,9 @@ import {
     MAX_PROPOSAL_THROTTLE_CAPACITY,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_PROPOSER_ROLE
+    OPTIMISTIC_PROPOSER_ROLE,
+    PROPOSAL_THROTTLE_PERIOD
 } from "../utils/Constants.sol";
-import { ProposalThrottleLib } from "./ProposalThrottleLib.sol";
 import { ProposalValidationLib } from "./ProposalValidationLib.sol";
 
 import { Versioned } from "../utils/Versioned.sol";
@@ -69,7 +69,7 @@ contract ReserveOptimisticGovernor is
 
     OptimisticSelectorRegistry public selectorRegistry;
 
-    ProposalThrottleLib.ProposalThrottleStorage private proposalThrottle;
+    ProposalThrottleStorage private proposalThrottle;
 
     mapping(uint256 proposalId => uint256 vetoThreshold) public vetoThresholds; // D18{1}
 
@@ -139,14 +139,13 @@ contract ReserveOptimisticGovernor is
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        // mark proposal as optimistic
         vetoThresholds[proposalId] = optimisticParams.vetoThreshold;
 
         _propose(targets, values, calldatas, description, msg.sender);
     }
 
     function proposalType(uint256 proposalId) public view returns (ProposalType) {
-        require(_getProposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
+        require(_proposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
 
         return vetoThresholds[proposalId] != 0 ? ProposalType.Optimistic : ProposalType.Standard;
     }
@@ -182,7 +181,7 @@ contract ReserveOptimisticGovernor is
         } else {
             // optimistic case
 
-            ProposalCore storage proposalCore = _getProposalCore(proposalId);
+            ProposalCore storage proposalCore = _proposalCore(proposalId);
 
             if (proposalCore.executed) {
                 return ProposalState.Executed;
@@ -198,16 +197,14 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Pending;
             }
 
-            // {tok}
-            uint256 pastSupply = token().getPastTotalSupply(snapshot);
-            if (pastSupply == 0) {
+            // {tok} = D18{1} * {tok} / D18{1}
+            uint256 vetoThresholdTok = (vetoThreshold * token().getPastTotalSupply(snapshot) + (1e18 - 1)) / 1e18;
+
+            if (vetoThresholdTok == 0) {
                 return ProposalState.Canceled;
             }
 
-            // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (vetoThreshold * pastSupply + (1e18 - 1)) / 1e18;
-
-            if (_getProposalVote(proposalId).againstVotes >= vetoThresholdTok) {
+            if (_proposalVote(proposalId).againstVotes >= vetoThresholdTok) {
                 return ProposalState.Defeated;
             }
 
@@ -280,7 +277,7 @@ contract ReserveOptimisticGovernor is
 
         ProposalValidationLib.validateProposal(isOptimistic, targets, values, calldatas, selectorRegistry);
 
-        ProposalCore storage proposalCore = _getProposalCore(proposalId);
+        ProposalCore storage proposalCore = _proposalCore(proposalId);
 
         if (proposalCore.voteStart != 0) {
             revert GovernorUnexpectedProposalState(proposalId, state(proposalId), bytes32(0));
@@ -378,7 +375,7 @@ contract ReserveOptimisticGovernor is
             uint256 voteEnd = block.timestamp + votingPeriod();
             emit ConfirmationVoteScheduled(proposalId, block.timestamp, voteEnd);
 
-            ProposalCore storage proposalCore = _getProposalCore(proposalId);
+            ProposalCore storage proposalCore = _proposalCore(proposalId);
             proposalCore.voteDuration = SafeCast.toUint32(voteEnd - proposalCore.voteStart);
         }
     }
@@ -403,16 +400,28 @@ contract ReserveOptimisticGovernor is
 
     // === Private ===
 
-    function _timelock() private view returns (TimelockControllerOptimistic) {
-        return TimelockControllerOptimistic(payable(timelock()));
+    function _consumeProposalCharge(address account) private {
+        ProposalThrottle storage throttle = proposalThrottle.throttles[account];
+
+        uint256 elapsed = block.timestamp - throttle.lastUpdated;
+        uint256 charge = throttle.currentCharge + (elapsed * 1e18) / PROPOSAL_THROTTLE_PERIOD;
+
+        if (charge > 1e18) {
+            charge = 1e18;
+        }
+
+        uint256 proposalsAvailable = (proposalThrottle.capacity * charge) / 1e18;
+        require(proposalsAvailable >= 1, ProposalThrottleExceeded());
+
+        throttle.currentCharge = charge - (1e18 / proposalThrottle.capacity);
+        throttle.lastUpdated = block.timestamp;
     }
 
-    function _getProposalCore(uint256 proposalId) private view returns (ProposalCore storage) {
-        return _getGovernorStorage()._proposals[proposalId];
-    }
+    function _setProposalThrottle(uint256 newCapacity) private {
+        require(newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY, InvalidProposalThrottle());
 
-    function _getProposalVote(uint256 proposalId) private view returns (ProposalVote storage) {
-        return _getGovernorCountingSimpleStorage()._proposalVotes[proposalId];
+        proposalThrottle.capacity = newCapacity;
+        emit ProposalThrottleUpdated(newCapacity);
     }
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
@@ -424,18 +433,16 @@ contract ReserveOptimisticGovernor is
         optimisticParams = params;
     }
 
-    function _setProposalThrottle(uint256 newCapacity) private {
-        require(
-            newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY,
-            IReserveOptimisticGovernor.InvalidProposalThrottle()
-        );
-
-        proposalThrottle.capacity = newCapacity;
-        emit IReserveOptimisticGovernor.ProposalThrottleUpdated(newCapacity);
+    function _proposalCore(uint256 proposalId) private view returns (ProposalCore storage) {
+        return _getGovernorStorage()._proposals[proposalId];
     }
 
-    function _consumeProposalCharge(address account) private {
-        ProposalThrottleLib.consumeProposalCharge(proposalThrottle, account);
+    function _proposalVote(uint256 proposalId) private view returns (ProposalVote storage) {
+        return _getGovernorCountingSimpleStorage()._proposalVotes[proposalId];
+    }
+
+    function _timelock() private view returns (TimelockControllerOptimistic) {
+        return TimelockControllerOptimistic(payable(timelock()));
     }
 
     // === Version ===
