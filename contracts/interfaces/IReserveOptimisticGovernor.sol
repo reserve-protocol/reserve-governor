@@ -8,17 +8,12 @@ import {
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error ExistingProposal(uint256 proposalId);
-    error OptimisticProposalNotOngoing(uint256 proposalId);
-    error OptimisticProposalNotSuccessful(uint256 proposalId);
     error InvalidProposalThreshold();
     error InvalidProposalThrottle();
     error InvalidOptimisticParameters();
+    error OptimisticProposalCannotBeQueued(uint256 proposalId);
     error NotOptimisticProposer(address account);
-    error InvalidEmptyCall(address target, bytes data);
-    error InvalidFunctionCall(address target, bytes4 selector);
-    error InvalidFunctionCallToEOA(address target);
-    error InvalidProposalLengths();
+    error InvalidCall(address target, bytes call);
     error ProposalThrottleExceeded();
 
     // === Events ===
