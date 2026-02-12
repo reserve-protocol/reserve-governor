@@ -18,14 +18,10 @@ interface IReserveOptimisticGovernor {
 
     // === Events ===
 
-    /// @param vetoStart {s} Start of the veto period
-    /// @param vetoEnd {s} End of the veto period
-    /// @param vetoThreshold D18{1} Fraction of token supply required to trigger veto and start confirmation process
-    event OptimisticProposalCreated(
-        uint256 indexed proposalId, uint256 vetoStart, uint256 vetoEnd, uint256 vetoThreshold
-    );
+    /// @param vetoThreshold D18{1} Fraction of token supply required to start confirmation process
+    event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
     event ConfirmationVoteScheduled(uint256 indexed proposalId, uint256 voteStart, uint256 voteEnd);
-    event ProposalThrottleUpdated(uint256 proposalThrottle);
+    event ProposalThrottleUpdated(uint256 throttleCapacity);
 
     // === Data ===
 
@@ -46,7 +42,7 @@ interface IReserveOptimisticGovernor {
         uint48 voteExtension; // {s}
         uint256 proposalThreshold; // D18{1}
         uint256 quorumNumerator; // D18{1}
-        uint256 proposalThrottleCapacity; // max proposals per 24h
+        uint256 proposalThrottleCapacity; // proposals-per-account per 24h
     }
 
     function initialize(

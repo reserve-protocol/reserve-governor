@@ -40,7 +40,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param params.standardParams.voteExtension {s} Time extension for late quorum
     /// @param params.standardParams.proposalThreshold D18{1} Fraction of staked supply required to propose
     /// @param params.standardParams.quorumNumerator D18{1} Fraction of staked supply required to reach quorum
-    /// @param params.standardParams.proposalThrottle Proposals per 24h for the governor-wide proposal throttle
+    /// @param params.standardParams.proposalThrottleCapacity
     /// @param params.optimisticProposers Addresses that can propose optimistic proposals
     /// @param params.guardians Addresses that can cancel proposals
     /// @param params.timelockDelay {s} Delay before timelock can execute

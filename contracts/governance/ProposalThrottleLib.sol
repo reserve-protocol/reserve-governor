@@ -19,7 +19,7 @@ library ProposalThrottleLib {
 
     /// @dev Changes to `newCapacity` are effective immediately and impact the past
     ///      This is acceptable given the THROTTLE_PERIOD is only 1 day long and this is a governance action
-    /// @param newCapacity Proposals per 24h
+    /// @param newCapacity Proposals-per-account per 24h
     function setProposalThrottle(ProposalThrottleStorage storage self, uint256 newCapacity) external {
         require(newCapacity != 0 && newCapacity <= MAX_CAPACITY, IReserveOptimisticGovernor.InvalidProposalThrottle());
 
@@ -27,6 +27,7 @@ library ProposalThrottleLib {
         emit IReserveOptimisticGovernor.ProposalThrottleUpdated(newCapacity);
     }
 
+    /// Consume one proposal charge for an account
     function consumeProposalCharge(ProposalThrottleStorage storage self, address account) external {
         ProposalThrottle storage throttle = self.throttles[account];
 

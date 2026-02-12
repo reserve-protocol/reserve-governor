@@ -84,7 +84,7 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
-    /// @param standardGovParams.proposalThrottleCapacity Proposals per 24h
+    /// @param standardGovParams.proposalThrottleCapacity Proposals-per-account per 24h
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
@@ -249,7 +249,7 @@ contract ReserveOptimisticGovernor is
         uint256 proposalThresholdRatio = super.proposalThreshold(); // D18{1}
 
         // {tok}
-        uint256 supply = Math.max(1, token().getPastTotalSupply(clock() - 1));
+        uint256 supply = Math.max(1, token().getPastTotalSupply(block.timestamp - 1));
 
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
@@ -289,12 +289,12 @@ contract ReserveOptimisticGovernor is
         uint256 duration;
         {
             if (isOptimistic) {
-                snapshot = clock() + optimisticParams.vetoDelay;
+                snapshot = block.timestamp + optimisticParams.vetoDelay;
                 duration = optimisticParams.vetoPeriod;
 
-                emit OptimisticProposalCreated(proposalId, snapshot, snapshot + duration, vetoThresholds[proposalId]);
+                emit OptimisticProposalCreated(proposalId, vetoThresholds[proposalId]);
             } else {
-                snapshot = clock() + votingDelay();
+                snapshot = block.timestamp + votingDelay();
                 duration = votingPeriod();
             }
         }
@@ -374,12 +374,11 @@ contract ReserveOptimisticGovernor is
 
             vetoThresholds[proposalId] = 0;
 
-            ProposalCore storage proposalCore = _getProposalCore(proposalId);
-            proposalCore.voteDuration = SafeCast.toUint32(votingPeriod());
+            uint256 voteEnd = block.timestamp + votingPeriod();
+            emit ConfirmationVoteScheduled(proposalId, block.timestamp, voteEnd);
 
-            emit ConfirmationVoteScheduled(
-                proposalId, proposalCore.voteStart, proposalCore.voteStart + proposalCore.voteDuration
-            );
+            ProposalCore storage proposalCore = _getProposalCore(proposalId);
+            proposalCore.voteDuration = SafeCast.toUint32(voteEnd - proposalCore.voteStart);
         }
     }
 
