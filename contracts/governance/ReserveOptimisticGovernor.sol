@@ -114,8 +114,8 @@ contract ReserveOptimisticGovernor is
         _setOptimisticParams(params);
     }
 
-    function setProposalThrottle(uint256 proposalThrottleCapacity) external onlyGovernance {
-        _setProposalThrottle(proposalThrottleCapacity);
+    function setProposalThrottle(uint256 newProposalThrottleCapacity) external onlyGovernance {
+        _setProposalThrottle(newProposalThrottleCapacity);
     }
 
     function getProposalThrottleCapacity() external view returns (uint256) {

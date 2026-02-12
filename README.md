@@ -15,7 +15,7 @@ Both proposal paths are also protected by a shared proposer throttle that limits
 
 ## Architecture
 
-The system consists of six components:
+The system consists of five components:
 
 1. **StakingVault** -- ERC4626 vault with vote-locking, multi-token rewards, and unstaking delay
 2. **UnstakingManager** -- Time-locked withdrawal manager created by StakingVault during initialization
@@ -44,7 +44,7 @@ The system consists of six components:
 │  │   Fast (Optimistic) │    │        Slow (Standard)          │ │
 │  │                     │    │                                 │ │
 │  │  proposeOptimistic  │    │  propose / vote / queue         │ │
-│  │  executeOptimistic  │    │  execute                        │ │
+│  │  execute            │    │  execute                        │ │
 │  │                     │    │  cancel                         │ │
 │  └──────────┬──────────┘    └────────────────┬────────────────┘ │
 │             │                                │                  │
@@ -91,9 +91,9 @@ Fast proposals use the standard OZ Governor `ProposalState` enum. During the vet
 When AGAINST votes reach the veto threshold, the proposal transitions to a full confirmation vote:
 
 1. `vetoThresholds[proposalId]` is cleared, converting the proposal to Standard type
-2. `voteStart` and `voteDuration` are reset to the standard voting parameters (`votingDelay` and `votingPeriod`)
+2. `voteStart` is preserved, and `voteDuration` is updated so the new deadline is `block.timestamp + votingPeriod`
 3. A `ConfirmationVoteScheduled` event is emitted
-4. The confirmation vote follows the standard proposal flow (affirmative voting, quorum, timelock)
+4. The confirmation vote becomes immediately `Active`, then follows the standard path (affirmative voting, quorum, timelock)
 
 Votes and `hasVoted` state from the veto phase carry through to the confirmation vote. Voters who already voted during the veto phase cannot vote again.
 
@@ -102,8 +102,8 @@ Votes and `hasVoted` state from the veto phase carry through to the confirmation
 | Path | Name             | Flow                                                                                          | Outcome                    |
 | ---- | ---------------- | --------------------------------------------------------------------------------------------- | -------------------------- |
 | F1   | Uncontested      | Pending -> Active -> Succeeded -> Executed                                                    | Executes via timelock bypass |
-| F2   | Vetoed, Confirmed | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Succeeded -> Queued -> Executed | Executes via timelock       |
-| F3   | Vetoed, Rejected  | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Defeated                | Proposal blocked           |
+| F2   | Vetoed, Confirmed | Pending -> Active -> Defeated -> (confirmation) Active -> Succeeded -> Queued -> Executed | Executes via timelock       |
+| F3   | Vetoed, Rejected  | Pending -> Active -> Defeated -> (confirmation) Active -> Defeated                | Proposal blocked           |
 | F4   | Canceled         | Any non-final state -> Canceled                                                               | Proposer or guardian cancels |
 
 ### Slow Proposal Lifecycle
@@ -146,7 +146,7 @@ During a fast proposal's veto period, any token holder can vote using the standa
 vetoThreshold = ceil(vetoThresholdRatio * pastTotalSupply / 1e18)
 ```
 
-Where `pastTotalSupply = token.getPastTotalSupply(snapshot - 1)` and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%).
+Where `pastTotalSupply = token.getPastTotalSupply(snapshot)` and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%).
 
 If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass.
 
@@ -170,7 +170,7 @@ enum ProposalType {
 | -------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
 | `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs               | Create fast proposals (`proposeOptimistic`)                             |
 | `PROPOSER_ROLE`            | Governor contract                      | Schedule operations on the timelock (granted automatically by Deployer) |
-| `EXECUTOR_ROLE`            | Governor contract                      | Execute queued slow proposals via the timelock                          |
+| `EXECUTOR_ROLE`            | Governor contract                      | Execute timelock operations for both slow and fast proposal paths       |
 | `CANCELLER_ROLE`           | Governor contract + Guardian addresses | Cancel proposals (fast or slow), revoke optimistic proposers            |
 
 > **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself -- it allows the governor to schedule operations, not individual users to create proposals.
@@ -183,7 +183,7 @@ The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessCon
 - Revoked via `timelock.revokeRole(OPTIMISTIC_PROPOSER_ROLE, address)` or `timelock.revokeOptimisticProposer(address)` (callable by CANCELLER_ROLE)
 - Checked via `timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, address)`
 - Revocation blocks new `proposeOptimistic()` calls by that account
-- Execution of a succeeded optimistic proposal is restricted to the original proposal proposer address (`proposalProposer(proposalId)`)
+- Execution of a succeeded optimistic proposal is done via `execute(...)` and is not restricted to the original optimistic proposer
 
 ## Contract Reference
 
@@ -194,20 +194,20 @@ The main hybrid governor contract.
 **Fast Proposal Functions:**
 
 - `proposeOptimistic(targets, values, calldatas, description)` -- Create a fast proposal (requires `OPTIMISTIC_PROPOSER_ROLE`)
-- `executeOptimistic(targets, values, calldatas, description)` -- Execute a succeeded fast proposal (requires the original proposal proposer address)
+- `execute(targets, values, calldatas, descriptionHash)` -- Execute a succeeded fast proposal (bypass path, no queue step)
 
 **Standard Proposal Functions (inherited from OZ Governor):**
 
 - `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires `proposalThreshold`)
 - `castVote(proposalId, support)` -- Cast a vote (works on both fast and slow proposals)
-- `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal
-- `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal
+- `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal (optimistic proposals cannot be queued)
+- `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal or a succeeded optimistic proposal
 - `cancel(targets, values, calldatas, descriptionHash)` -- Cancel a proposal
 
 **Proposal Creation Rules:**
 
 - `propose()` and `proposeOptimistic()` both consume proposer throttle charge
-- `propose()` rejects non-empty calldata calls to EOAs (`InvalidFunctionCallToEOA`) but allows pure ETH transfers to EOAs with empty calldata
+- `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 
 **State Query:**
@@ -388,19 +388,16 @@ Three contracts are UUPS upgradeable:
 
 ```
 Fast Proposal:
-  proposeOptimistic() → [vetoDelay: PENDING] → [vetoPeriod: ACTIVE] → executeOptimistic()
-                                                       │                       ↓
-                                                       │                   SUCCEEDED
-                                                       │                       ↓
-                                                       │                   EXECUTED (bypass)
+  proposeOptimistic() → [vetoDelay: PENDING] → [vetoPeriod: ACTIVE]
                                                        │
-                                                       └─► [AGAINST votes reach threshold]
-                                                                   │
+                                 [threshold not met] ─┼─► SUCCEEDED → execute() → EXECUTED (bypass)
+                                                       │
+                               [threshold reached] ───┘
                                                                    ▼
                                                                DEFEATED
                                                                    │
                                                                    ▼
-                                                           Confirmation Vote
+                                                      Confirmation Vote (ACTIVE)
                                                           (standard flow below)
 
 Slow Proposal:
