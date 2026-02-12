@@ -9,12 +9,7 @@ import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Co
 
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
-import {
-    CANCELLER_ROLE,
-    MAX_VETO_THRESHOLD,
-    MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_PROPOSER_ROLE
-} from "../utils/Constants.sol";
+import { CANCELLER_ROLE } from "../utils/Constants.sol";
 
 import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
@@ -43,13 +38,10 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     event Staked(address indexed staker, uint256 amount);
     event Withdrawn(address indexed staker, uint256 amount);
     event Slashed(uint256 amount);
+    event Canceled();
 
     // === Errors ===
 
-    error OptimisticProposal__InvalidVetoPeriod();
-    error OptimisticProposal__InvalidVetoThreshold();
-    error OptimisticProposal__InvalidSlashingPercentage();
-    error OptimisticProposal__InvalidProposal();
     error OptimisticProposal__CannotCancel();
     error OptimisticProposal__NotActive();
     error OptimisticProposal__ZeroStake();
@@ -57,6 +49,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     error OptimisticProposal__NotGovernor();
     error OptimisticProposal__NotSlashed();
     error OptimisticProposal__UnderConfirmation();
+    error OptimisticProposal__ZeroVetoThreshold();
 
     // === Enums ===
 
@@ -107,6 +100,8 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         bytes[] memory _calldatas,
         string memory _description
     ) public initializer {
+        __Context_init();
+
         governor = ReserveOptimisticGovernor(payable(_msgSender()));
         token = IStakingVault(address(governor.token()));
 
@@ -126,6 +121,8 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         // {tok} = D18{1} * {tok} / D18{1}
         vetoThreshold = (_params.vetoThreshold * supply + (1e18 - 1)) / 1e18;
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
+
+        require(vetoThreshold != 0, OptimisticProposal__ZeroVetoThreshold());
 
         // D18{1}
         slashingPercentage = _params.slashingPercentage;
@@ -196,7 +193,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
     // === Admin ===
 
     /// Cancel an optimistic proposal WITHOUT a corresponding confirmation proposal
-    /// Caller must have CANCELLER_ROLE or OPTIMISTIC_PROPOSER_ROLE
+    /// Caller must have CANCELLER_ROLE or be proposer
     function cancel() external {
         TimelockControllerOptimistic timelock = TimelockControllerOptimistic(payable(governor.timelock()));
 
@@ -213,6 +210,7 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         );
 
         canceled = true;
+        emit Canceled();
     }
 
     // === User ===
@@ -244,11 +242,13 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         OptimisticProposalState _state = state();
         require(_state != OptimisticProposalState.Locked, OptimisticProposal__UnderConfirmation());
 
+        uint256 _slashingPercentage = _state == OptimisticProposalState.Slashed ? slashingPercentage : 0;
+
         // can leave dust behind equal to total number of deposits
         // {tok} = {tok} * D18{1}
-        uint256 amount = staked[_msgSender()] * (1e18 - _slashingPercentage(_state)) / 1e18;
+        uint256 amount = staked[_msgSender()] * (1e18 - _slashingPercentage) / 1e18;
         delete staked[_msgSender()];
-        // totalStaked unchanged
+        totalStaked -= amount;
 
         require(amount != 0, OptimisticProposal__ZeroWithdrawal());
 
@@ -263,16 +263,10 @@ contract OptimisticProposal is Initializable, ContextUpgradeable {
         require(state() == OptimisticProposalState.Slashed, OptimisticProposal__NotSlashed());
 
         // {tok} = {tok} * D18{1}
-        uint256 amount = (totalStaked * _slashingPercentage(state())) / 1e18;
-        totalStaked = 0;
+        uint256 amount = (totalStaked * slashingPercentage) / 1e18;
+        totalStaked -= amount;
 
         token.burn(amount);
         emit Slashed(amount);
-    }
-
-    // === Internal ===
-
-    function _slashingPercentage(OptimisticProposalState _state) internal view returns (uint256) {
-        return _state == OptimisticProposalState.Slashed ? slashingPercentage : 0;
     }
 }

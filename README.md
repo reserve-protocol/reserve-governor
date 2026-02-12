@@ -390,9 +390,11 @@ The following enforcement limits apply to optimistic governance parameters:
 | Parameter              | Constraint       | Constant                              |
 | ---------------------- | ---------------- | ------------------------------------- |
 | `vetoPeriod`           | >= 30 minutes    | `MIN_OPTIMISTIC_VETO_PERIOD`          |
-| `vetoThreshold`        | > 0 and <= 20%   | `MAX_VETO_THRESHOLD`                  |
+| `vetoThreshold`        | > 0%             |                                       |
 | `slashingPercentage`   | >= 0 and <= 100% | Validated in `_setOptimisticParams()` |
-| `numParallelProposals` | <= 5             | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS`   |
+| `numParallelProposals` | <= 10            | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS`   |
+
+Additonal invariant: `vetoThreshold * numParallelProposals <= MAX_PARALLEL_LOCKED_VOTES_FRACTION (66%)`
 
 ### StakingVault Parameters
 
@@ -400,11 +402,6 @@ The following enforcement limits apply to optimistic governance parameters:
 | ---------------- | ------------------- | ----------------------------------------- |
 | `unstakingDelay` | <= 4 weeks          | `MAX_UNSTAKING_DELAY`                     |
 | `rewardHalfLife` | 1 day to 2 weeks    | `MIN_REWARD_HALF_LIFE`, `MAX_REWARD_HALF_LIFE` |
-
-Defaults (from Constants.sol):
-
-- `DEFAULT_REWARD_PERIOD` = 1 week
-- `DEFAULT_UNSTAKING_DELAY` = 1 week
 
 ## Token Requirements
 
@@ -417,10 +414,10 @@ Defaults (from Constants.sol):
 
 Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `OptimisticSelectorRegistry`. In addition, the following targets are **always** blocked at registration time (hardcoded in `OptimisticSelectorRegistry`):
 
+- The `StakingVault` contract
 - The `ReserveOptimisticGovernor` contract
 - The `TimelockControllerOptimistic` contract
 - The `OptimisticSelectorRegistry` itself
-- The `StakingVault` (token) — except for `addRewardToken()` and `removeRewardToken()` selectors
 
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.

@@ -237,6 +237,9 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens to alice via optimistic";
 
+        // Warp to ensure we have a snapshot
+        vm.warp(block.timestamp + 1);
+
         // Step 1: Propose optimistically
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -280,6 +283,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens - will be canceled";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -306,6 +311,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens - proposer cancels";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -631,6 +638,43 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(stakingVault.balanceOf(alice), aliceStakingBalanceBefore + partialStake);
     }
 
+    function test_withdrawDecrementsTotalStaked() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
+
+        string memory description = "Transfer tokens - withdraw totalStaked regression";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        OptimisticProposal optProposal = governor.optimisticProposals(proposalId);
+        uint256 vetoThreshold = optProposal.vetoThreshold();
+        uint256 partialStake = vetoThreshold / 2;
+
+        // Alice stakes
+        vm.startPrank(alice);
+        stakingVault.approve(address(optProposal), partialStake);
+        optProposal.stakeToVeto(partialStake);
+        vm.stopPrank();
+
+        assertEq(optProposal.totalStaked(), partialStake);
+
+        // Alice withdraws
+        vm.prank(alice);
+        optProposal.withdraw();
+
+        // Regression: old code did not decrement totalStaked
+        assertEq(optProposal.totalStaked(), 0);
+    }
+
     function test_multipleStakersReachThreshold() public {
         // Create proposal
         address[] memory targets = new address[](1);
@@ -696,6 +740,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens - late staking";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -828,6 +874,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
 
         vm.startPrank(optimisticProposer);
 
@@ -1217,6 +1265,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -1240,6 +1290,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -1261,6 +1313,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -1553,6 +1607,8 @@ contract ReserveOptimisticGovernorTest is Test {
 
         string memory description = "Transfer tokens";
 
+        vm.warp(block.timestamp + 1);
+
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
@@ -1576,6 +1632,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -1624,6 +1682,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1000e18));
 
         string memory description = "Transfer tokens";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -1683,6 +1743,26 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
+    function test_cannotProposeShortCalldataToEOA_optimistic() public {
+        address target = makeAddr("eoatarget");
+
+        address[] memory targets = new address[](1);
+        targets[0] = target;
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // 3 bytes: too short for a selector but not empty
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = hex"abcdef";
+
+        string memory description = "Short calldata - should fail";
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidFunctionCallToEOA.selector, target));
+        governor.proposeOptimistic(targets, values, calldatas, description);
+    }
+
     function test_canSendETHToEOAWithEmptyCalldata_standard() public {
         address eoaTarget = makeAddr("eoaTarget");
         vm.deal(address(timelock), 1 ether);
@@ -1739,6 +1819,8 @@ contract ReserveOptimisticGovernorTest is Test {
         calldatas[0] = "";
 
         string memory description = "Send ETH to EOA via optimistic - should succeed";
+
+        vm.warp(block.timestamp + 1);
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -1800,26 +1882,61 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
-    function test_cannotSetVetoThresholdAboveMax() public {
+    function test_cannotSetProposalThresholdAbove100Percent() public {
         address[] memory targets = new address[](1);
         targets[0] = address(governor);
 
         uint256[] memory values = new uint256[](1);
         values[0] = 0;
 
-        // vetoThreshold = 25% (> 20% maximum)
+        // proposalThreshold = 1e18 + 1 (> 100%)
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setProposalThreshold, (1e18 + 1));
+
+        string memory description = "Set proposal threshold above 100%";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidProposalThreshold.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_cannotExceedParallelLockedVotesFraction() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // product = 34% * 2 = 68% (> ~66.67% MAX_PARALLEL_LOCKED_VOTES_FRACTION)
         IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
             IReserveOptimisticGovernor.OptimisticGovernanceParams({
                 vetoPeriod: VETO_PERIOD,
-                vetoThreshold: 0.25e18,
+                vetoThreshold: 0.34e18,
                 slashingPercentage: SLASHING_PERCENTAGE,
-                numParallelProposals: NUM_PARALLEL_PROPOSALS
+                numParallelProposals: 2
             });
 
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
 
-        string memory description = "Set bad veto threshold";
+        string memory description = "Set params exceeding parallel locked votes fraction";
 
         vm.warp(block.timestamp + 1);
 
@@ -2037,26 +2154,202 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
-    function test_cannotSetParallelProposalsAboveMax() public {
+    function test_highVetoThresholdAllowedWithLowParallelProposals() public {
         address[] memory targets = new address[](1);
         targets[0] = address(governor);
 
         uint256[] memory values = new uint256[](1);
         values[0] = 0;
 
-        // numParallelProposals = 10 (> 5 maximum)
-        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+        // product = 60% * 1 = 60% (<= ~66.67% MAX_PARALLEL_LOCKED_VOTES_FRACTION)
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory params =
             IReserveOptimisticGovernor.OptimisticGovernanceParams({
                 vetoPeriod: VETO_PERIOD,
-                vetoThreshold: VETO_THRESHOLD,
+                vetoThreshold: 0.6e18,
+                slashingPercentage: SLASHING_PERCENTAGE,
+                numParallelProposals: 1
+            });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (params));
+
+        string memory description = "Set high veto threshold with single parallel proposal";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        (, uint256 vt,, uint256 npp) = governor.optimisticParams();
+        assertEq(vt, 0.6e18);
+        assertEq(npp, 1);
+    }
+
+    function test_highParallelProposalsAllowedWithLowVetoThreshold() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // product = 6.5% * 10 = 65% (<= ~66.67% MAX_PARALLEL_LOCKED_VOTES_FRACTION)
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory params =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: 0.065e18,
                 slashingPercentage: SLASHING_PERCENTAGE,
                 numParallelProposals: 10
             });
 
         bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (params));
+
+        string memory description = "Set many parallel proposals with low veto threshold";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        (, uint256 vt,, uint256 npp) = governor.optimisticParams();
+        assertEq(vt, 0.065e18);
+        assertEq(npp, 10);
+    }
+
+    function test_parallelLockedVotesFractionBoundary() public {
+        // === Pass case: product exactly at the boundary ===
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // product = 33.33..% * 2 = 66.66..% (== MAX_PARALLEL_LOCKED_VOTES_FRACTION)
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory params =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: 0.333333333333333333e18,
+                slashingPercentage: SLASHING_PERCENTAGE,
+                numParallelProposals: 2
+            });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (params));
+
+        string memory description = "Set params at exact product boundary";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        bytes32 descriptionHash = keccak256(bytes(description));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        (, uint256 vt,, uint256 npp) = governor.optimisticParams();
+        assertEq(vt, 0.333333333333333333e18);
+        assertEq(npp, 2);
+
+        // === Fail case: product one wei above the boundary ===
+
+        // product = 33.33..34% * 2 = 66.66..68% (> MAX_PARALLEL_LOCKED_VOTES_FRACTION)
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: 0.333333333333333334e18,
+                slashingPercentage: SLASHING_PERCENTAGE,
+                numParallelProposals: 2
+            });
+
         calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
 
-        string memory description = "Set parallel proposals above max";
+        string memory description2 = "Set params one wei above product boundary";
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(alice);
+        proposalId = governor.propose(targets, values, calldatas, description2);
+
+        vm.warp(block.timestamp + VOTING_DELAY + 1);
+        vm.prank(alice);
+        governor.castVote(proposalId, 1);
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        vm.warp(block.timestamp + VOTING_PERIOD + 1);
+
+        descriptionHash = keccak256(bytes(description2));
+        governor.queue(targets, values, calldatas, descriptionHash);
+
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidVetoParameters.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_cannotExceedMaxParallelOptimisticProposals() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(governor);
+
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+
+        // numParallelProposals = 11 (> 10 MAX_PARALLEL_OPTIMISTIC_PROPOSALS)
+        // product = 1% * 11 = 11% (<= 66%), so only the hard cap is violated
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoPeriod: VETO_PERIOD,
+                vetoThreshold: 0.01e18,
+                slashingPercentage: SLASHING_PERCENTAGE,
+                numParallelProposals: 11
+            });
+
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(governor.setOptimisticParams, (badParams));
+
+        string memory description = "Set parallel proposals above hard cap";
 
         vm.warp(block.timestamp + 1);
 
@@ -2145,7 +2438,7 @@ contract ReserveOptimisticGovernorTest is Test {
         );
         registry.registerSelectors(selectorData);
 
-        // 4. Cannot target the staking vault with a disallowed selector
+        // 4. Cannot target the staking vault
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(
@@ -2155,16 +2448,15 @@ contract ReserveOptimisticGovernorTest is Test {
         );
         registry.registerSelectors(selectorData);
 
-        // 5. CAN target the staking vault with addRewardToken
-        selectors[0] = IStakingVault.addRewardToken.selector;
+        // 4. Cannot target the staking vault even if using addRewardToken()
+        selectors[0] = StakingVault.addRewardToken.selector;
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
         vm.prank(address(timelock));
-        registry.registerSelectors(selectorData);
-
-        // 6. CAN target the staking vault with removeRewardToken
-        selectors[0] = IStakingVault.removeRewardToken.selector;
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
-        vm.prank(address(timelock));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IOptimisticSelectorRegistry.InvalidCall.selector, address(stakingVault), selectors[0]
+            )
+        );
         registry.registerSelectors(selectorData);
     }
 

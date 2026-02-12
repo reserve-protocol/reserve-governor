@@ -8,7 +8,7 @@ import {
 import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
-import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
 
@@ -31,6 +31,9 @@ contract TimelockControllerOptimistic is
         initializer
     {
         __TimelockController_init(minDelay, proposers, executors, admin);
+        __AccessControlEnumerable_init();
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
     }
 
     function supportsInterface(bytes4 interfaceId)
@@ -70,7 +73,7 @@ contract TimelockControllerOptimistic is
         bytes[] calldata payloads,
         bytes32 predecessor,
         bytes32 salt
-    ) public payable onlyRoleOrOpenRole(PROPOSER_ROLE) {
+    ) public payable onlyRole(PROPOSER_ROLE) {
         bytes32 id = hashOperationBatch(targets, values, payloads, predecessor, salt);
 
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();

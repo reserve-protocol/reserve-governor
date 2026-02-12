@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
@@ -26,13 +26,14 @@ import {
 import {
     GovernorVotesUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
 import { IStakingVault } from "../interfaces/IStakingVault.sol";
 import {
     CANCELLER_ROLE,
+    MAX_PARALLEL_LOCKED_VOTES_FRACTION,
     MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
-    MAX_VETO_THRESHOLD,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
@@ -113,6 +114,7 @@ contract ReserveOptimisticGovernor is
         __GovernorVotes_init(IStakingVault(_token));
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelock)));
+        __UUPSUpgradeable_init();
 
         _setOptimisticParams(optimisticGovParams);
 
@@ -174,6 +176,15 @@ contract ReserveOptimisticGovernor is
         return 1e18;
     }
 
+    function quorum(uint256 timepoint)
+        public
+        view
+        override(GovernorUpgradeable, GovernorVotesQuorumFractionUpgradeable)
+        returns (uint256)
+    {
+        return Math.max(1, super.quorum(timepoint));
+    }
+
     /// @dev Call proposalType() to determine whether to call `state()` or `optimisticProposal.state()`
     function state(uint256 proposalId)
         public
@@ -212,7 +223,7 @@ contract ReserveOptimisticGovernor is
         uint256 proposalThresholdRatio = super.proposalThreshold(); // D18{1}
 
         // {tok}
-        uint256 supply = token().getPastTotalSupply(clock() - 1);
+        uint256 supply = Math.max(1, token().getPastTotalSupply(clock() - 1));
 
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
@@ -307,13 +318,18 @@ contract ReserveOptimisticGovernor is
         super._tallyUpdated(proposalId);
     }
 
+    function _setProposalThreshold(uint256 newProposalThreshold) internal override {
+        require(newProposalThreshold <= 1e18, InvalidProposalThreshold());
+        super._setProposalThreshold(newProposalThreshold);
+    }
+
     // === Private ===
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
         require(
             params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
-                && params.vetoThreshold <= MAX_VETO_THRESHOLD && params.slashingPercentage <= 1e18
-                && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS,
+                && params.slashingPercentage <= 1e18 && params.numParallelProposals <= MAX_PARALLEL_OPTIMISTIC_PROPOSALS
+                && params.vetoThreshold * params.numParallelProposals <= MAX_PARALLEL_LOCKED_VOTES_FRACTION,
             InvalidVetoParameters()
         );
         optimisticParams = params;
