@@ -9,7 +9,7 @@ bytes32 constant OPTIMISTIC_PROPOSER_ROLE = keccak256("OPTIMISTIC_PROPOSER_ROLE"
 
 // ReserveOptimisticGovernor
 uint256 constant MIN_OPTIMISTIC_VETO_DELAY = 1 seconds;
-uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 30 minutes;
+uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 15 minutes;
 
 // ProposalThrottle
 uint256 constant MAX_PROPOSAL_THROTTLE_CAPACITY = 10; // 10 per day
