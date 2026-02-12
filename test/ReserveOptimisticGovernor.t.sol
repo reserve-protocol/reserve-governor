@@ -543,7 +543,7 @@ contract ReserveOptimisticGovernorTest is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
         _warpToActive(proposalId);
 
-        uint256 expectedVoteStart = block.timestamp + VOTING_DELAY;
+        uint256 expectedVoteStart = governor.proposalSnapshot(proposalId);
         uint256 expectedVoteEnd = expectedVoteStart + VOTING_PERIOD;
 
         // Alice's 40% AGAINST vote exceeds the 20% veto threshold and schedules confirmation.
@@ -552,13 +552,43 @@ contract ReserveOptimisticGovernorTest is Test {
 
         assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
         assertEq(governor.vetoThresholds(proposalId), 0);
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
         assertEq(governor.proposalSnapshot(proposalId), expectedVoteStart);
         assertEq(governor.proposalDeadline(proposalId), expectedVoteEnd);
 
         (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
         assertEq(againstVotes, ALICE_STAKE);
         assertEq(forVotes, 0);
+        assertEq(abstainVotes, 0);
+    }
+
+    function test_confirmationVote_isImmediatelyActiveAfterTransition() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Confirmation starts immediately";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        _warpToActive(proposalId);
+
+        uint256 expectedVoteStart = governor.proposalSnapshot(proposalId);
+        uint256 expectedVoteEnd = expectedVoteStart + VOTING_PERIOD;
+
+        vm.prank(alice);
+        governor.castVote(proposalId, 0); // trigger optimistic -> confirmation transition
+
+        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
+        assertEq(governor.proposalSnapshot(proposalId), expectedVoteStart);
+        assertEq(governor.proposalDeadline(proposalId), expectedVoteEnd);
+
+        // Regression: confirmation vote should already be active here, so Bob can vote immediately.
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
+        assertEq(againstVotes, ALICE_STAKE);
+        assertEq(forVotes, BOB_STAKE);
         assertEq(abstainVotes, 0);
     }
 

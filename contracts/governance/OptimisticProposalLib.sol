@@ -154,14 +154,13 @@ library OptimisticProposalLib {
             // optimistic -> pessimistic
             vetoThresholds[proposalId] = 0;
 
-            GovernorUpgradeable governor = GovernorUpgradeable(payable(address(this)));
-            uint256 snapshot = block.timestamp + governor.votingDelay();
-            uint256 duration = governor.votingPeriod();
+            uint256 duration = GovernorUpgradeable(payable(address(this))).votingPeriod();
 
-            proposalCore.voteStart = SafeCast.toUint48(snapshot);
             proposalCore.voteDuration = SafeCast.toUint32(duration);
 
-            emit IReserveOptimisticGovernor.ConfirmationVoteScheduled(proposalId, snapshot, snapshot + duration);
+            emit IReserveOptimisticGovernor.ConfirmationVoteScheduled(
+                proposalId, proposalCore.voteStart, proposalCore.voteStart + duration
+            );
         }
     }
 
