@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 
@@ -19,9 +20,6 @@ import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ER
 import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
-
-import { IStakingVault } from "../interfaces/IStakingVault.sol";
-import { IVersioned } from "../interfaces/IVersioned.sol";
 
 import { Versioned } from "../utils/Versioned.sol";
 import { UnstakingManager } from "./UnstakingManager.sol";
@@ -40,7 +38,6 @@ uint256 constant SCALAR = 1e18; // D18
  * @notice StakingVault is a transferrable vault of an underlying token that uses the ERC4626 interface.
  *         It earns the holder a claimable stream of multi rewards and enables them to vote in (external) governance.
  *         Unstaking is gated by a delay, implemented by an UnstakingManager.
- *         It supports slashing via the burning of shares and accrual of native rewards to the remaining holders.
  *
  * @dev StakingVault also supports native asset() rewards alongside other reward tokens, but are handled independently.
  */
@@ -50,8 +47,7 @@ contract StakingVault is
     ERC20VotesUpgradeable,
     OwnableUpgradeable,
     Versioned,
-    UUPSUpgradeable,
-    IStakingVault
+    UUPSUpgradeable
 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -133,19 +129,6 @@ contract StakingVault is
      * @param newImplementation Address of the new implementation contract
      */
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner { }
-
-    /**
-     * Slashing logic
-     */
-    /// Burn a quantity of shares and drip them to remaining holders as native rewards
-    /// @dev NOT FOR USE BY REGULAR USERS
-    function burn(uint256 _shares) external accrueRewards(msg.sender, msg.sender) {
-        uint256 _assets = convertToAssets(_shares);
-
-        // reduce share and asset counts, automatically adding `_assets` to the native drip
-        totalDeposited -= _assets;
-        _burn(msg.sender, _shares);
-    }
 
     /**
      * Deposit & Delegate
@@ -412,18 +395,6 @@ contract StakingVault is
 
     function decimals() public view virtual override(ERC20Upgradeable, ERC4626Upgradeable) returns (uint8) {
         return super.decimals();
-    }
-
-    function owner() public view override(IStakingVault, OwnableUpgradeable) returns (address) {
-        return super.owner();
-    }
-
-    function asset() public view override(IStakingVault, ERC4626Upgradeable) returns (address) {
-        return super.asset();
-    }
-
-    function version() public pure virtual override(IVersioned, Versioned) returns (string memory) {
-        return Versioned.version();
     }
 
     /**

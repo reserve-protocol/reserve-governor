@@ -6,21 +6,22 @@ A hybrid optimistic/pessimistic governance system for the Reserve protocol.
 
 Reserve Governor provides two proposal paths through a single timelock:
 
-- **Fast (Optimistic)**: Quick execution after a short veto period, no voting required
+- **Fast (Optimistic)**: Quick execution after a short veto period, no affirmative voting required
 - **Slow (Standard)**: Full voting process with timelock delay
 
-This design enables efficient day-to-day governance while preserving community override capabilities.
+During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically transitions into a full confirmation vote (the slow path). This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
+
+Both proposal paths are also protected by a shared proposer throttle that limits how many proposals each account can create per 24-hour window.
 
 ## Architecture
 
-The system consists of six components:
+The system consists of five components:
 
-1. **StakingVault** — ERC4626 vault with vote-locking, multi-token rewards, and unstaking delay
-2. **UnstakingManager** — Time-locked withdrawal manager created by StakingVault during initialization
-3. **ReserveOptimisticGovernor** — Hybrid governor unifying optimistic/standard proposal flows
-4. **OptimisticSelectorRegistry** — Whitelist of allowed `(target, selector)` pairs for optimistic proposals
-5. **TimelockControllerOptimistic** — Single timelock for execution, with bypass for the optimistic path
-6. **OptimisticProposal** — Per-proposal clone contract supporting veto staking and slashing
+1. **StakingVault** -- ERC4626 vault with vote-locking, multi-token rewards, and unstaking delay
+2. **UnstakingManager** -- Time-locked withdrawal manager created by StakingVault during initialization
+3. **ReserveOptimisticGovernor** -- Hybrid governor unifying optimistic/standard proposal flows in shared OZ Governor storage
+4. **OptimisticSelectorRegistry** -- Whitelist of allowed `(target, selector)` pairs for optimistic proposals
+5. **TimelockControllerOptimistic** -- Single timelock for execution, with bypass for the optimistic path
 
 ```
 ┌──────────────────────────────────┐
@@ -28,7 +29,7 @@ The system consists of six components:
 │  ERC4626 + ERC20Votes           │
 │                                  │
 │  deposit / withdraw / delegate   │
-│  claimRewards / burn             │
+│  claimRewards                    │
 │  ┌────────────────────────────┐  │
 │  │     UnstakingManager      │  │
 │  │  createLock / claimLock   │  │
@@ -43,7 +44,7 @@ The system consists of six components:
 │  │   Fast (Optimistic) │    │        Slow (Standard)          │ │
 │  │                     │    │                                 │ │
 │  │  proposeOptimistic  │    │  propose / vote / queue         │ │
-│  │  executeOptimistic  │    │  execute                        │ │
+│  │  execute            │    │  execute                        │ │
 │  │                     │    │  cancel                         │ │
 │  └──────────┬──────────┘    └────────────────┬────────────────┘ │
 │             │                                │                  │
@@ -62,53 +63,52 @@ The system consists of six components:
 
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
 
+The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers vault ownership to the timelock, grants governor timelock roles, grants guardian/proposer roles, and renounces admin.
+
 ## Governance Flows
 
 ### Fast Proposal Lifecycle
 
-Fast proposals skip voting entirely and execute after a veto period unless community members stake tokens to challenge them.
-
-**OptimisticProposalState enum**: `Active`, `Succeeded`, `Locked`, `Vetoed`, `Slashed`, `Canceled`, `Executed`
+Fast proposals use the standard OZ Governor `ProposalState` enum. During the veto period, any token holder can vote. All vote types (For, Against, Abstain) are accepted, but only AGAINST votes are checked against the veto threshold.
 
 ```
-                                    ┌──────────────────────────────┐
-                                    │          ACTIVE              │
-                                    │    (veto period ongoing)     │
-                                    └──────────────┬───────────────┘
-                                                   │
-                    ┌──────────────────────────────┼──────────────────────────────┐
-                    │                              │                              │
-                    ▼                              ▼                              ▼
-            ┌───────────────┐             ┌───────────────┐              ┌───────────────┐
-            │   CANCELED    │             │   SUCCEEDED   │              │    LOCKED     │
-            │               │             │ (veto period  │              │ (confirmation │
-            │ (guardian or  │             │   expired)    │              │    started)   │
-            │  proposer)    │             └───────┬───────┘              └───────┬───────┘
-            └───────────────┘                     │                              │
-                                                  ▼                   ┌──────────┼──────────┐
-                                          ┌───────────────┐          │          │          │
-                                          │   EXECUTED    │          ▼          ▼          ▼
-                                          │  (via bypass) │   ┌──────────┐ ┌─────────-┐ ┌─────────-┐
-                                          └───────────────┘   │ SLASHED  │ │  VETOED  │ │ CANCELED │
-                                                              │(confirm  │ │(confirm  │ │(confirm  │
-                                                              │ passed;  │ │ failed)  │ │ canceled)│
-                                                              │ executes)│ │          │ │          │
-                                                              └──────────┘ └─────────-┘ └─────────-┘
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   PENDING   │────▶│   ACTIVE    │────▶│  SUCCEEDED  │────▶│  EXECUTED   │
+│ (vetoDelay) │     │ (vetoPeriod │     │ (threshold  │     │ (via bypass)│
+│             │     │  veto votes)│     │  not met)   │     │             │
+└──────┬──────┘     └──────┬──────┘     └─────────────┘     └─────────────┘
+       │                   │
+       ▼                   ▼
+┌─────────────┐     ┌─────────────┐
+│  CANCELED   │     │  DEFEATED   │
+│             │     │ (threshold  │──────▶ confirmation vote
+│             │     │   reached)  │       (standard flow)
+└─────────────┘     └─────────────┘
 ```
+
+### Fast-to-Confirmation Transition
+
+When AGAINST votes reach the veto threshold, the proposal transitions to a full confirmation vote:
+
+1. `vetoThresholds[proposalId]` is cleared, converting the proposal to Standard type
+2. `voteStart` is preserved, and `voteDuration` is updated so the new deadline is `block.timestamp + votingPeriod`
+3. A `ConfirmationVoteScheduled` event is emitted
+4. The confirmation vote becomes immediately `Active`, then follows the standard path (affirmative voting, quorum, timelock)
+
+Votes and `hasVoted` state from the veto phase carry through to the confirmation vote. Voters who already voted during the veto phase cannot vote again.
 
 ### Fast Proposal Paths
 
-| Path | Name                          | Flow                          | Outcome                                                            |
-| ---- | ----------------------------- | ----------------------------- | ------------------------------------------------------------------ |
-| F1   | Uncontested Success           | Active → Succeeded → Executed | Proposal executes after veto period via `executeOptimistic()`      |
-| F2   | Early Cancellation            | Active → Canceled             | Proposal stopped before confirmation; stakers withdraw full amount |
-| F3   | Confirmation Passes           | Active → Locked → Slashed     | Vetoers were wrong; slashed, proposal executes via slow vote  |
-| F4   | Confirmation Fails            | Active → Locked → Vetoed      | Veto succeeds! Proposal blocked, stakers withdraw full amount |
-| F5   | Confirmation Canceled         | Active → Locked → Canceled    | Guardian cancels confirmation; stakers withdraw full amount   |
+| Path | Name             | Flow                                                                                          | Outcome                    |
+| ---- | ---------------- | --------------------------------------------------------------------------------------------- | -------------------------- |
+| F1   | Uncontested      | Pending -> Active -> Succeeded -> Executed                                                    | Executes via timelock bypass |
+| F2   | Vetoed, Confirmed | Pending -> Active -> Defeated -> (confirmation) Active -> Succeeded -> Queued -> Executed | Executes via timelock       |
+| F3   | Vetoed, Rejected  | Pending -> Active -> Defeated -> (confirmation) Active -> Defeated                | Proposal blocked           |
+| F4   | Canceled         | Any non-final state -> Canceled                                                               | Proposer or guardian cancels |
 
 ### Slow Proposal Lifecycle
 
-Slow proposals follow the standard OpenZeppelin Governor flow with voting and timelock queuing.
+Slow proposals follow the standard OpenZeppelin Governor flow with voting, timelock queuing, and late quorum extension.
 
 **ProposalState enum** (from OZ Governor): `Pending`, `Active`, `Canceled`, `Defeated`, `Succeeded`, `Queued`, `Executed`
 
@@ -130,81 +130,25 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting and ti
 
 ### Slow Proposal Paths
 
-| Path | Name               | Flow                                             | Outcome                       |
-| ---- | ------------------ | ------------------------------------------------ | ----------------------------- |
-| S1   | Success            | Pending → Active → Succeeded → Queued → Executed | Normal governance execution   |
-| S2   | Voting Defeated    | Pending → Active → Defeated                      | Proposal rejected by voters   |
-| S3   | Early Cancellation | Pending → Canceled                               | Canceled before voting starts |
+| Path | Name            | Flow                                                 | Outcome                       |
+| ---- | --------------- | ---------------------------------------------------- | ----------------------------- |
+| S1   | Success         | Pending -> Active -> Succeeded -> Queued -> Executed | Normal governance execution   |
+| S2   | Voting Defeated | Pending -> Active -> Defeated                        | Proposal rejected by voters   |
+| S3   | Cancellation    | Any non-final state -> Canceled                      | Proposer or guardian cancels |
 
 ## Veto Mechanism
 
-### How Veto Works
+During a fast proposal's veto period, any token holder can vote using the standard `castVote()` interface. All vote types are accepted, but only AGAINST votes matter for the veto threshold check.
 
-1. Any token holder can call `stakeToVeto(maxAmount)` on an `OptimisticProposal` during the veto period
-2. Staked tokens are locked in the proposal contract
-3. If total staked tokens reach `vetoThreshold`, the proposal enters `Locked` state
-4. The proposal automatically initiates a slow (confirmation) vote via `governor.proposeConfirmation()`, which casts the staked tokens as initial AGAINST votes
-5. The confirmation vote determines whether the proposal should execute
-
-### Veto Threshold
+**Veto threshold calculation:**
 
 ```
-vetoThreshold = ceil((vetoThresholdRatio * tokenSupply) / 1e18)
+vetoThreshold = ceil(vetoThresholdRatio * pastTotalSupply / 1e18)
 ```
 
-## Confirmation Process
+Where `pastTotalSupply = token.getPastTotalSupply(snapshot)` and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%).
 
-When a fast proposal reaches the vetoThreshold (becomes `Locked`):
-
-1. **Slow Vote Initiated**: The `OptimisticProposal` calls `governor.proposeConfirmation()` to start a standard governance vote with staked tokens counted as initial AGAINST votes
-2. **Three Possible Outcomes**:
-
-| Confirmation Result        | OptimisticProposal State | Proposal Outcome  | Staker Outcome        |
-| -------------------------- | ------------------------ | ----------------- | --------------------- |
-| **Vote Passes** (Executed) | `Slashed`                | Proposal executes | Slashed on withdrawal |
-| **Vote Fails** (Defeated)  | `Vetoed`                 | Proposal blocked  | Full refund           |
-| **Vote Canceled**          | `Canceled`               | Proposal blocked  | Full refund           |
-
-### Slashing Mechanics
-
-Slashing only applies when the confirmation vote passes (state = `Slashed`):
-
-```
-withdrawalAmount = stakedAmount * (1e18 - slashingPercentage) / 1e18
-```
-
-Slashed tokens are burned via `token.burn()`.
-
-## Staker Guide
-
-### When You Can Withdraw
-
-| Proposal State | Can Withdraw? | Slashing Applied? | Meaning                             |
-| -------------- | ------------- | ----------------- | ----------------------------------- |
-| Active         | Yes           | No                | Veto period ongoing, can unstake       |
-| Succeeded      | Yes           | No                | Veto period ended without challenge    |
-| Locked         | **No**        | N/A               | Confirmation vote in progress          |
-| Vetoed         | Yes           | **No**            | Veto succeeded! Stakers were right  |
-| Slashed        | Yes           | **Yes**           | Vetoers were wrong, penalty applied |
-| Canceled       | Yes           | No                | Proposal canceled, full refund      |
-| Executed       | Yes           | No                | Proposal executed without challenge |
-
-### Risk Assessment
-
-**Low Risk Scenarios:**
-
-- Staking against clearly malicious proposals
-- Proposals where community consensus opposes execution
-
-**High Risk Scenarios:**
-
-- Staking against legitimate proposals (risk of slashing if confirmation passes)
-
-### Key Insight: Vetoed vs Slashed
-
-- **Vetoed**: The community AGREED with the stakers. The confirmation vote failed/was defeated, confirming the proposal should not execute. Stakers get their full stake back as a reward for protecting the protocol.
-
-- **Slashed**: The community DISAGREED with the stakers. The confirmation vote passed, meaning the proposal was legitimate. Stakers are penalized for blocking a valid proposal.
+If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass.
 
 ## Proposal Types
 
@@ -217,27 +161,29 @@ enum ProposalType {
 }
 ```
 
-- **Optimistic**: Created via `proposeOptimistic()`, uses `OptimisticProposal.state()` for status
-- **Standard**: Created via `propose()` or when confirmation vote is triggered, uses `governor.state()` for status
+- **Optimistic**: Created via `proposeOptimistic()`, uses custom state logic for the veto phase
+- **Standard**: Created via `propose()`, or an optimistic proposal that transitioned to a confirmation vote
 
 ## Roles
 
 | Role                       | Held By                                | Permissions                                                             |
 | -------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
-| `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs               | Create and execute fast proposals                                       |
+| `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs               | Create fast proposals (`proposeOptimistic`)                             |
 | `PROPOSER_ROLE`            | Governor contract                      | Schedule operations on the timelock (granted automatically by Deployer) |
-| `EXECUTOR_ROLE`            | Governor contract                      | Execute queued slow proposals via the timelock                          |
-| `CANCELLER_ROLE`           | Governor contract + Guardian addresses | Cancel proposals (fast or slow)                                         |
+| `EXECUTOR_ROLE`            | Governor contract                      | Execute timelock operations for both slow and fast proposal paths       |
+| `CANCELLER_ROLE`           | Governor contract + Guardian addresses | Cancel proposals (fast or slow), revoke optimistic proposers            |
 
-> **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself — it allows the governor to schedule operations, not individual users to create proposals.
+> **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself -- it allows the governor to schedule operations, not individual users to create proposals.
 
 #### OPTIMISTIC_PROPOSER_ROLE
 
 The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessControl:
 
 - Granted via `timelock.grantRole(OPTIMISTIC_PROPOSER_ROLE, address)`
-- Revoked via `timelock.revokeRole(OPTIMISTIC_PROPOSER_ROLE, address)`
+- Revoked via `timelock.revokeRole(OPTIMISTIC_PROPOSER_ROLE, address)` or `timelock.revokeOptimisticProposer(address)` (callable by CANCELLER_ROLE)
 - Checked via `timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, address)`
+- Revocation blocks new `proposeOptimistic()` calls by that account
+- Execution of a succeeded optimistic proposal is done via `execute(...)` and is not restricted to the original optimistic proposer
 
 ## Contract Reference
 
@@ -247,92 +193,35 @@ The main hybrid governor contract.
 
 **Fast Proposal Functions:**
 
-- `proposeOptimistic(targets, values, calldatas, description)` - Create a fast proposal
-- `executeOptimistic(proposalId)` - Execute a succeeded fast proposal
-- `proposeConfirmation(targets, values, calldatas, description, initialProposer, initialVotesAgainst)` - Create a confirmation proposal (only callable by OptimisticProposal contracts)
+- `proposeOptimistic(targets, values, calldatas, description)` -- Create a fast proposal (requires `OPTIMISTIC_PROPOSER_ROLE`)
+- `execute(targets, values, calldatas, descriptionHash)` -- Execute a succeeded fast proposal (bypass path, no queue step)
+
+**Standard Proposal Functions (inherited from OZ Governor):**
+
+- `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires `proposalThreshold`)
+- `castVote(proposalId, support)` -- Cast a vote (works on both fast and slow proposals)
+- `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal (optimistic proposals cannot be queued)
+- `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal or a succeeded optimistic proposal
+- `cancel(targets, values, calldatas, descriptionHash)` -- Cancel a proposal
+
+**Proposal Creation Rules:**
+
+- `propose()` and `proposeOptimistic()` both consume proposer throttle charge
+- `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
+- `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 
 **State Query:**
 
-- `proposalType(proposalId)` - Returns `Optimistic` or `Standard`
-- `state(proposalId)` - Standard Governor state (for Standard proposals)
-- `optimisticProposals(proposalId)` - Get the OptimisticProposal contract for a proposal
-- `activeOptimisticProposalsCount()` - Number of active optimistic proposals
-- `selectorRegistry()` - The OptimisticSelectorRegistry contract address
+- `proposalType(proposalId)` -- Returns `Optimistic` or `Standard`
+- `state(proposalId)` -- Returns `ProposalState` (unified for both types)
+- `vetoThresholds(proposalId)` -- Returns the veto threshold for an optimistic proposal (0 if standard)
+- `selectorRegistry()` -- The OptimisticSelectorRegistry contract address
 
 **Configuration:**
 
-- `setOptimisticParams(params)` - Update optimistic governance parameters
-
-### OptimisticProposal
-
-Per-proposal contract handling veto logic. Created as a clone for each fast proposal.
-
-**User Functions:**
-
-- `stakeToVeto(maxAmount)` - Stake tokens against the proposal (up to maxAmount, capped at remaining needed)
-- `withdraw()` - Withdraw staked tokens (with potential slashing)
-
-**Admin Functions:**
-
-- `cancel()` - Cancel proposal (requires CANCELLER_ROLE or be the proposer, only in Active/Succeeded state)
-
-**State Query:**
-
-- `state()` - Returns `OptimisticProposalState`
-- `staked(address)` - Returns amount staked by address
-- `totalStaked` - Total tokens staked against the proposal
-- `voteEnd` - Timestamp when veto period ends (uint48)
-- `vetoThreshold` - Token amount needed to trigger confirmation vote
-- `canceled` - Whether proposal was canceled
-- `proposalData()` - Returns `(targets, values, calldatas, description)`
-
-### StakingVault
-
-ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to receive vault shares that carry voting power.
-
-IMPORTANT: StakingVault should only be deployed with an underlying token that has a STRONG value relationship to the system being governed. The token should not derive value from many sources. It is important that withdrawals that occur AFTER a malicious proposal executes do not recoup much value. 
-
-
-**User Functions:**
-
-- `depositAndDelegate(assets)` - Deposit tokens and self-delegate voting power
-- `claimRewards(rewardTokens[])` - Claim accumulated rewards for specified reward tokens
-- `poke()` - Trigger reward accrual without performing an action
-
-**Admin Functions (onlyOwner):**
-
-- `addRewardToken(rewardToken)` - Add a new reward token for distribution
-- `removeRewardToken(rewardToken)` - Remove a reward token from distribution
-- `setUnstakingDelay(delay)` - Set the delay before unstaked tokens can be claimed
-- `setRewardRatio(rewardHalfLife)` - Set the exponential decay half-life for reward distribution
-
-**Other:**
-
-- `burn(shares)` - Burn shares, converting their underlying value to native rewards
-- `getAllRewardTokens()` - Return all active reward tokens
-
-**Properties:**
-
-- UUPS upgradeable (owner-authorized)
-- Clock: timestamp-based (ERC5805)
-- Creates an `UnstakingManager` during initialization
-
-### UnstakingManager
-
-Time-locked withdrawal manager, created by StakingVault during initialization.
-
-**Functions:**
-
-- `createLock(user, amount, unlockTime)` - Create a new unstaking lock (vault only)
-- `claimLock(lockId)` - Claim tokens after unlock time is reached (anyone can call)
-- `cancelLock(lockId)` - Cancel a lock and re-deposit tokens into the vault (lock owner only)
-
-**Lock Struct:**
-
-- `user` — Receiver of unstaked tokens
-- `amount` — Amount of tokens locked
-- `unlockTime` — Timestamp when tokens become claimable
-- `claimedAt` — Timestamp when claimed (0 if not yet claimed)
+- `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
+- `setProposalThrottle(capacity)` -- Update proposals-per-24h throttle capacity (onlyGovernance)
+- `getProposalThrottleCapacity()` -- Read current throttle capacity
 
 ### OptimisticSelectorRegistry
 
@@ -340,38 +229,107 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 
 **Management (onlyTimelock):**
 
-- `registerSelectors(SelectorData[])` - Add allowed `(target, selector)` pairs
-- `unregisterSelectors(SelectorData[])` - Remove allowed pairs
+- `registerSelectors(SelectorData[])` -- Add allowed `(target, selector)` pairs
+- `unregisterSelectors(SelectorData[])` -- Remove allowed pairs
 
 **Query:**
 
-- `isAllowed(target, selector)` - Check if a `(target, selector)` pair is whitelisted
-- `targets()` - List all targets that have at least one registered selector
-- `selectorsAllowed(target)` - List all allowed selectors for a given target
+- `isAllowed(target, selector)` -- Check if a `(target, selector)` pair is whitelisted
+- `targets()` -- List all targets that have at least one registered selector
+- `selectorsAllowed(target)` -- List all allowed selectors for a given target
 
 **Constraints:**
 
 - Cannot register itself as a target
-- The governor, timelock, and StakingVault (token) are additionally blocked as targets in `OptimisticSelectorRegistry` (hardcoded, exempt: addRewardToken()/removeRewardToken())
-
+- The governor, timelock, and StakingVault (token) are additionally blocked as targets
 
 ### TimelockControllerOptimistic
 
 Extended timelock supporting both flows.
 
 - Slow proposals use standard `scheduleBatch()` + `executeBatch()`
-- Fast proposals use `executeBatchBypass()` for immediate execution
+- Fast proposals use `executeBatchBypass()` for immediate execution (governor must hold `PROPOSER_ROLE` and `EXECUTOR_ROLE`)
+- `revokeOptimisticProposer(account)` -- Revoke an optimistic proposer (requires `CANCELLER_ROLE`)
+
+### StakingVault
+
+ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to receive vault shares that carry voting power.
+
+IMPORTANT: StakingVault should only be deployed with an underlying token that has a STRONG value relationship to the system being governed. The token should not derive value from many sources. It is important that withdrawals that occur AFTER a malicious proposal executes do not recoup much value.
+
+**User Functions:**
+
+- `depositAndDelegate(assets)` -- Deposit tokens and self-delegate voting power
+- `claimRewards(rewardTokens[])` -- Claim accumulated rewards for specified reward tokens
+- `poke()` -- Trigger reward accrual without performing an action
+
+**Admin Functions (onlyOwner):**
+
+- `addRewardToken(rewardToken)` -- Add a new reward token for distribution
+- `removeRewardToken(rewardToken)` -- Remove a reward token from distribution
+- `setUnstakingDelay(delay)` -- Set the delay before unstaked tokens can be claimed
+- `setRewardRatio(rewardHalfLife)` -- Set the exponential decay half-life for reward distribution
+
+**Other:**
+
+- `getAllRewardTokens()` -- Return all active reward tokens
+
+**Properties:**
+
+- UUPS upgradeable (owner-authorized)
+- Clock: timestamp-based (ERC5805)
+- Creates an `UnstakingManager` during initialization
+
+
+#### Token Support
+
+| Feature                         | Supported    |
+| --------------------------------| ------------ |
+| Multiple Entrypoints            | ❌           |
+| Pausable / Blocklist            | ❌           |
+| Fee-on-transfer                 | ❌           |
+| ERC777 / Callback               | ❌           |
+| Upward-rebasing                 | ❌           |
+| Downward-rebasing               | ❌           |
+| Revert on zero-value transfers  | ✅           |
+| Flash mint                      | ✅           |
+| Missing return values           | ✅           |
+| No revert on failure            | ✅           |
+
+#### Valid Ranges
+
+StakingVault asset tokens are assumed to be maximum 1e36 supply and up to 27 decimals.
+
+#### Governance Guidelines
+ 
+If governors plan to remove a token from the basket via Folio.removeFromBasket(), users will only have a limited amount of time to redeem before the token becomes inaccessible. Removal should only be used if the reward token has become malicious or otherwise compromised.
+ 
+### UnstakingManager
+
+Time-locked withdrawal manager, created by StakingVault during initialization.
+
+**Functions:**
+
+- `createLock(user, amount, unlockTime)` -- Create a new unstaking lock (vault only)
+- `claimLock(lockId)` -- Claim tokens after unlock time is reached (anyone can call; tokens go to lock owner)
+- `cancelLock(lockId)` -- Cancel a lock and re-deposit tokens into the vault (lock owner only)
+
+**Lock Struct:**
+
+- `user` -- Receiver of unstaked tokens
+- `amount` -- Amount of tokens locked
+- `unlockTime` -- Timestamp when tokens become claimable
+- `claimedAt` -- Timestamp when claimed (0 if not yet claimed)
 
 ## Parameters
 
 ### Optimistic Governance Parameters
 
-| Parameter              | Type      | Description                                        |
-| ---------------------- | --------- | -------------------------------------------------- |
-| `vetoPeriod`           | `uint32`  | Duration of veto window in seconds                 |
-| `vetoThreshold`        | `uint256` | Fraction of supply needed to trigger confirmation (D18) |
-| `slashingPercentage`   | `uint256` | Fraction of stake slashed on failed veto (D18)     |
-| `numParallelProposals` | `uint256` | Maximum number of concurrent optimistic proposals  |
+| Parameter        | Type      | Description                                             |
+| ---------------- | --------- | ------------------------------------------------------- |
+| `vetoDelay`      | `uint48`  | Delay before veto voting starts (seconds)               |
+| `vetoPeriod`     | `uint32`  | Duration of veto window (seconds)                       |
+| `vetoThreshold`  | `uint256` | Fraction of supply needed to trigger confirmation (D18) |
 
 ### Standard Governance Parameters
 
@@ -382,48 +340,48 @@ Extended timelock supporting both flows.
 | `voteExtension`     | `uint48`  | Late quorum time extension                 |
 | `proposalThreshold` | `uint256` | Fraction of supply needed to propose (D18) |
 | `quorumNumerator`   | `uint256` | Fraction of supply needed for quorum (D18) |
+| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer per 24h |
 
 ### Parameter Constraints
 
-The following enforcement limits apply to optimistic governance parameters:
+| Parameter           | Constraint    | Constant                     |
+| ------------------- | ------------- | ---------------------------- |
+| `vetoDelay`         | >= 1 second   | `MIN_OPTIMISTIC_VETO_DELAY`  |
+| `vetoPeriod`        | >= 15 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
+| `vetoThreshold`     | > 0 and <= 100% |                            |
+| `proposalThreshold` | <= 100%       |                              |
+| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_CAPACITY` (in `ProposalThrottleLib`) |
 
-| Parameter              | Constraint       | Constant                              |
-| ---------------------- | ---------------- | ------------------------------------- |
-| `vetoPeriod`           | >= 30 minutes    | `MIN_OPTIMISTIC_VETO_PERIOD`          |
-| `vetoThreshold`        | > 0 and <= 20%   | `MAX_VETO_THRESHOLD`                  |
-| `slashingPercentage`   | >= 0 and <= 100% | Validated in `_setOptimisticParams()` |
-| `numParallelProposals` | <= 5             | `MAX_PARALLEL_OPTIMISTIC_PROPOSALS`   |
+### Proposal Throttle Behavior
+
+- Throttle is tracked per proposer account and shared across `propose()` and `proposeOptimistic()`
+- Capacity is measured as proposals per 24 hours
+- Each submitted proposal consumes one unit of capacity
+- Capacity recharges linearly over time (full recharge over 24 hours)
 
 ### StakingVault Parameters
 
-| Parameter        | Constraint          | Constant                                  |
-| ---------------- | ------------------- | ----------------------------------------- |
-| `unstakingDelay` | <= 4 weeks          | `MAX_UNSTAKING_DELAY`                     |
-| `rewardHalfLife` | 1 day to 2 weeks    | `MIN_REWARD_HALF_LIFE`, `MAX_REWARD_HALF_LIFE` |
+| Parameter        | Constraint       | Constant                                      |
+| ---------------- | ---------------- | --------------------------------------------- |
+| `unstakingDelay` | <= 4 weeks       | `MAX_UNSTAKING_DELAY`                         |
+| `rewardHalfLife` | 1 day to 2 weeks | `MIN_REWARD_HALF_LIFE`, `MAX_REWARD_HALF_LIFE` |
 
-Defaults (from Constants.sol):
-
-- `DEFAULT_REWARD_PERIOD` = 1 week
-- `DEFAULT_UNSTAKING_DELAY` = 1 week
-
-## Token Requirements
-
-- **Rebasing tokens**: Not compatible with rebasing tokens
-- **Direct transfers**: Do NOT send tokens to OptimisticProposal directly; use `stakeToVeto()` instead
-- **Supply limit**: Token supply should be less than 1e59
-- **Voting power**: Voting power is denominated in StakingVault shares, not the underlying token directly. Users must deposit into StakingVault and delegate to participate in governance.
 
 ## Optimistic Call Restrictions
 
 Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `OptimisticSelectorRegistry`. In addition, the following targets are **always** blocked at registration time (hardcoded in `OptimisticSelectorRegistry`):
 
+- The `StakingVault` contract (token)
 - The `ReserveOptimisticGovernor` contract
 - The `TimelockControllerOptimistic` contract
 - The `OptimisticSelectorRegistry` itself
-- The `StakingVault` (token) — except for `addRewardToken()` and `removeRewardToken()` selectors
-
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.
+
+Additional optimistic validations:
+
+- Every optimistic target must be a contract (no EOAs)
+- Every optimistic calldata entry must be non-empty (>= 4 bytes selector)
 
 ## Upgradeability
 
@@ -439,28 +397,14 @@ Three contracts are UUPS upgradeable:
 
 ```
 Fast Proposal:
-  proposeOptimistic() → [veto period: ACTIVE] → executeOptimistic()
-                                │                       ↓
-                                │                   SUCCEEDED
-                                │                       ↓
-                                │                   EXECUTED
-                                │
-                                └─► [staking reaches threshold]
-                                            │
-                                            ▼
-                                    LOCKED (confirmation)
-                                            │
-                        ┌───────────────────┼───────────────────┐
-                        ▼                   ▼                   ▼
-                  vote passes        vote fails    vote canceled
-                        │                   │                   │
-                        ▼                   ▼                   ▼
-                    SLASHED              VETOED             CANCELED
-                        │                   │                   │
-                        ▼                   ▼                   ▼
-                   executed +          blocked +           blocked +
-                   stakers slashed     full refund         full refund
+  proposeOptimistic() -> [vetoDelay: PENDING] -> [vetoPeriod: ACTIVE]
+                                                    |
+                                                    +-- threshold not met --> SUCCEEDED -> execute() -> EXECUTED (bypass)
+                                                    |
+                                                    +-- threshold reached --> DEFEATED -> Confirmation Vote (ACTIVE)
+                                                                                |
+                                                                                +-- follows slow proposal path below
 
 Slow Proposal:
-  propose() → [voting delay] → [voting period] → queue() → [timelock] → execute()
+  propose() -> [voting delay] -> [voting period] -> queue() -> [timelock] -> execute()
 ```

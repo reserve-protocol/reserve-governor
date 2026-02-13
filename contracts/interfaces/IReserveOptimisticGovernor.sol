@@ -1,34 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IVersioned } from "./IVersioned.sol";
+import {
+    GovernorCountingSimpleUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
 
-interface IReserveOptimisticGovernor is IVersioned {
+interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error ExistingOptimisticProposal(uint256 proposalId);
-    error OptimisticProposalNotSuccessful(uint256 proposalId);
-    error InvalidVetoParameters();
+    error InvalidVotingPeriod();
+    error InvalidProposalThreshold();
+    error InvalidProposalThrottle();
+    error InvalidOptimisticParameters();
+    error OptimisticProposalCannotBeQueued(uint256 proposalId);
     error NotOptimisticProposer(address account);
-    error NotOptimisticProposal(address account);
-    error InvalidFunctionCall(address target, bytes4 selector);
-    error InvalidFunctionCallToEOA(address target);
-    error TooManyParallelOptimisticProposals();
-    error InvalidProposalLengths();
+    error InvalidCall(address target, bytes call);
+    error ProposalThrottleExceeded();
 
     // === Events ===
 
-    event OptimisticProposalCreated(
-        address indexed proposer,
-        uint256 indexed proposalId,
-        address[] targets,
-        uint256[] values,
-        bytes[] calldatas,
-        string description,
-        uint256 vetoPeriod,
-        uint256 vetoThreshold,
-        uint256 slashingPercentage
-    );
+    /// @param vetoThreshold D18{1} Fraction of token supply required to start confirmation process
+    event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
+    event ConfirmationVoteScheduled(uint256 indexed proposalId, uint256 voteStart, uint256 voteEnd);
+    event ProposalThrottleUpdated(uint256 throttleCapacity);
 
     // === Data ===
 
@@ -38,10 +32,9 @@ interface IReserveOptimisticGovernor is IVersioned {
     }
 
     struct OptimisticGovernanceParams {
+        uint48 vetoDelay; // {s}
         uint32 vetoPeriod; // {s}
         uint256 vetoThreshold; // D18{1}
-        uint256 slashingPercentage; // D18{1}
-        uint256 numParallelProposals; // number of proposals that can be running in parallel
     }
 
     struct StandardGovernanceParams {
@@ -50,6 +43,17 @@ interface IReserveOptimisticGovernor is IVersioned {
         uint48 voteExtension; // {s}
         uint256 proposalThreshold; // D18{1}
         uint256 quorumNumerator; // D18{1}
+        uint256 proposalThrottleCapacity; // proposals-per-account per 24h
+    }
+
+    struct ProposalThrottleStorage {
+        uint256 capacity; // max number of proposals per 24h
+        mapping(address account => ProposalThrottle) throttles;
+    }
+
+    struct ProposalThrottle {
+        uint256 currentCharge; // D18{1}
+        uint256 lastUpdated; // {s}
     }
 
     function initialize(

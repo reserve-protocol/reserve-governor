@@ -8,10 +8,10 @@ import {
 import {
     TimelockControllerUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
-import { UUPSUpgradeable } from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
-
+import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "../utils/Constants.sol";
 import { Versioned } from "../utils/Versioned.sol";
 
 contract TimelockControllerOptimistic is
@@ -31,6 +31,9 @@ contract TimelockControllerOptimistic is
         initializer
     {
         __TimelockController_init(minDelay, proposers, executors, admin);
+        __AccessControlEnumerable_init();
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
     }
 
     function supportsInterface(bytes4 interfaceId)
@@ -61,6 +64,11 @@ contract TimelockControllerOptimistic is
         return super._revokeRole(role, account);
     }
 
+    /// @dev Guardian can revoke OPTIMISTIC_PROPOSER_ROLE
+    function revokeOptimisticProposer(address account) external onlyRole(CANCELLER_ROLE) {
+        _revokeRole(OPTIMISTIC_PROPOSER_ROLE, account);
+    }
+
     /// @dev Danger!
     ///      Execute a batch of operations immediately without waiting out the delay.
     ///      Caller must have BOTH the PROPOSER_ROLE and EXECUTOR_ROLE.
@@ -70,7 +78,7 @@ contract TimelockControllerOptimistic is
         bytes[] calldata payloads,
         bytes32 predecessor,
         bytes32 salt
-    ) public payable onlyRoleOrOpenRole(PROPOSER_ROLE) {
+    ) public payable onlyRole(PROPOSER_ROLE) {
         bytes32 id = hashOperationBatch(targets, values, payloads, predecessor, salt);
 
         TimelockControllerStorage storage $ = _getTimelockControllerStorage();
