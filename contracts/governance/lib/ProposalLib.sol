@@ -8,10 +8,10 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 
-import { IOptimisticSelectorRegistry } from "../../interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "../../interfaces/IReserveOptimisticGovernor.sol";
 
 import { OPTIMISTIC_PROPOSER_ROLE } from "../../utils/Constants.sol";
+import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "../ReserveOptimisticGovernor.sol";
 
 library ProposalLib {
@@ -22,124 +22,124 @@ library ProposalLib {
         uint256[] values;
         bytes[] calldatas;
         string description;
-        uint256 vetoThreshold;
     }
 
-    function propose(
+    // === External ===
+
+    function proposeOptimistic(
         ProposalData calldata proposal,
         GovernorUpgradeable.ProposalCore storage proposalCore,
         IReserveOptimisticGovernor.OptimisticGovernanceParams calldata optimisticParams
     ) external {
+        _validateProposal(proposal, proposalCore);
+
         ReserveOptimisticGovernor governor = ReserveOptimisticGovernor(payable(address(this)));
 
-        if (proposalCore.voteStart != 0) {
-            revert IGovernor.GovernorUnexpectedProposalState(
-                proposal.proposalId, governor.state(proposal.proposalId), bytes32(0)
+        // validate proposer
+
+        require(
+            AccessControl(governor.timelock()).hasRole(OPTIMISTIC_PROPOSER_ROLE, proposal.proposer),
+            IReserveOptimisticGovernor.NotOptimisticProposer(proposal.proposer)
+        );
+
+        // validate calls
+
+        {
+            OptimisticSelectorRegistry selectorRegistry = governor.selectorRegistry();
+
+            for (uint256 i = 0; i < proposal.targets.length; i++) {
+                address target = proposal.targets[i];
+
+                require(
+                    target.code.length != 0 && proposal.calldatas[i].length >= 4
+                        && selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
+                    IReserveOptimisticGovernor.InvalidCall(target, proposal.calldatas[i])
+                );
+            }
+        }
+
+        // finalize proposal
+
+        _saveProposal(proposal, proposalCore, optimisticParams.vetoDelay, optimisticParams.vetoPeriod);
+        emit IReserveOptimisticGovernor.OptimisticProposalCreated(proposal.proposalId, optimisticParams.vetoThreshold);
+    }
+
+    function proposePessimistic(ProposalData calldata proposal, GovernorUpgradeable.ProposalCore storage proposalCore)
+        external
+        returns (uint256 proposalId)
+    {
+        _validateProposal(proposal, proposalCore);
+
+        ReserveOptimisticGovernor governor = ReserveOptimisticGovernor(payable(address(this)));
+
+        // validate proposer
+
+        {
+            // {tok}
+            uint256 votesThreshold = governor.proposalThreshold();
+            uint256 proposerVotes = governor.getVotes(proposal.proposer, block.timestamp - 1);
+
+            require(
+                proposerVotes >= votesThreshold,
+                IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
             );
         }
 
-        // == Validate description ==
+        // validate calls
+
+        for (uint256 i = 0; i < proposal.targets.length; i++) {
+            address target = proposal.targets[i];
+
+            require(
+                target.code.length != 0 || proposal.calldatas[i].length == 0,
+                IReserveOptimisticGovernor.InvalidCall(target, proposal.calldatas[i])
+            );
+        }
+
+        // finalize proposal
+
+        _saveProposal(proposal, proposalCore, governor.votingDelay(), governor.votingPeriod());
+    }
+
+    // === Private ===
+
+    function _validateProposal(ProposalData calldata proposal, GovernorUpgradeable.ProposalCore storage proposalCore)
+        private
+        view
+    {
+        ReserveOptimisticGovernor governor = _governor();
+
+        if (proposalCore.voteStart != 0) {
+            revert IGovernor.GovernorUnexpectedProposalState(
+                proposal.proposalId, _governor().state(proposal.proposalId), bytes32(0)
+            );
+        }
 
         require(
             _isValidDescriptionForProposer(proposal.proposer, proposal.description),
             IGovernor.GovernorRestrictedProposer(proposal.proposer)
         );
 
-        // == Validate proposer ==
+        require(
+            proposal.targets.length == proposal.values.length && proposal.targets.length == proposal.calldatas.length,
+            IGovernor.GovernorInvalidProposalLength(
+                proposal.targets.length, proposal.calldatas.length, proposal.values.length
+            )
+        );
 
-        bool isOptimistic = proposal.vetoThreshold != 0;
-
-        if (isOptimistic) {
-            // optimistic
-
-            require(
-                AccessControl(governor.timelock()).hasRole(OPTIMISTIC_PROPOSER_ROLE, proposal.proposer),
-                IReserveOptimisticGovernor.NotOptimisticProposer(proposal.proposer)
-            );
-        } else {
-            // pessimistic
-
-            uint256 votesThreshold = governor.proposalThreshold();
-            if (votesThreshold > 0) {
-                uint256 proposerVotes = governor.getVotes(proposal.proposer, block.timestamp - 1);
-
-                require(
-                    proposerVotes >= votesThreshold,
-                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
-                );
-            }
-        }
-
-        // == Validate proposal ==
-
-        {
-            require(
-                proposal.targets.length == proposal.values.length
-                    && proposal.targets.length == proposal.calldatas.length,
-                IGovernor.GovernorInvalidProposalLength(
-                    proposal.targets.length, proposal.calldatas.length, proposal.values.length
-                )
-            );
-
-            require(proposal.targets.length != 0, IGovernor.GovernorInvalidProposalLength(0, 0, 0));
-
-            IOptimisticSelectorRegistry selectorRegistry = governor.selectorRegistry();
-
-            for (uint256 i = 0; i < proposal.targets.length; i++) {
-                address target = proposal.targets[i];
-
-                if (isOptimistic) {
-                    // optimistic
-
-                    require(
-                        target.code.length != 0 && proposal.calldatas[i].length >= 4
-                            && selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
-                        IReserveOptimisticGovernor.InvalidCall(target, proposal.calldatas[i])
-                    );
-                } else {
-                    // pessimistic
-
-                    require(
-                        target.code.length != 0 || proposal.calldatas[i].length == 0,
-                        IReserveOptimisticGovernor.InvalidCall(target, proposal.calldatas[i])
-                    );
-                }
-            }
-        }
-
-        // == Calculate start/end times ==
-
-        {
-            uint256 snapshot;
-            uint256 duration;
-
-            if (isOptimistic) {
-                // optimistic
-
-                snapshot = block.timestamp + optimisticParams.vetoDelay;
-                duration = optimisticParams.vetoPeriod;
-
-                emit IReserveOptimisticGovernor.OptimisticProposalCreated(proposal.proposalId, proposal.vetoThreshold);
-            } else {
-                // pessimistic
-
-                snapshot = block.timestamp + governor.votingDelay();
-                duration = governor.votingPeriod();
-            }
-
-            proposalCore.proposer = proposal.proposer;
-            proposalCore.voteStart = SafeCast.toUint48(snapshot);
-            proposalCore.voteDuration = SafeCast.toUint32(duration);
-        }
-
-        _emitProposalCreated(proposal, proposalCore);
+        require(proposal.targets.length != 0, IGovernor.GovernorInvalidProposalLength(0, 0, 0));
     }
 
-    // === Private ===
+    function _saveProposal(
+        ProposalData calldata proposal,
+        GovernorUpgradeable.ProposalCore storage proposalCore,
+        uint256 voteDelay,
+        uint256 voteDuration
+    ) private {
+        proposalCore.proposer = proposal.proposer;
+        proposalCore.voteStart = SafeCast.toUint48(block.timestamp + voteDelay);
+        proposalCore.voteDuration = SafeCast.toUint32(voteDuration);
 
-    function _emitProposalCreated(ProposalData calldata proposal, GovernorUpgradeable.ProposalCore storage proposalCore)
-        private
-    {
         emit IGovernor.ProposalCreated(
             proposal.proposalId,
             proposal.proposer,
@@ -181,5 +181,9 @@ library ProposalLib {
         assembly ("memory-safe") {
             value := mload(add(add(buffer, 0x20), offset))
         }
+    }
+
+    function _governor() private view returns (ReserveOptimisticGovernor) {
+        return ReserveOptimisticGovernor(payable(address(this)));
     }
 }
