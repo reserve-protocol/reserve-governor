@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {
@@ -35,10 +34,10 @@ import {
     MAX_PROPOSAL_THROTTLE_CAPACITY,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_PROPOSER_ROLE,
-    PROPOSAL_THROTTLE_PERIOD
+    OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
-import { ProposalValidationLib } from "./ProposalValidationLib.sol";
+import { ProposalLib } from "./lib/ProposalLib.sol";
+import { ThrottleLib } from "./lib/ThrottleLib.sol";
 
 import { Versioned } from "../utils/Versioned.sol";
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
@@ -69,10 +68,9 @@ contract ReserveOptimisticGovernor is
 
     OptimisticSelectorRegistry public selectorRegistry;
 
-    ProposalThrottleStorage private proposalThrottle;
+    ThrottleLib.ProposalThrottleStorage private proposalThrottle;
 
     mapping(uint256 proposalId => OptimisticProposalDetails) private optimisticProposalDetails;
-    mapping(uint256 proposalId => uint256 vetoThreshold) public vetoThresholds; // D18{1}
 
     constructor() {
         _disableInitializers();
@@ -123,7 +121,19 @@ contract ReserveOptimisticGovernor is
         return proposalThrottle.capacity;
     }
 
-    // === Optimistic flow ===
+    // === Public View ===
+
+    function vetoThreshold(uint256 proposalId) public view returns (uint256) {
+        return optimisticProposalDetails[proposalId].vetoThreshold;
+    }
+
+    function proposalType(uint256 proposalId) public view returns (ProposalType) {
+        require(_proposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
+
+        return vetoThreshold(proposalId) != 0 ? ProposalType.Optimistic : ProposalType.Standard;
+    }
+
+    // === Proposal Creation ===
 
     /// @dev Only callable by OPTIMISTIC_PROPOSER_ROLE
     function proposeOptimistic(
@@ -132,27 +142,39 @@ contract ReserveOptimisticGovernor is
         bytes[] calldata calldatas,
         string calldata description
     ) external returns (uint256 proposalId) {
-        require(_timelock().hasRole(OPTIMISTIC_PROPOSER_ROLE, msg.sender), NotOptimisticProposer(msg.sender));
-
-        require(_isValidDescriptionForProposer(msg.sender, description), GovernorRestrictedProposer(msg.sender));
-
-        _consumeProposalCharge(msg.sender);
+        ThrottleLib.consumeProposalCharge(proposalThrottle, msg.sender);
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        vetoThresholds[proposalId] = optimisticParams.vetoThreshold;
-
         optimisticProposalDetails[proposalId] = OptimisticProposalDetails({
-            targets: targets, values: values, calldatas: calldatas, description: description
+            vetoThreshold: optimisticParams.vetoThreshold,
+            targets: targets,
+            values: values,
+            calldatas: calldatas,
+            description: description
         });
 
         _propose(targets, values, calldatas, description, msg.sender);
     }
 
-    function proposalType(uint256 proposalId) public view returns (ProposalType) {
-        require(_proposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
+    function propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) public override returns (uint256) {
+        address proposer = _msgSender();
 
-        return vetoThresholds[proposalId] != 0 ? ProposalType.Optimistic : ProposalType.Standard;
+        // check proposal threshold
+        uint256 votesThreshold = proposalThreshold();
+        if (votesThreshold > 0) {
+            uint256 proposerVotes = getVotes(proposer, block.timestamp - 1);
+            if (proposerVotes < votesThreshold) {
+                revert GovernorInsufficientProposerVotes(proposer, proposerVotes, votesThreshold);
+            }
+        }
+
+        return _propose(targets, values, calldatas, description, proposer);
     }
 
     // === Inheritance overrides ===
@@ -177,9 +199,9 @@ contract ReserveOptimisticGovernor is
         override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
         returns (ProposalState)
     {
-        uint256 vetoThreshold = vetoThresholds[proposalId];
+        uint256 _vetoThreshold = vetoThreshold(proposalId);
 
-        if (vetoThreshold == 0) {
+        if (_vetoThreshold == 0) {
             // pessimistic case
 
             return super.state(proposalId);
@@ -202,12 +224,12 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Pending;
             }
 
-            if (vetoThreshold == type(uint256).max) {
+            if (_vetoThreshold == type(uint256).max) {
                 return ProposalState.Defeated;
             }
 
             // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (vetoThreshold * token().getPastTotalSupply(snapshot) + (1e18 - 1)) / 1e18;
+            uint256 vetoThresholdTok = (_vetoThreshold * token().getPastTotalSupply(snapshot) + (1e18 - 1)) / 1e18;
 
             if (vetoThresholdTok == 0) {
                 return ProposalState.Canceled;
@@ -269,47 +291,26 @@ contract ReserveOptimisticGovernor is
         string memory description,
         address proposer
     ) internal override returns (uint256 proposalId) {
+        // check description restriction
+        if (!_isValidDescriptionForProposer(proposer, description)) {
+            revert GovernorRestrictedProposer(proposer);
+        }
+
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        bool isOptimistic = vetoThresholds[proposalId] != 0;
-
-        ProposalValidationLib.validateProposal(isOptimistic, targets, values, calldatas, selectorRegistry);
-
-        ProposalCore storage proposalCore = _proposalCore(proposalId);
-
-        if (proposalCore.voteStart != 0) {
-            revert GovernorUnexpectedProposalState(proposalId, state(proposalId), bytes32(0));
-        }
-
-        uint256 snapshot;
-        uint256 duration;
-        {
-            if (isOptimistic) {
-                snapshot = block.timestamp + optimisticParams.vetoDelay;
-                duration = optimisticParams.vetoPeriod;
-
-                emit OptimisticProposalCreated(proposalId, vetoThresholds[proposalId]);
-            } else {
-                snapshot = block.timestamp + votingDelay();
-                duration = votingPeriod();
-            }
-        }
-
-        emit ProposalCreated(
-            proposalId,
-            proposer,
-            targets,
-            values,
-            new string[](targets.length),
-            calldatas,
-            snapshot,
-            snapshot + duration,
-            description
+        ProposalLib.propose(
+            ProposalLib.ProposalData({
+                proposalId: proposalId,
+                proposer: proposer,
+                targets: targets,
+                values: values,
+                calldatas: calldatas,
+                description: description,
+                vetoThreshold: vetoThreshold(proposalId)
+            }),
+            _proposalCore(proposalId),
+            optimisticParams
         );
-
-        proposalCore.proposer = proposer;
-        proposalCore.voteStart = SafeCast.toUint48(snapshot);
-        proposalCore.voteDuration = SafeCast.toUint32(duration);
     }
 
     function _queueOperations(
@@ -319,7 +320,7 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint48) {
-        require(vetoThresholds[proposalId] == 0, OptimisticProposalCannotBeQueued(proposalId));
+        require(vetoThreshold(proposalId) == 0, OptimisticProposalCannotBeQueued(proposalId));
 
         return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
@@ -331,7 +332,7 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
-        if (vetoThresholds[proposalId] == 0) {
+        if (vetoThreshold(proposalId) == 0) {
             // pessimistic case: execute through timelock
 
             super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
@@ -361,16 +362,16 @@ contract ReserveOptimisticGovernor is
         internal
         override(GovernorUpgradeable, GovernorPreventLateQuorumUpgradeable)
     {
-        uint256 vetoThreshold = vetoThresholds[proposalId];
+        uint256 _vetoThreshold = vetoThreshold(proposalId);
 
-        if (vetoThreshold == 0) {
+        if (_vetoThreshold == 0) {
             // pessimistic case: possibly extend quorum
 
             super._tallyUpdated(proposalId);
-        } else if (state(proposalId) == ProposalState.Defeated && vetoThreshold != type(uint256).max) {
+        } else if (state(proposalId) == ProposalState.Defeated && _vetoThreshold != type(uint256).max) {
             // optimistic transition to new pessimistic proposal
 
-            vetoThresholds[proposalId] = type(uint256).max;
+            optimisticProposalDetails[proposalId].vetoThreshold = type(uint256).max;
 
             OptimisticProposalDetails storage details = optimisticProposalDetails[proposalId];
 
@@ -403,23 +404,6 @@ contract ReserveOptimisticGovernor is
     function _authorizeUpgrade(address) internal override onlyGovernance { }
 
     // === Private ===
-
-    function _consumeProposalCharge(address account) private {
-        ProposalThrottle storage throttle = proposalThrottle.throttles[account];
-
-        uint256 elapsed = block.timestamp - throttle.lastUpdated;
-        uint256 charge = throttle.currentCharge + (elapsed * 1e18) / PROPOSAL_THROTTLE_PERIOD;
-
-        if (charge > 1e18) {
-            charge = 1e18;
-        }
-
-        uint256 proposalsAvailable = (proposalThrottle.capacity * charge) / 1e18;
-        require(proposalsAvailable >= 1, ProposalThrottleExceeded());
-
-        throttle.currentCharge = charge - (1e18 / proposalThrottle.capacity);
-        throttle.lastUpdated = block.timestamp;
-    }
 
     function _setProposalThrottle(uint256 newCapacity) private {
         require(newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY, InvalidProposalThrottle());

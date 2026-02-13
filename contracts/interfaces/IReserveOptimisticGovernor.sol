@@ -31,6 +31,7 @@ interface IReserveOptimisticGovernor {
     }
 
     struct OptimisticProposalDetails {
+        uint256 vetoThreshold; // D18{1} Fraction of token supply required to start confirmation process
         address[] targets;
         uint256[] values;
         bytes[] calldatas;
@@ -50,16 +51,6 @@ interface IReserveOptimisticGovernor {
         uint256 proposalThreshold; // D18{1}
         uint256 quorumNumerator; // D18{1}
         uint256 proposalThrottleCapacity; // proposals-per-account per 24h
-    }
-
-    struct ProposalThrottleStorage {
-        uint256 capacity; // max number of proposals per 24h
-        mapping(address account => ProposalThrottle) throttles;
-    }
-
-    struct ProposalThrottle {
-        uint256 currentCharge; // D18{1}
-        uint256 lastUpdated; // {s}
     }
 
     function initialize(

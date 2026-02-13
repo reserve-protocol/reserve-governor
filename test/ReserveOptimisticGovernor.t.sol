@@ -354,7 +354,9 @@ contract ReserveOptimisticGovernorTest is Test {
             _singleCall(address(underlying), 0, bytes(""));
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidCall.selector, address(underlying), bytes("")));
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidCall.selector, address(underlying), bytes(""))
+        );
         governor.proposeOptimistic(targets, values, calldatas, "empty calldata");
     }
 
@@ -439,7 +441,7 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(
             uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Optimistic)
         );
-        assertEq(governor.vetoThresholds(proposalId), VETO_THRESHOLD);
+        assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
 
         _warpToActive(proposalId);
@@ -501,7 +503,11 @@ contract ReserveOptimisticGovernorTest is Test {
                 IGovernor.GovernorUnexpectedProposalState.selector,
                 proposalId,
                 IGovernor.ProposalState.Pending,
-                bytes32(uint256((1 << uint8(IGovernor.ProposalState.Succeeded)) | (1 << uint8(IGovernor.ProposalState.Queued))))
+                bytes32(
+                    uint256(
+                        (1 << uint8(IGovernor.ProposalState.Succeeded)) | (1 << uint8(IGovernor.ProposalState.Queued))
+                    )
+                )
             )
         );
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
@@ -566,7 +572,7 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.castVote(proposalId, 0);
 
         assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
-        assertEq(governor.vetoThresholds(proposalId), 0);
+        assertEq(governor.vetoThreshold(proposalId), 0);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
         assertEq(governor.proposalSnapshot(proposalId), expectedVoteStart);
         assertEq(governor.proposalDeadline(proposalId), expectedVoteEnd);
@@ -624,7 +630,7 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(
             uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Optimistic)
         );
-        assertEq(governor.vetoThresholds(proposalId), VETO_THRESHOLD);
+        assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);
 
         _warpPastDeadline(proposalId);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
@@ -785,7 +791,11 @@ contract ReserveOptimisticGovernorTest is Test {
                 IGovernor.GovernorUnexpectedProposalState.selector,
                 proposalId,
                 IGovernor.ProposalState.Active,
-                bytes32(uint256((1 << uint8(IGovernor.ProposalState.Succeeded)) | (1 << uint8(IGovernor.ProposalState.Queued))))
+                bytes32(
+                    uint256(
+                        (1 << uint8(IGovernor.ProposalState.Succeeded)) | (1 << uint8(IGovernor.ProposalState.Queued))
+                    )
+                )
             )
         );
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
