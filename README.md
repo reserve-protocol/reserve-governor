@@ -9,9 +9,9 @@ Reserve Governor provides two proposal paths through a single timelock:
 - **Fast (Optimistic)**: Quick execution after a short veto period, no affirmative voting required
 - **Slow (Standard)**: Full voting process with timelock delay
 
-During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically transitions into a full confirmation vote (the slow path). This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
+During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Both proposal paths are also protected by a shared proposer throttle that limits how many proposals each account can create per 24-hour window.
+Fast proposals are protected by a proposer throttle that limits how many optimistic proposals each account can create per 24-hour window.
 
 ## Architecture
 
@@ -88,22 +88,20 @@ Fast proposals use the standard OZ Governor `ProposalState` enum. During the vet
 
 ### Fast-to-Confirmation Transition
 
-When AGAINST votes reach the veto threshold, the proposal transitions to a full confirmation vote:
+When AGAINST votes reach the veto threshold, the governor creates a **new** standard confirmation proposal:
 
-1. `vetoThresholds[proposalId]` is cleared, converting the proposal to Standard type
-2. `voteStart` is preserved, and `voteDuration` is updated so the new deadline is `block.timestamp + votingPeriod`
-3. A `ConfirmationVoteScheduled` event is emitted
-4. The confirmation vote becomes immediately `Active`, then follows the standard path (affirmative voting, quorum, timelock)
-
-Votes and `hasVoted` state from the veto phase carry through to the confirmation vote. Voters who already voted during the veto phase cannot vote again.
+1. The original optimistic proposal remains in `Defeated` state (internally marked with a sentinel veto threshold value)
+2. A confirmation proposal is created with description prefix `"Conf: "` and therefore a different `proposalId`
+3. The confirmation proposal follows normal standard timing (`Pending` for `votingDelay`, then `Active`)
+4. Voting starts fresh on the confirmation proposal (votes and `hasVoted` do **not** carry over from veto phase)
 
 ### Fast Proposal Paths
 
 | Path | Name             | Flow                                                                                          | Outcome                    |
 | ---- | ---------------- | --------------------------------------------------------------------------------------------- | -------------------------- |
 | F1   | Uncontested      | Pending -> Active -> Succeeded -> Executed                                                    | Executes via timelock bypass |
-| F2   | Vetoed, Confirmed | Pending -> Active -> Defeated -> (confirmation) Active -> Succeeded -> Queued -> Executed | Executes via timelock       |
-| F3   | Vetoed, Rejected  | Pending -> Active -> Defeated -> (confirmation) Active -> Defeated                | Proposal blocked           |
+| F2   | Vetoed, Confirmed | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Succeeded -> Queued -> Executed | Executes via timelock       |
+| F3   | Vetoed, Rejected  | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Defeated     | Proposal blocked           |
 | F4   | Canceled         | Any non-final state -> Canceled                                                               | Proposer or guardian cancels |
 
 ### Slow Proposal Lifecycle
@@ -134,7 +132,7 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting, timel
 | ---- | --------------- | ---------------------------------------------------- | ----------------------------- |
 | S1   | Success         | Pending -> Active -> Succeeded -> Queued -> Executed | Normal governance execution   |
 | S2   | Voting Defeated | Pending -> Active -> Defeated                        | Proposal rejected by voters   |
-| S3   | Cancellation    | Any non-final state -> Canceled                      | Proposer or guardian cancels |
+| S3   | Cancellation    | Pending -> Canceled (or guardian cancel in any non-final state) | Canceled |
 
 ## Veto Mechanism
 
@@ -148,21 +146,11 @@ vetoThreshold = ceil(vetoThresholdRatio * pastTotalSupply / 1e18)
 
 Where `pastTotalSupply = token.getPastTotalSupply(snapshot)` and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%).
 
-If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass.
+If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote via a new proposal id. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass.
 
-## Proposal Types
+## Proposal Kind Detection
 
-The `proposalType(proposalId)` function returns the type of a proposal:
-
-```solidity
-enum ProposalType {
-    Optimistic,  // Fast proposal (no voting unless challenged)
-    Standard     // Slow proposal (full voting process)
-}
-```
-
-- **Optimistic**: Created via `proposeOptimistic()`, uses custom state logic for the veto phase
-- **Standard**: Created via `propose()`, or an optimistic proposal that transitioned to a confirmation vote
+Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or standard. The result cannot change over the lifetime of a proposal. 
 
 ## Roles
 
@@ -206,22 +194,24 @@ The main hybrid governor contract.
 
 **Proposal Creation Rules:**
 
-- `propose()` and `proposeOptimistic()` both consume proposer throttle charge
+- `proposeOptimistic()` consumes proposer throttle charge
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
+- `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
 
 **State Query:**
 
-- `proposalType(proposalId)` -- Returns `Optimistic` or `Standard`
+- `isOptimistic(proposalId)` -- Returns whether proposal is optimistic metadata
 - `state(proposalId)` -- Returns `ProposalState` (unified for both types)
-- `vetoThresholds(proposalId)` -- Returns the veto threshold for an optimistic proposal (0 if standard)
+- `vetoThreshold(proposalId)` -- Returns the veto threshold for an optimistic proposal (0 if standard)
 - `selectorRegistry()` -- The OptimisticSelectorRegistry contract address
+- `proposalNeedsQueuing(proposalId)` -- Always `false` for optimistic proposals
 
 **Configuration:**
 
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
 - `setProposalThrottle(capacity)` -- Update proposals-per-24h throttle capacity (onlyGovernance)
-- `getProposalThrottleCapacity()` -- Read current throttle capacity
+- `proposalThrottleCapacity()` -- Read current throttle capacity
 
 ### OptimisticSelectorRegistry
 
@@ -349,14 +339,14 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `vetoDelay`         | >= 1 second   | `MIN_OPTIMISTIC_VETO_DELAY`  |
 | `vetoPeriod`        | >= 15 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
 | `vetoThreshold`     | > 0 and <= 100% |                            |
-| `proposalThreshold` | <= 100%       |                              |
-| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_CAPACITY` (in `ProposalThrottleLib`) |
+| `proposalThreshold` | > 0 and <= 100% |                            |
+| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_PROPOSAL_THROTTLE_CAPACITY` |
 
 ### Proposal Throttle Behavior
 
-- Throttle is tracked per proposer account and shared across `propose()` and `proposeOptimistic()`
+- Throttle is tracked per proposer account for `proposeOptimistic()`
 - Capacity is measured as proposals per 24 hours
-- Each submitted proposal consumes one unit of capacity
+- Each optimistic proposal consumes one unit of capacity
 - Capacity recharges linearly over time (full recharge over 24 hours)
 
 ### StakingVault Parameters
@@ -401,9 +391,11 @@ Fast Proposal:
                                                     |
                                                     +-- threshold not met --> SUCCEEDED -> execute() -> EXECUTED (bypass)
                                                     |
-                                                    +-- threshold reached --> DEFEATED -> Confirmation Vote (ACTIVE)
-                                                                                |
-                                                                                +-- follows slow proposal path below
+                                                    +-- threshold reached --> DEFEATED (original)
+                                                                                -> Confirmation Proposal (new id)
+                                                                                -> [voting delay: PENDING]
+                                                                                -> [voting period: ACTIVE]
+                                                                                -> queue() -> [timelock] -> execute()
 
 Slow Proposal:
   propose() -> [voting delay] -> [voting period] -> queue() -> [timelock] -> execute()
