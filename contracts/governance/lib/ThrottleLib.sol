@@ -29,7 +29,7 @@ library ThrottleLib {
         uint256 proposalsAvailable = (proposalThrottle.capacity * charge) / 1e18;
         require(proposalsAvailable >= 1, IReserveOptimisticGovernor.ProposalThrottleExceeded());
 
-        throttle.currentCharge = charge - (1e18 / proposalThrottle.capacity);
+        throttle.currentCharge = charge - ((1e18 + proposalThrottle.capacity - 1) / proposalThrottle.capacity);
         throttle.lastUpdated = block.timestamp;
     }
 }
