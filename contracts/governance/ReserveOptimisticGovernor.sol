@@ -117,20 +117,16 @@ contract ReserveOptimisticGovernor is
         _setProposalThrottle(newProposalThrottleCapacity);
     }
 
-    function getProposalThrottleCapacity() external view returns (uint256) {
+    function proposalThrottleCapacity() external view returns (uint256) {
         return proposalThrottle.capacity;
     }
-
-    // === Public View ===
 
     function vetoThreshold(uint256 proposalId) public view returns (uint256) {
         return optimisticProposalDetails[proposalId].vetoThreshold;
     }
 
-    function proposalType(uint256 proposalId) public view returns (ProposalType) {
-        require(_proposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
-
-        return vetoThreshold(proposalId) != 0 ? ProposalType.Optimistic : ProposalType.Standard;
+    function isOptimistic(uint256 proposalId) public view returns (bool) {
+        return vetoThreshold(proposalId) != 0;
     }
 
     // === Proposal Creation ===
@@ -144,40 +140,28 @@ contract ReserveOptimisticGovernor is
     ) external returns (uint256 proposalId) {
         ThrottleLib.consumeProposalCharge(proposalThrottle, msg.sender);
 
-        proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
+        proposalId = _propose(targets, values, calldatas, description, msg.sender);
 
         optimisticProposalDetails[proposalId] = OptimisticProposalDetails({
-            vetoThreshold: optimisticParams.vetoThreshold,
             targets: targets,
             values: values,
             calldatas: calldatas,
-            description: description
+            description: description,
+            vetoThreshold: optimisticParams.vetoThreshold
         });
-
-        _propose(targets, values, calldatas, description, msg.sender);
     }
 
+    /// @dev Permissionless
     function propose(
         address[] memory targets,
         uint256[] memory values,
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256) {
-        address proposer = _msgSender();
-
-        // check proposal threshold
-        uint256 votesThreshold = proposalThreshold();
-        if (votesThreshold > 0) {
-            uint256 proposerVotes = getVotes(proposer, block.timestamp - 1);
-            if (proposerVotes < votesThreshold) {
-                revert GovernorInsufficientProposerVotes(proposer, proposerVotes, votesThreshold);
-            }
-        }
-
-        return _propose(targets, values, calldatas, description, proposer);
+        return _propose(targets, values, calldatas, description, msg.sender);
     }
 
-    // === Inheritance overrides ===
+    // === View Overrides ===
 
     function quorumDenominator() public pure override returns (uint256) {
         return 1e18;
@@ -199,15 +183,7 @@ contract ReserveOptimisticGovernor is
         override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
         returns (ProposalState)
     {
-        uint256 _vetoThreshold = vetoThreshold(proposalId);
-
-        if (_vetoThreshold == 0) {
-            // pessimistic case
-
-            return super.state(proposalId);
-        } else {
-            // optimistic case
-
+        if (isOptimistic(proposalId)) {
             ProposalCore storage proposalCore = _proposalCore(proposalId);
 
             if (proposalCore.executed) {
@@ -223,6 +199,8 @@ contract ReserveOptimisticGovernor is
             if (snapshot >= block.timestamp) {
                 return ProposalState.Pending;
             }
+
+            uint256 _vetoThreshold = vetoThreshold(proposalId);
 
             if (_vetoThreshold == type(uint256).max) {
                 return ProposalState.Defeated;
@@ -248,6 +226,8 @@ contract ReserveOptimisticGovernor is
 
             return ProposalState.Succeeded;
         }
+
+        return super.state(proposalId);
     }
 
     function proposalDeadline(uint256 proposalId)
@@ -284,6 +264,8 @@ contract ReserveOptimisticGovernor is
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
     }
 
+    // === Internal Overrides ===
+
     function _propose(
         address[] memory targets,
         uint256[] memory values,
@@ -291,11 +273,6 @@ contract ReserveOptimisticGovernor is
         string memory description,
         address proposer
     ) internal override returns (uint256 proposalId) {
-        // check description restriction
-        if (!_isValidDescriptionForProposer(proposer, description)) {
-            revert GovernorRestrictedProposer(proposer);
-        }
-
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         ProposalLib.propose(
@@ -332,16 +309,16 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
-        if (vetoThreshold(proposalId) == 0) {
-            // pessimistic case: execute through timelock
-
-            super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
-        } else {
+        if (isOptimistic(proposalId)) {
             // optimistic case: execute immediately
 
             _timelock().executeBatchBypass{ value: msg.value }(
                 targets, values, calldatas, 0, bytes20(address(this)) ^ descriptionHash
             );
+        } else {
+            // pessimistic case: execute through timelock
+
+            super._executeOperations(proposalId, targets, values, calldatas, descriptionHash);
         }
     }
 
@@ -355,21 +332,24 @@ contract ReserveOptimisticGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        return caller == proposalProposer(proposalId) || _timelock().hasRole(CANCELLER_ROLE, caller);
+        if (_timelock().hasRole(CANCELLER_ROLE, caller)) {
+            return true;
+        }
+
+        return caller == proposalProposer(proposalId)
+            && (isOptimistic(proposalId) || state(proposalId) == ProposalState.Pending);
     }
 
     function _tallyUpdated(uint256 proposalId)
         internal
         override(GovernorUpgradeable, GovernorPreventLateQuorumUpgradeable)
     {
-        uint256 _vetoThreshold = vetoThreshold(proposalId);
-
-        if (_vetoThreshold == 0) {
+        if (!isOptimistic(proposalId)) {
             // pessimistic case: possibly extend quorum
 
             super._tallyUpdated(proposalId);
-        } else if (state(proposalId) == ProposalState.Defeated && _vetoThreshold != type(uint256).max) {
-            // optimistic transition to new pessimistic proposal
+        } else if (state(proposalId) == ProposalState.Defeated && vetoThreshold(proposalId) != type(uint256).max) {
+            // transition optimistic -> pessimistic
 
             optimisticProposalDetails[proposalId].vetoThreshold = type(uint256).max;
 

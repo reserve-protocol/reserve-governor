@@ -25,17 +25,12 @@ interface IReserveOptimisticGovernor {
 
     // === Data ===
 
-    enum ProposalType {
-        Optimistic,
-        Standard
-    }
-
     struct OptimisticProposalDetails {
-        uint256 vetoThreshold; // D18{1} Fraction of token supply required to start confirmation process
         address[] targets;
         uint256[] values;
         bytes[] calldatas;
         string description;
+        uint256 vetoThreshold; // D18{1} Fraction of token supply required to start confirmation process
     }
 
     struct OptimisticGovernanceParams {
