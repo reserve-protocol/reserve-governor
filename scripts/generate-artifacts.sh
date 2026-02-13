@@ -96,23 +96,23 @@ pragma solidity ^0.8.28;
 import { DeployHelper } from "./DeployHelper.sol";
 
 library ReserveOptimisticGovernorDeployer {
-    /// @notice Deploy ReserveOptimisticGovernor with linked OptimisticProposalLib
-    /// @param optimisticProposalLib Address of the deployed OptimisticProposalLib
+    /// @notice Deploy ReserveOptimisticGovernor with linked ProposalValidationLib
+    /// @param proposalValidationLib Address of the deployed ProposalValidationLib
     /// @param salt CREATE2 salt
-    function deploy(address optimisticProposalLib, bytes32 salt) internal returns (address) {
-        return DeployHelper.deploy(initcode(optimisticProposalLib), salt);
+    function deploy(address proposalValidationLib, bytes32 salt) internal returns (address) {
+        return DeployHelper.deploy(initcode(proposalValidationLib), salt);
     }
 
-    /// @notice Deploy ReserveOptimisticGovernor with linked OptimisticProposalLib
-    /// @param optimisticProposalLib Address of the deployed OptimisticProposalLib
-    function deploy(address optimisticProposalLib) internal returns (address) {
-        return DeployHelper.deploy(initcode(optimisticProposalLib));
+    /// @notice Deploy ReserveOptimisticGovernor with linked ProposalValidationLib
+    /// @param proposalValidationLib Address of the deployed ProposalValidationLib
+    function deploy(address proposalValidationLib) internal returns (address) {
+        return DeployHelper.deploy(initcode(proposalValidationLib));
     }
 
     /// @notice Get the initcode with the library address linked
-    /// @param optimisticProposalLib Address of the deployed OptimisticProposalLib
-    function initcode(address optimisticProposalLib) internal pure returns (bytes memory) {
-        bytes20 libAddr = bytes20(optimisticProposalLib);
+    /// @param proposalValidationLib Address of the deployed ProposalValidationLib
+    function initcode(address proposalValidationLib) internal pure returns (bytes memory) {
+        bytes20 libAddr = bytes20(proposalValidationLib);
         return abi.encodePacked(
 HEADER
 
@@ -226,7 +226,7 @@ EOF
 
 # Generate artifacts for each contract using path:name format for disambiguation
 generate_simple_artifact "contracts/staking/StakingVault.sol:StakingVault" "StakingVaultDeployer" "StakingVaultArtifact.sol"
-generate_simple_artifact "contracts/governance/OptimisticProposalLib.sol:OptimisticProposalLib" "OptimisticProposalLibDeployer" "OptimisticProposalLibArtifact.sol"
+generate_simple_artifact "contracts/governance/ProposalValidationLib.sol:ProposalValidationLib" "ProposalValidationLibDeployer" "ProposalValidationLibArtifact.sol"
 generate_governor_artifact
 generate_simple_artifact "contracts/governance/TimelockControllerOptimistic.sol:TimelockControllerOptimistic" "TimelockControllerOptimisticDeployer" "TimelockControllerOptimisticArtifact.sol"
 generate_simple_artifact "contracts/governance/OptimisticSelectorRegistry.sol:OptimisticSelectorRegistry" "OptimisticSelectorRegistryDeployer" "OptimisticSelectorRegistryArtifact.sol"
