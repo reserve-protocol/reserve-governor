@@ -76,7 +76,7 @@ contract ReserveOptimisticGovernor is
         _disableInitializers();
     }
 
-    /// @param optimisticGovParams.votingDelay {s} Delay before snapshot for optimistic proposals
+    /// @param optimisticGovParams.vetoDelay {s} Delay before snapshot for optimistic proposals
     /// @param optimisticGovParams.vetoPeriod {s} Veto period for optimistic proposals
     /// @param optimisticGovParams.vetoThreshold D18{1} Fraction of tok supply required to start confirmation process
     /// @param standardGovParams.votingDelay {s} Delay before snapshot
