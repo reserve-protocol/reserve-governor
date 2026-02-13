@@ -21,7 +21,6 @@ interface IReserveOptimisticGovernor {
 
     /// @param vetoThreshold D18{1} Fraction of token supply required to start confirmation process
     event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
-    event ConfirmationVoteScheduled(uint256 indexed proposalId, uint256 voteStart, uint256 voteEnd);
     event ProposalThrottleUpdated(uint256 throttleCapacity);
 
     // === Data ===
@@ -29,6 +28,13 @@ interface IReserveOptimisticGovernor {
     enum ProposalType {
         Optimistic,
         Standard
+    }
+
+    struct OptimisticProposalDetails {
+        address[] targets;
+        uint256[] values;
+        bytes[] calldatas;
+        string description;
     }
 
     struct OptimisticGovernanceParams {

@@ -71,6 +71,7 @@ contract ReserveOptimisticGovernor is
 
     ProposalThrottleStorage private proposalThrottle;
 
+    mapping(uint256 proposalId => OptimisticProposalDetails) private optimisticProposalDetails;
     mapping(uint256 proposalId => uint256 vetoThreshold) public vetoThresholds; // D18{1}
 
     constructor() {
@@ -141,6 +142,10 @@ contract ReserveOptimisticGovernor is
 
         vetoThresholds[proposalId] = optimisticParams.vetoThreshold;
 
+        optimisticProposalDetails[proposalId] = OptimisticProposalDetails({
+            targets: targets, values: values, calldatas: calldatas, description: description
+        });
+
         _propose(targets, values, calldatas, description, msg.sender);
     }
 
@@ -195,6 +200,10 @@ contract ReserveOptimisticGovernor is
 
             if (snapshot >= block.timestamp) {
                 return ProposalState.Pending;
+            }
+
+            if (vetoThreshold == type(uint256).max) {
+                return ProposalState.Defeated;
             }
 
             // {tok} = D18{1} * {tok} / D18{1}
@@ -363,20 +372,26 @@ contract ReserveOptimisticGovernor is
         internal
         override(GovernorUpgradeable, GovernorPreventLateQuorumUpgradeable)
     {
-        if (vetoThresholds[proposalId] == 0) {
+        uint256 vetoThreshold = vetoThresholds[proposalId];
+
+        if (vetoThreshold == 0) {
             // pessimistic case: possibly extend quorum
 
             super._tallyUpdated(proposalId);
-        } else if (state(proposalId) == ProposalState.Defeated) {
-            // optimistic -> pessimistic transition
+        } else if (state(proposalId) == ProposalState.Defeated && vetoThreshold != type(uint256).max) {
+            // optimistic transition to new pessimistic proposal
 
-            vetoThresholds[proposalId] = 0;
+            vetoThresholds[proposalId] = type(uint256).max;
 
-            uint256 voteEnd = block.timestamp + votingPeriod();
-            emit ConfirmationVoteScheduled(proposalId, block.timestamp, voteEnd);
+            OptimisticProposalDetails storage details = optimisticProposalDetails[proposalId];
 
-            ProposalCore storage proposalCore = _proposalCore(proposalId);
-            proposalCore.voteDuration = SafeCast.toUint32(voteEnd - proposalCore.voteStart);
+            _propose(
+                details.targets,
+                details.values,
+                details.calldatas,
+                string.concat("Conf: ", details.description),
+                proposalProposer(proposalId)
+            );
         }
     }
 
