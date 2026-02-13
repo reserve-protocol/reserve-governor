@@ -18,7 +18,7 @@ library ProposalValidationLib {
         // validate lengths
 
         require(
-            targets.length == values.length && targets.length == calldatas.length && targets.length != 0,
+            targets.length == values.length && targets.length == calldatas.length,
             IGovernor.GovernorInvalidProposalLength(targets.length, calldatas.length, values.length)
         );
 
