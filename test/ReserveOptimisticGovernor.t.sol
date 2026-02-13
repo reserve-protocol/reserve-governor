@@ -940,31 +940,23 @@ contract ReserveOptimisticGovernorTest is Test {
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(registry), selectors);
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(registry), selectors[0])
-        );
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(registry)));
         registry.registerSelectors(selectorData);
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(governor), selectors);
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(governor), selectors[0])
-        );
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(governor)));
         registry.registerSelectors(selectorData);
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(timelock), selectors);
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(timelock), selectors[0])
-        );
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(timelock)));
         registry.registerSelectors(selectorData);
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IOptimisticSelectorRegistry.InvalidCall.selector, address(stakingVault), selectors[0]
-            )
+            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(stakingVault))
         );
         registry.registerSelectors(selectorData);
 
@@ -1243,7 +1235,9 @@ contract ReserveOptimisticGovernorTest is Test {
         bytes[] memory calldatas,
         string memory description
     ) internal view returns (uint256) {
-        return governor.getProposalId(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
+        return governor.getProposalId(
+            targets, values, calldatas, keccak256(bytes(_confirmationDescription(description)))
+        );
     }
 
     function _warpToActive(uint256 proposalId) internal {
