@@ -245,6 +245,10 @@ contract ReserveOptimisticGovernor is
         override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
         returns (bool)
     {
+        if (isOptimistic(proposalId)) {
+            return false;
+        }
+
         return super.proposalNeedsQueuing(proposalId);
     }
 
