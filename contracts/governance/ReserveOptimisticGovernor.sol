@@ -262,17 +262,6 @@ contract ReserveOptimisticGovernor is
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
     }
 
-    function propose(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        string memory description
-    ) public override returns (uint256) {
-        _consumeProposalCharge(msg.sender);
-
-        return super.propose(targets, values, calldatas, description);
-    }
-
     function _propose(
         address[] memory targets,
         uint256[] memory values,
