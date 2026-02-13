@@ -129,8 +129,10 @@ contract ReserveOptimisticGovernor is
         return optimisticProposalDetails[proposalId].vetoThreshold;
     }
 
-    function isOptimistic(uint256 proposalId) public view returns (bool) {
-        return vetoThreshold(proposalId) != 0;
+    function isOptimistic(uint256 proposalId) external view returns (bool) {
+        require(_proposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
+
+        return _isOptimistic(proposalId);
     }
 
     // === Proposal Creation ===
@@ -206,7 +208,7 @@ contract ReserveOptimisticGovernor is
         override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
         returns (ProposalState)
     {
-        if (isOptimistic(proposalId)) {
+        if (_isOptimistic(proposalId)) {
             ProposalCore storage proposalCore = _proposalCore(proposalId);
 
             if (proposalCore.executed) {
@@ -269,7 +271,7 @@ contract ReserveOptimisticGovernor is
         override(GovernorUpgradeable, GovernorTimelockControlUpgradeable)
         returns (bool)
     {
-        if (isOptimistic(proposalId)) {
+        if (_isOptimistic(proposalId)) {
             return false;
         }
 
@@ -301,7 +303,7 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint48) {
-        require(!isOptimistic(proposalId), OptimisticProposalCannotBeQueued(proposalId));
+        require(!_isOptimistic(proposalId), OptimisticProposalCannotBeQueued(proposalId));
 
         return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
@@ -313,7 +315,7 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) {
-        if (isOptimistic(proposalId)) {
+        if (_isOptimistic(proposalId)) {
             // optimistic case: execute immediately
 
             _timelock().executeBatchBypass{ value: msg.value }(
@@ -341,14 +343,14 @@ contract ReserveOptimisticGovernor is
         }
 
         return caller == proposalProposer(proposalId)
-            && (isOptimistic(proposalId) || state(proposalId) == ProposalState.Pending);
+            && (_isOptimistic(proposalId) || state(proposalId) == ProposalState.Pending);
     }
 
     function _tallyUpdated(uint256 proposalId)
         internal
         override(GovernorUpgradeable, GovernorPreventLateQuorumUpgradeable)
     {
-        if (!isOptimistic(proposalId)) {
+        if (!_isOptimistic(proposalId)) {
             // pessimistic case: possibly extend quorum
 
             return super._tallyUpdated(proposalId);
@@ -410,6 +412,10 @@ contract ReserveOptimisticGovernor is
     }
 
     // === Private ===
+
+    function _isOptimistic(uint256 proposalId) private view returns (bool) {
+        return vetoThreshold(proposalId) != 0;
+    }
 
     function _proposalCore(uint256 proposalId) private view returns (ProposalCore storage) {
         return _getGovernorStorage()._proposals[proposalId];

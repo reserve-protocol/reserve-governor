@@ -162,9 +162,10 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(governor.proposalThreshold(), expectedThreshold);
     }
 
-    function test_isOptimistic_returnsFalseForNonexistentProposal() public view {
+    function test_isOptimistic_revertsForNonexistentProposal() public {
         uint256 proposalId = 123456;
-        assertFalse(governor.isOptimistic(proposalId));
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorNonexistentProposal.selector, proposalId));
+        governor.isOptimistic(proposalId);
     }
 
     // ===== Standard (Slow) Flow =====
