@@ -308,15 +308,13 @@ contract ReserveOptimisticGovernorTest is Test {
 
     // ===== Optimistic (Fast) Creation Validations =====
 
-    function test_proposeOptimistic_isNotRoleGated() public {
+    function test_proposeOptimistic_requiresRole() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
         vm.prank(alice);
-        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, "Role-gated optimistic proposal");
-
-        assertTrue(governor.isOptimistic(proposalId));
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.NotOptimisticProposer.selector, alice));
+        governor.proposeOptimistic(targets, values, calldatas, "Role-gated optimistic proposal");
     }
 
     function test_proposeOptimistic_rejectsEmptyProposal() public {
@@ -353,24 +351,30 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.proposeOptimistic(targets, values, calldatas, "EOA target");
     }
 
-    function test_proposeOptimistic_allowsEmptyCalldataForCodeTarget() public {
+    function test_proposeOptimistic_rejectsEmptyCalldata() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, bytes(""));
 
         vm.prank(optimisticProposer);
-        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, "empty calldata");
-
-        assertTrue(governor.isOptimistic(proposalId));
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidCall.selector, address(underlying), bytes(""))
+        );
+        governor.proposeOptimistic(targets, values, calldatas, "empty calldata");
     }
 
-    function test_proposeOptimistic_allowsNonWhitelistedSelector() public {
+    function test_proposeOptimistic_rejectsDisallowedSelector() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.approve, (alice, 1_000e18)));
 
         vm.prank(optimisticProposer);
-        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, "approve not whitelisted");
-
-        assertTrue(governor.isOptimistic(proposalId));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IReserveOptimisticGovernor.InvalidCall.selector,
+                address(underlying),
+                abi.encodeCall(IERC20.approve, (alice, 1_000e18))
+            )
+        );
+        governor.proposeOptimistic(targets, values, calldatas, "approve not whitelisted");
     }
 
     function test_proposeOptimistic_rejectsDescriptionSuffixForDifferentProposer() public {
@@ -413,21 +417,14 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.proposeOptimistic(targets, values, calldatas, description);
     }
 
-    function test_optimisticProposal_canSendEthToEOA() public {
+    function test_optimisticProposal_cannotSendEthToEOA() public {
         address eoaTarget = makeAddr("eoaTarget");
-        vm.deal(address(timelock), 1 ether);
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(eoaTarget, 0.1 ether, bytes(""));
-        string memory description = "EOA ETH transfer";
 
         vm.prank(optimisticProposer);
-        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
-
-        _warpPastDeadline(proposalId);
-        uint256 beforeBalance = eoaTarget.balance;
-        vm.prank(optimisticProposer);
-        governor.execute(targets, values, calldatas, keccak256(bytes(description)));
-        assertEq(eoaTarget.balance, beforeBalance + 0.1 ether);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidCall.selector, eoaTarget, bytes("")));
+        governor.proposeOptimistic(targets, values, calldatas, "EOA ETH transfer");
     }
 
     // ===== Optimistic (Fast) Uncontested Flow =====
@@ -573,6 +570,7 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.castVote(proposalId, 0);
 
         uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+        assertNotEq(proposalId, confirmationProposalId);
 
         assertTrue(governor.isOptimistic(proposalId));
         assertEq(governor.vetoThreshold(proposalId), type(uint256).max);
@@ -981,13 +979,22 @@ contract ReserveOptimisticGovernorTest is Test {
 
     // ===== Timelock / Role Management =====
 
-    function test_guardianCanRevokeOptimisticProposerRole() public {
+    function test_guardianCanRevokeOptimisticProposer() public {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 
         vm.prank(guardian);
         timelock.revokeOptimisticProposer(optimisticProposer2);
 
         assertFalse(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(optimisticProposer2);
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.NotOptimisticProposer.selector, optimisticProposer2)
+        );
+        governor.proposeOptimistic(targets, values, calldatas, "revoked proposer cannot propose");
     }
 
     function test_nonGuardianCannotRevokeOptimisticProposer() public {
@@ -1043,6 +1050,18 @@ contract ReserveOptimisticGovernorTest is Test {
 
         (, bytes32 descriptionHash) =
             _proposePassAndQueueStandard(targets, values, calldatas, "Set proposalThreshold > 100%");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidProposalThreshold.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_setProposalThreshold_revertsAtZero() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(governor), 0, abi.encodeCall(governor.setProposalThreshold, (0)));
+
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Set proposalThreshold to 0%");
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
         vm.expectRevert(IReserveOptimisticGovernor.InvalidProposalThreshold.selector);

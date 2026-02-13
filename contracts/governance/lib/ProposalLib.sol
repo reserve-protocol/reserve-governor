@@ -60,13 +60,12 @@ library ProposalLib {
 
         // finalize proposal
 
-        _saveProposal(proposal, proposalCore, optimisticParams.vetoDelay, optimisticParams.vetoPeriod);
         emit IReserveOptimisticGovernor.OptimisticProposalCreated(proposal.proposalId, optimisticParams.vetoThreshold);
+        _saveProposal(proposal, proposalCore, optimisticParams.vetoDelay, optimisticParams.vetoPeriod);
     }
 
     function proposePessimistic(ProposalData calldata proposal, GovernorUpgradeable.ProposalCore storage proposalCore)
         external
-        returns (uint256 proposalId)
     {
         _validateProposal(proposal, proposalCore);
 
@@ -111,7 +110,7 @@ library ProposalLib {
 
         if (proposalCore.voteStart != 0) {
             revert IGovernor.GovernorUnexpectedProposalState(
-                proposal.proposalId, _governor().state(proposal.proposalId), bytes32(0)
+                proposal.proposalId, governor.state(proposal.proposalId), bytes32(0)
             );
         }
 
