@@ -219,7 +219,7 @@ contract ReserveOptimisticGovernor is
 
             uint256 _vetoThreshold = vetoThreshold(proposalId);
 
-            if (_vetoThreshold == type(uint256).max) {
+            if (_vetoThreshold == ProposalLib.TRANSITIONED_VETO_THRESHOLD) {
                 // special-case for transitioned proposals
                 return ProposalState.Defeated;
             }
@@ -350,7 +350,7 @@ contract ReserveOptimisticGovernor is
 
         OptimisticProposalDetails storage optimisticProposal = optimisticProposalDetails[proposalId];
 
-        if (state(proposalId) == ProposalState.Defeated && optimisticProposal.vetoThreshold != type(uint256).max) {
+        if (state(proposalId) == ProposalState.Defeated) {
             // transition optimistic -> pessimistic
 
             ProposalLib.transitionToPessimistic(proposalId, optimisticProposal, _getGovernorStorage()._proposals);
