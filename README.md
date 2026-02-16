@@ -173,6 +173,8 @@ The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessCon
 - Revocation blocks new `proposeOptimistic()` calls by that account
 - Execution of a succeeded optimistic proposal is done via `execute(...)` and is not restricted to the original optimistic proposer
 
+The guardian (`CANCELLER_ROLE`) is expected to revoke the optimistic proposer if they become malicious or otherwise compromised. This includes directly proposing malicious proposals as well as indirect griefing actions such as stuffing a proposal with excess data to increase the gas cost of veto actions. 
+
 ## Contract Reference
 
 ### ReserveOptimisticGovernor
