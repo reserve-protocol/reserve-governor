@@ -146,10 +146,8 @@ library ProposalLib {
         view
     {
         if (proposalCore.voteStart != 0) {
-            ReserveOptimisticGovernor governor = _governor();
-
             revert IGovernor.GovernorUnexpectedProposalState(
-                proposal.proposalId, governor.state(proposal.proposalId), bytes32(0)
+                proposal.proposalId, _governor().state(proposal.proposalId), bytes32(0)
             );
         }
 
