@@ -15,6 +15,9 @@ import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "../ReserveOptimisticGovernor.sol";
 
 library ProposalLib {
+    string constant CONFIRMATION_PREFIX = "Conf: ";
+    uint256 constant TRANSITIONED_VETO_THRESHOLD = type(uint256).max;
+
     struct ProposalData {
         uint256 proposalId;
         address proposer;
@@ -33,7 +36,7 @@ library ProposalLib {
     ) external {
         _validateProposal(proposal, proposalCore);
 
-        ReserveOptimisticGovernor governor = ReserveOptimisticGovernor(payable(address(this)));
+        ReserveOptimisticGovernor governor = _governor();
 
         // validate proposer
 
@@ -58,7 +61,7 @@ library ProposalLib {
             }
         }
 
-        // finalize proposal
+        // finalize
 
         emit IReserveOptimisticGovernor.OptimisticProposalCreated(proposal.proposalId, optimisticParams.vetoThreshold);
         _saveProposal(proposal, proposalCore, optimisticParams.vetoDelay, optimisticParams.vetoPeriod);
@@ -69,7 +72,7 @@ library ProposalLib {
     {
         _validateProposal(proposal, proposalCore);
 
-        ReserveOptimisticGovernor governor = ReserveOptimisticGovernor(payable(address(this)));
+        ReserveOptimisticGovernor governor = _governor();
 
         // validate proposer
 
@@ -95,9 +98,44 @@ library ProposalLib {
             );
         }
 
-        // finalize proposal
+        // finalize
 
         _saveProposal(proposal, proposalCore, governor.votingDelay(), governor.votingPeriod());
+    }
+
+    /// @param proposalId Optimistic proposal id
+    function transitionToPessimistic(
+        uint256 proposalId,
+        IReserveOptimisticGovernor.OptimisticProposalDetails storage optimisticProposal,
+        mapping(uint256 proposalId => GovernorUpgradeable.ProposalCore) storage proposalCores
+    ) external {
+        ReserveOptimisticGovernor governor = _governor();
+
+        require(
+            optimisticProposal.vetoThreshold != TRANSITIONED_VETO_THRESHOLD,
+            IGovernor.GovernorUnexpectedProposalState(proposalId, governor.state(proposalId), bytes32(0))
+        );
+        optimisticProposal.vetoThreshold = TRANSITIONED_VETO_THRESHOLD;
+
+        string memory newDescription = string.concat(CONFIRMATION_PREFIX, optimisticProposal.description);
+
+        uint256 newProposalId = governor.getProposalId(
+            optimisticProposal.targets,
+            optimisticProposal.values,
+            optimisticProposal.calldatas,
+            keccak256(bytes(newDescription))
+        );
+
+        ProposalData memory proposalData = ProposalData(
+            newProposalId,
+            governor.proposalProposer(proposalId),
+            optimisticProposal.targets,
+            optimisticProposal.values,
+            optimisticProposal.calldatas,
+            newDescription
+        );
+
+        _saveProposal(proposalData, proposalCores[newProposalId], governor.votingDelay(), governor.votingPeriod());
     }
 
     // === Private ===
@@ -106,9 +144,9 @@ library ProposalLib {
         private
         view
     {
-        ReserveOptimisticGovernor governor = _governor();
-
         if (proposalCore.voteStart != 0) {
+            ReserveOptimisticGovernor governor = _governor();
+
             revert IGovernor.GovernorUnexpectedProposalState(
                 proposal.proposalId, governor.state(proposal.proposalId), bytes32(0)
             );
@@ -130,7 +168,7 @@ library ProposalLib {
     }
 
     function _saveProposal(
-        ProposalData calldata proposal,
+        ProposalData memory proposal,
         GovernorUpgradeable.ProposalCore storage proposalCore,
         uint256 voteDelay,
         uint256 voteDuration

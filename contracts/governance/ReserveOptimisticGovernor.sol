@@ -174,20 +174,10 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256 proposalId) {
-        return _propose(targets, values, calldatas, description, msg.sender);
-    }
-
-    function _propose(
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        string memory description,
-        address proposer
-    ) internal override returns (uint256 proposalId) {
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         ProposalLib.proposePessimistic(
-            ProposalLib.ProposalData(proposalId, proposer, targets, values, calldatas, description),
+            ProposalLib.ProposalData(proposalId, msg.sender, targets, values, calldatas, description),
             _proposalCore(proposalId)
         );
     }
@@ -360,20 +350,10 @@ contract ReserveOptimisticGovernor is
 
         OptimisticProposalDetails storage optimisticProposal = optimisticProposalDetails[proposalId];
 
-        if (state(proposalId) == ProposalState.Defeated && vetoThreshold(proposalId) != type(uint256).max) {
+        if (state(proposalId) == ProposalState.Defeated && optimisticProposal.vetoThreshold != type(uint256).max) {
             // transition optimistic -> pessimistic
 
-            optimisticProposal.vetoThreshold = type(uint256).max;
-
-            // propose a new pessimistic proposal
-
-            _propose(
-                optimisticProposal.targets,
-                optimisticProposal.values,
-                optimisticProposal.calldatas,
-                string.concat("Conf: ", optimisticProposal.description),
-                proposalProposer(proposalId)
-            );
+            ProposalLib.transitionToPessimistic(proposalId, optimisticProposal, _getGovernorStorage()._proposals);
         }
     }
 

@@ -67,7 +67,6 @@ contract ReserveOptimisticGovernorTest is Test {
     uint256 internal constant ALICE_STAKE = 400_000e18;
     uint256 internal constant BOB_STAKE = 400_000e18;
     uint256 internal constant CAROL_STAKE = 200_000e18;
-    uint256 internal constant OPTIMISTIC_PROPOSER_STAKE = 20_000e18;
 
     function setUp() public {
         underlying = new MockERC20("Underlying Token", "UNDL");
@@ -128,8 +127,6 @@ contract ReserveOptimisticGovernorTest is Test {
         _setupVoter(alice, ALICE_STAKE);
         _setupVoter(bob, BOB_STAKE);
         _setupVoter(carol, CAROL_STAKE);
-        _setupVoter(optimisticProposer, OPTIMISTIC_PROPOSER_STAKE);
-        _setupVoter(optimisticProposer2, OPTIMISTIC_PROPOSER_STAKE);
 
         // Charge throttles
         vm.warp(block.timestamp + 1 days);
@@ -618,6 +615,26 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(abstainVotes, 0);
     }
 
+    function test_confirmationVote_transitionWorksWhenOptimisticProposerHasNoVotingWeight() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Transition with zero-vote proposer";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        _warpToActive(proposalId);
+
+        uint256 snapshot = governor.proposalSnapshot(proposalId);
+        assertEq(governor.getVotes(optimisticProposer, snapshot - 1), 0);
+
+        vm.prank(alice);
+        governor.castVote(proposalId, 0); // trigger optimistic -> confirmation transition
+
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
     function test_optimisticProposal_forAndAbstainDoNotScheduleConfirmation() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
@@ -830,10 +847,6 @@ contract ReserveOptimisticGovernorTest is Test {
         stakingVault.redeem(BOB_STAKE, bob, bob);
         vm.prank(carol);
         stakingVault.redeem(CAROL_STAKE, carol, carol);
-        vm.prank(optimisticProposer);
-        stakingVault.redeem(OPTIMISTIC_PROPOSER_STAKE, optimisticProposer, optimisticProposer);
-        vm.prank(optimisticProposer2);
-        stakingVault.redeem(OPTIMISTIC_PROPOSER_STAKE, optimisticProposer2, optimisticProposer2);
 
         // Move forward so the zero-supply point becomes observable via getPastTotalSupply(snapshot).
         vm.warp(block.timestamp + 1);
