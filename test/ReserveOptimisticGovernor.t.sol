@@ -519,12 +519,6 @@ contract ReserveOptimisticGovernorTest is Test {
         _warpToActive(proposalId);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
 
-        // FOR/ABSTAIN votes do not matter for optimistic threshold checks.
-        vm.prank(alice);
-        governor.castVote(proposalId, 1);
-        vm.prank(bob);
-        governor.castVote(proposalId, 2);
-
         _warpPastDeadline(proposalId);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
         assertTrue(governor.isOptimistic(proposalId));
@@ -730,19 +724,30 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Pending));
     }
 
-    function test_optimisticProposal_forAndAbstainDoNotScheduleConfirmation() public {
+    function test_optimisticProposal_forAndAbstainRevert() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-        string memory description = "Non-against votes only";
+        string memory description = "Only AGAINST allowed";
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
         _warpToActive(proposalId);
 
         vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.OptimisticProposalCanOnlyBeVetoed.selector, proposalId)
+        );
         governor.castVote(proposalId, 1);
         vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.OptimisticProposalCanOnlyBeVetoed.selector, proposalId)
+        );
         governor.castVote(proposalId, 2);
+
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
+        assertEq(againstVotes, 0);
+        assertEq(forVotes, 0);
+        assertEq(abstainVotes, 0);
 
         assertTrue(governor.isOptimistic(proposalId));
         assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);

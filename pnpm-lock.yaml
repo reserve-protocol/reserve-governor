@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@openzeppelin/contracts-upgradeable':
-    hash: 83db4cce365ac08703f46703ab804aefc375700767ba2ce4a67cbfbff6239268
+    hash: 0bffbc4488ca2b60087b08ff462cd91ca320c810d09c6f482aeda3b47280fcb4
     path: patches/@openzeppelin__contracts-upgradeable.patch
 
 importers:
@@ -18,7 +18,7 @@ importers:
         version: 5.4.0
       '@openzeppelin/contracts-upgradeable':
         specifier: ^5.4.0
-        version: 5.4.0(patch_hash=83db4cce365ac08703f46703ab804aefc375700767ba2ce4a67cbfbff6239268)(@openzeppelin/contracts@5.4.0)
+        version: 5.4.0(patch_hash=0bffbc4488ca2b60087b08ff462cd91ca320c810d09c6f482aeda3b47280fcb4)(@openzeppelin/contracts@5.4.0)
       '@prb/math':
         specifier: ^4.1.0
         version: 4.1.0
@@ -45,7 +45,7 @@ packages:
 
 snapshots:
 
-  '@openzeppelin/contracts-upgradeable@5.4.0(patch_hash=83db4cce365ac08703f46703ab804aefc375700767ba2ce4a67cbfbff6239268)(@openzeppelin/contracts@5.4.0)':
+  '@openzeppelin/contracts-upgradeable@5.4.0(patch_hash=0bffbc4488ca2b60087b08ff462cd91ca320c810d09c6f482aeda3b47280fcb4)(@openzeppelin/contracts@5.4.0)':
     dependencies:
       '@openzeppelin/contracts': 5.4.0
 

@@ -232,7 +232,9 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Canceled;
             }
 
-            if (againstVotesCount(proposalId) >= vetoThresholdTok) {
+            (uint256 againstVotes,,) = proposalVotes(proposalId);
+
+            if (againstVotes >= vetoThresholdTok) {
                 return ProposalState.Defeated;
             }
 
@@ -342,6 +344,19 @@ contract ReserveOptimisticGovernor is
         ProposalState s = state(proposalId);
 
         return (_isOptimistic(proposalId) && s != ProposalState.Defeated) || s == ProposalState.Pending;
+    }
+
+    function _countVote(uint256 proposalId, address account, uint8 support, uint256 totalWeight, bytes memory params)
+        internal
+        override(GovernorUpgradeable, GovernorCountingSimpleUpgradeable)
+        returns (uint256)
+    {
+        require(
+            !_isOptimistic(proposalId) || support == uint8(VoteType.Against),
+            OptimisticProposalCanOnlyBeVetoed(proposalId)
+        );
+
+        return super._countVote(proposalId, account, support, totalWeight, params);
     }
 
     function _tallyUpdated(uint256 proposalId)

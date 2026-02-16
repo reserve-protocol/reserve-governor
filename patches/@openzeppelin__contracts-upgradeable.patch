@@ -24,19 +24,3 @@ index 5860963e4486e3c45fd906a563a678701d421a4b..5878029ba4b798e635a52608a65dc8cc
          assembly {
              $.slot := TimelockControllerStorageLocation
          }
-diff --git a/governance/extensions/GovernorCountingSimpleUpgradeable.sol b/governance/extensions/GovernorCountingSimpleUpgradeable.sol
-index 755ef0e0503f1653135cb3cb3d310c6b3e4d28d4..91f33bf7380b4accbfd655cd8f846d408a4e1311 100644
---- a/governance/extensions/GovernorCountingSimpleUpgradeable.sol
-+++ b/governance/extensions/GovernorCountingSimpleUpgradeable.sol
-@@ -70,6 +70,11 @@ abstract contract GovernorCountingSimpleUpgradeable is Initializable, GovernorUp
-         return (proposalVote.againstVotes, proposalVote.forVotes, proposalVote.abstainVotes);
-     }
-
-+    function againstVotesCount(uint256 proposalId) public view virtual returns (uint256) {
-+        GovernorCountingSimpleStorage storage $ = _getGovernorCountingSimpleStorage();
-+        return $._proposalVotes[proposalId].againstVotes;
-+    }
-+
-     /// @inheritdoc GovernorUpgradeable
-     function _quorumReached(uint256 proposalId) internal view virtual override returns (bool) {
-         GovernorCountingSimpleStorage storage $ = _getGovernorCountingSimpleStorage();
