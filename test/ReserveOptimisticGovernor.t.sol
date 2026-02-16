@@ -659,6 +659,27 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(abstainVotes, 0);
     }
 
+    function test_optimisticProposal_proposerCannotCancelWhenDefeated() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Defeated optimistic proposal cannot be canceled";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        _warpToActive(proposalId);
+
+        vm.prank(alice);
+        governor.castVote(proposalId, 0); // trigger optimistic -> confirmation transition
+
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(
+            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticProposer)
+        );
+        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+    }
+
     function test_confirmationVote_startsPendingAfterTransition() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));

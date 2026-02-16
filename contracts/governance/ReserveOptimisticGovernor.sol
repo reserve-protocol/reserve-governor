@@ -335,8 +335,13 @@ contract ReserveOptimisticGovernor is
             return true;
         }
 
-        return caller == proposalProposer(proposalId)
-            && (_isOptimistic(proposalId) || state(proposalId) == ProposalState.Pending);
+        if (caller != proposalProposer(proposalId)) {
+            return false;
+        }
+
+        ProposalState s = state(proposalId);
+
+        return (_isOptimistic(proposalId) && s != ProposalState.Defeated) || s == ProposalState.Pending;
     }
 
     function _tallyUpdated(uint256 proposalId)
