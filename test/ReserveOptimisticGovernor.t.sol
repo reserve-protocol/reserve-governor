@@ -58,6 +58,7 @@ contract ReserveOptimisticGovernorTest is Test {
     uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per 24h
 
     uint256 internal constant TIMELOCK_DELAY = 2 days;
+    string internal constant CONFIRMATION_PREFIX = "Confirmation For: ";
 
     // StakingVault params
     uint256 internal constant REWARD_HALF_LIFE = 1 days;
@@ -1339,7 +1340,7 @@ contract ReserveOptimisticGovernorTest is Test {
     }
 
     function _confirmationDescription(string memory description) internal pure returns (string memory) {
-        return string.concat("Conf: ", description);
+        return string.concat(CONFIRMATION_PREFIX, description);
     }
 
     function _confirmationProposalId(

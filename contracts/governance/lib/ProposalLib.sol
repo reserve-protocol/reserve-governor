@@ -15,8 +15,8 @@ import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "../ReserveOptimisticGovernor.sol";
 
 library ProposalLib {
-    string constant CONFIRMATION_PREFIX = "Conf: ";
-    bytes6 constant CONFIRMATION_PREFIX_BYTES = bytes6(bytes(CONFIRMATION_PREFIX));
+    string constant CONFIRMATION_PREFIX = "Confirmation For: ";
+    bytes18 constant CONFIRMATION_PREFIX_BYTES = bytes18(bytes(CONFIRMATION_PREFIX));
     uint256 constant TRANSITIONED_VETO_THRESHOLD = type(uint256).max;
 
     struct ProposalData {
@@ -157,7 +157,7 @@ library ProposalLib {
         );
 
         require(
-            bytes6(bytes(proposal.description)) != CONFIRMATION_PREFIX_BYTES,
+            bytes18(bytes(proposal.description)) != CONFIRMATION_PREFIX_BYTES,
             IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed()
         );
 
