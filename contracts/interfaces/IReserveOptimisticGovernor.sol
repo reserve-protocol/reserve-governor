@@ -16,6 +16,7 @@ interface IReserveOptimisticGovernor {
     error ConfirmationPrefixNotAllowed();
     error InvalidCall(address target, bytes call);
     error ProposalThrottleExceeded();
+    error InvalidDelay();
 
     // === Events ===
 

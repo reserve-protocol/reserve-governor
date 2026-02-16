@@ -32,6 +32,7 @@ import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGove
 
 import {
     CANCELLER_ROLE,
+    MAX_OPTIMISTIC_DELAY,
     MAX_PROPOSAL_THROTTLE_CAPACITY,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
@@ -384,10 +385,16 @@ contract ReserveOptimisticGovernor is
         emit ProposalThrottleUpdated(newCapacity);
     }
 
+    function _setVotingDelay(uint48 newVotingDelay) internal override {
+        require(newVotingDelay < MAX_OPTIMISTIC_DELAY, InvalidDelay());
+        super._setVotingDelay(newVotingDelay);
+    }
+
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
         require(
-            params.vetoDelay >= MIN_OPTIMISTIC_VETO_DELAY && params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD
-                && params.vetoThreshold != 0 && params.vetoThreshold <= 1e18,
+            params.vetoDelay >= MIN_OPTIMISTIC_VETO_DELAY && params.vetoDelay < MAX_OPTIMISTIC_DELAY
+                && params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
+                && params.vetoThreshold <= 1e18,
             InvalidOptimisticParameters()
         );
         optimisticParams = params;
