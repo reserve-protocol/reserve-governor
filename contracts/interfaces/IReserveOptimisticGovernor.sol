@@ -13,6 +13,7 @@ interface IReserveOptimisticGovernor {
     error InvalidOptimisticParameters();
     error OptimisticProposalCannotBeQueued(uint256 proposalId);
     error NotOptimisticProposer(address account);
+    error ConfirmationPrefixNotAllowed();
     error InvalidCall(address target, bytes call);
     error ProposalThrottleExceeded();
 

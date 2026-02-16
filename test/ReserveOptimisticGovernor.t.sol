@@ -237,6 +237,43 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.propose(targets, values, calldatas, "No votes proposer");
     }
 
+    function test_standardProposal_rejectsConfirmationPrefixDescription() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed.selector));
+        governor.propose(targets, values, calldatas, _confirmationDescription("manual confirmation"));
+    }
+
+    function test_standardProposal_rejectsExactConfirmationPrefixDescription() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed.selector));
+        governor.propose(targets, values, calldatas, _confirmationDescription(""));
+    }
+
+    function test_standardProposal_allowsConfirmationPrefixIfNotAtStart() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = string.concat("Intro ", _confirmationDescription("manual confirmation"));
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_standardProposal_allowsDescriptionShorterThanConfirmationPrefix() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, "Conf:");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
     function test_standardProposal_rejectsFunctionCallToEOA() public {
         address eoaTarget = makeAddr("eoaTarget");
         bytes memory callData = abi.encodeWithSelector(bytes4(keccak256("doThing(uint256)")), 1);
@@ -373,6 +410,43 @@ contract ReserveOptimisticGovernorTest is Test {
             )
         );
         governor.proposeOptimistic(targets, values, calldatas, "approve not whitelisted");
+    }
+
+    function test_proposeOptimistic_rejectsConfirmationPrefixDescription() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed.selector));
+        governor.proposeOptimistic(targets, values, calldatas, _confirmationDescription("manual confirmation"));
+    }
+
+    function test_proposeOptimistic_rejectsExactConfirmationPrefixDescription() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed.selector));
+        governor.proposeOptimistic(targets, values, calldatas, _confirmationDescription(""));
+    }
+
+    function test_proposeOptimistic_allowsConfirmationPrefixIfNotAtStart() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = string.concat("Intro ", _confirmationDescription("manual confirmation"));
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_proposeOptimistic_allowsDescriptionShorterThanConfirmationPrefix() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, "Conf:");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
     }
 
     function test_proposeOptimistic_rejectsDescriptionSuffixForDifferentProposer() public {
