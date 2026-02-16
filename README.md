@@ -69,7 +69,7 @@ The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers vault
 
 ### Fast Proposal Lifecycle
 
-Fast proposals use the standard OZ Governor `ProposalState` enum. During the veto period, any token holder can vote. All vote types (For, Against, Abstain) are accepted, but only AGAINST votes are checked against the veto threshold.
+Fast proposals use the standard OZ Governor `ProposalState` enum. During the veto period, any token holder can vote, but only `Against` votes are allowed (`For` and `Abstain` revert).
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
@@ -136,7 +136,7 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting, timel
 
 ## Veto Mechanism
 
-During a fast proposal's veto period, any token holder can vote using the standard `castVote()` interface. All vote types are accepted, but only AGAINST votes matter for the veto threshold check.
+During a fast proposal's veto period, any token holder can vote using the standard `castVote()` interface, but only `Against` votes are allowed for optimistic proposals.
 
 **Veto threshold calculation:**
 
@@ -146,7 +146,7 @@ vetoThreshold = ceil(vetoThresholdRatio * pastTotalSupply / 1e18)
 
 Where `pastTotalSupply = token.getPastTotalSupply(snapshot)` and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%).
 
-If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote via a new proposal id. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass.
+If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote via a new proposal id. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass. If the snapshot `pastTotalSupply` is zero (so computed threshold in tokens is zero), the optimistic proposal resolves to `Canceled`.
 
 ## Proposal Kind Detection
 
@@ -187,7 +187,7 @@ The main hybrid governor contract.
 **Standard Proposal Functions (inherited from OZ Governor):**
 
 - `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires `proposalThreshold`)
-- `castVote(proposalId, support)` -- Cast a vote (works on both fast and slow proposals)
+- `castVote(proposalId, support)` -- Cast a vote (works on both fast and slow proposals; optimistic proposals only allow `support = 0` / `Against`)
 - `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal (optimistic proposals cannot be queued)
 - `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal or a succeeded optimistic proposal
 - `cancel(targets, values, calldatas, descriptionHash)` -- Cancel a proposal
@@ -292,7 +292,7 @@ StakingVault asset tokens are assumed to be maximum 1e36 supply and up to 27 dec
 
 #### Governance Guidelines
  
-If governors plan to remove a token from the basket via Folio.removeFromBasket(), users will only have a limited amount of time to redeem before the token becomes inaccessible. Removal should only be used if the reward token has become malicious or otherwise compromised.
+If governance removes a reward token via `removeRewardToken()`, that token is disallowed from being re-added. Users can still claim already accrued rewards for removed/disallowed reward tokens via `claimRewards()`.
  
 ### UnstakingManager
 
@@ -336,9 +336,10 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 
 | Parameter           | Constraint    | Constant                     |
 | ------------------- | ------------- | ---------------------------- |
-| `vetoDelay`         | >= 1 second   | `MIN_OPTIMISTIC_VETO_DELAY`  |
+| `vetoDelay`         | >= 1 second and < `MAX_OPTIMISTIC_DELAY` | `MIN_OPTIMISTIC_VETO_DELAY`, `MAX_OPTIMISTIC_DELAY` |
 | `vetoPeriod`        | >= 15 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
 | `vetoThreshold`     | > 0 and <= 100% |                            |
+| `votingDelay`       | < `MAX_OPTIMISTIC_DELAY` | `MAX_OPTIMISTIC_DELAY` |
 | `proposalThreshold` | > 0 and <= 100% |                            |
 | `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_PROPOSAL_THROTTLE_CAPACITY` |
 
