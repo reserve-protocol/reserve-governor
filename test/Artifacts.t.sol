@@ -3,13 +3,13 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
-import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultArtifact.sol";
-import { ProposalLibDeployer } from "../contracts/artifacts/ProposalLibArtifact.sol";
-import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibArtifact.sol";
-import { ReserveOptimisticGovernorDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorArtifact.sol";
-import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticArtifact.sol";
-import { OptimisticSelectorRegistryDeployer } from "../contracts/artifacts/OptimisticSelectorRegistryArtifact.sol";
-import { ReserveOptimisticGovernorDeployerDeployer } from "../contracts/artifacts/DeployerArtifact.sol";
+import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultDeployer.sol";
+import { ProposalLibDeployer } from "../contracts/artifacts/ProposalLibDeployer.sol";
+import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibDeployer.sol";
+import { ReserveOptimisticGovernorDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorDeployer.sol";
+import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticDeployer.sol";
+import { OptimisticSelectorRegistryDeployer } from "../contracts/artifacts/OptimisticSelectorRegistryDeployer.sol";
+import { ReserveOptimisticGovernorDeployerDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorDeployerDeployer.sol";
 
 contract ArtifactsTest is Test {
     function test_deployStakingVault() public {
@@ -31,12 +31,7 @@ contract ArtifactsTest is Test {
     }
 
     function test_deployReserveOptimisticGovernor() public {
-        // First deploy both linked libraries
-        address proposalLib = ProposalLibDeployer.deploy();
-        address throttleLib = ThrottleLibDeployer.deploy();
-
-        // Then deploy the governor with the linked libraries
-        address deployed = ReserveOptimisticGovernorDeployer.deploy(proposalLib, throttleLib);
+        address deployed = ReserveOptimisticGovernorDeployer.deploy();
         assertNotEq(deployed, address(0), "ReserveOptimisticGovernor deployment failed");
         assertTrue(deployed.code.length > 0, "ReserveOptimisticGovernor has no code");
     }
@@ -56,9 +51,7 @@ contract ArtifactsTest is Test {
     function test_deployReserveOptimisticGovernorDeployer() public {
         // Deploy all implementations first
         address stakingVault = StakingVaultDeployer.deploy();
-        address proposalLib = ProposalLibDeployer.deploy();
-        address throttleLib = ThrottleLibDeployer.deploy();
-        address governor = ReserveOptimisticGovernorDeployer.deploy(proposalLib, throttleLib);
+        address governor = ReserveOptimisticGovernorDeployer.deploy();
         address timelock = TimelockControllerOptimisticDeployer.deploy();
         address selectorRegistry = OptimisticSelectorRegistryDeployer.deploy();
 
@@ -75,10 +68,10 @@ contract ArtifactsTest is Test {
         bytes32 salt1 = keccak256("test-salt-1");
         bytes32 salt2 = keccak256("test-salt-2");
 
-        address deployed1 = StakingVaultDeployer.deploy(salt1);
+        address deployed1 = StakingVaultDeployer.deploy2(salt1);
         assertNotEq(deployed1, address(0), "StakingVault deployment with salt1 failed");
 
-        address deployed2 = StakingVaultDeployer.deploy(salt2);
+        address deployed2 = StakingVaultDeployer.deploy2(salt2);
         assertNotEq(deployed2, address(0), "StakingVault deployment with salt2 failed");
 
         // Different salts should produce different addresses

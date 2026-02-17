@@ -20,5 +20,8 @@
     "@prb/math": "^4.1.0",
     "forge-std": "github:foundry-rs/forge-std#v1.14.0"
   },
-  "packageManager": "pnpm@10.28.0"
+  "packageManager": "pnpm@10.28.0",
+  "devDependencies": {
+    "forge-pack": "^0.2.0"
+  }
 }
