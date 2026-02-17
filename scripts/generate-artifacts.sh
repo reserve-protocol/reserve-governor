@@ -96,21 +96,21 @@ pragma solidity ^0.8.28;
 import { DeployHelper } from "./DeployHelper.sol";
 
 library ReserveOptimisticGovernorDeployer {
-    /// @notice Deploy ReserveOptimisticGovernor with linked ProposalValidationLib
-    /// @param proposalValidationLib Address of the deployed ProposalValidationLib
+    /// @notice Deploy ReserveOptimisticGovernor with linked ThrottleLib
+    /// @param proposalValidationLib Address of the deployed ThrottleLib
     /// @param salt CREATE2 salt
     function deploy(address proposalValidationLib, bytes32 salt) internal returns (address) {
         return DeployHelper.deploy(initcode(proposalValidationLib), salt);
     }
 
-    /// @notice Deploy ReserveOptimisticGovernor with linked ProposalValidationLib
-    /// @param proposalValidationLib Address of the deployed ProposalValidationLib
+    /// @notice Deploy ReserveOptimisticGovernor with linked ThrottleLib
+    /// @param proposalValidationLib Address of the deployed ThrottleLib
     function deploy(address proposalValidationLib) internal returns (address) {
         return DeployHelper.deploy(initcode(proposalValidationLib));
     }
 
     /// @notice Get the initcode with the library address linked
-    /// @param proposalValidationLib Address of the deployed ProposalValidationLib
+    /// @param proposalValidationLib Address of the deployed ThrottleLib
     function initcode(address proposalValidationLib) internal pure returns (bytes memory) {
         bytes20 libAddr = bytes20(proposalValidationLib);
         return abi.encodePacked(
@@ -226,7 +226,8 @@ EOF
 
 # Generate artifacts for each contract using path:name format for disambiguation
 generate_simple_artifact "contracts/staking/StakingVault.sol:StakingVault" "StakingVaultDeployer" "StakingVaultArtifact.sol"
-generate_simple_artifact "contracts/governance/ProposalValidationLib.sol:ProposalValidationLib" "ProposalValidationLibDeployer" "ProposalValidationLibArtifact.sol"
+generate_simple_artifact "contracts/governance/lib/ProposalLib.sol:ProposalLib" "ProposalLibDeployer" "ProposalLibArtifact.sol"
+generate_simple_artifact "contracts/governance/lib/ThrottleLib.sol:ThrottleLib" "ThrottleLibDeployer" "ThrottleLibArtifact.sol"
 generate_governor_artifact
 generate_simple_artifact "contracts/governance/TimelockControllerOptimistic.sol:TimelockControllerOptimistic" "TimelockControllerOptimisticDeployer" "TimelockControllerOptimisticArtifact.sol"
 generate_simple_artifact "contracts/governance/OptimisticSelectorRegistry.sol:OptimisticSelectorRegistry" "OptimisticSelectorRegistryDeployer" "OptimisticSelectorRegistryArtifact.sol"
