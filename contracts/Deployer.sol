@@ -32,8 +32,8 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     }
 
     /// @notice Deploy a complete Reserve Governor system via proxies
-    /// @param params.optimisticParams.vetoDelay {s} Delay before optimistic veto period starts
-    /// @param params.optimisticParams.vetoPeriod {s} Veto period
+    /// @param params.optimisticParams.vetoDelay {s} Delay before snapshot for optimistic proposals
+    /// @param params.optimisticParams.vetoPeriod {s} Veto period for optimistic proposals
     /// @param params.optimisticParams.vetoThreshold D18{1} Fraction of staked supply required to start confirmation
     /// @param params.standardParams.votingDelay {s} Delay before snapshot
     /// @param params.standardParams.votingPeriod {s} Voting period

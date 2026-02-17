@@ -58,6 +58,7 @@ contract ReserveOptimisticGovernorTest is Test {
     uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per 24h
 
     uint256 internal constant TIMELOCK_DELAY = 2 days;
+    string internal constant CONFIRMATION_PREFIX = "Confirmation For: ";
 
     // StakingVault params
     uint256 internal constant REWARD_HALF_LIFE = 1 days;
@@ -159,10 +160,10 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(governor.proposalThreshold(), expectedThreshold);
     }
 
-    function test_proposalType_revertsForNonexistentProposal() public {
+    function test_isOptimistic_revertsForNonexistentProposal() public {
         uint256 proposalId = 123456;
         vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorNonexistentProposal.selector, proposalId));
-        governor.proposalType(proposalId);
+        governor.isOptimistic(proposalId);
     }
 
     // ===== Standard (Slow) Flow =====
@@ -235,6 +236,43 @@ contract ReserveOptimisticGovernorTest is Test {
             abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, noVotes, 0, threshold)
         );
         governor.propose(targets, values, calldatas, "No votes proposer");
+    }
+
+    function test_standardProposal_rejectsConfirmationPrefixDescription() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed.selector));
+        governor.propose(targets, values, calldatas, _confirmationDescription("manual confirmation"));
+    }
+
+    function test_standardProposal_rejectsExactConfirmationPrefixDescription() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed.selector));
+        governor.propose(targets, values, calldatas, _confirmationDescription(""));
+    }
+
+    function test_standardProposal_allowsConfirmationPrefixIfNotAtStart() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = string.concat("Intro ", _confirmationDescription("manual confirmation"));
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_standardProposal_allowsDescriptionShorterThanConfirmationPrefix() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, "Conf:");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
     }
 
     function test_standardProposal_rejectsFunctionCallToEOA() public {
@@ -354,7 +392,9 @@ contract ReserveOptimisticGovernorTest is Test {
             _singleCall(address(underlying), 0, bytes(""));
 
         vm.prank(optimisticProposer);
-        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidCall.selector, address(underlying), bytes("")));
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.InvalidCall.selector, address(underlying), bytes(""))
+        );
         governor.proposeOptimistic(targets, values, calldatas, "empty calldata");
     }
 
@@ -371,6 +411,43 @@ contract ReserveOptimisticGovernorTest is Test {
             )
         );
         governor.proposeOptimistic(targets, values, calldatas, "approve not whitelisted");
+    }
+
+    function test_proposeOptimistic_rejectsConfirmationPrefixDescription() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed.selector));
+        governor.proposeOptimistic(targets, values, calldatas, _confirmationDescription("manual confirmation"));
+    }
+
+    function test_proposeOptimistic_rejectsExactConfirmationPrefixDescription() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(abi.encodeWithSelector(IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed.selector));
+        governor.proposeOptimistic(targets, values, calldatas, _confirmationDescription(""));
+    }
+
+    function test_proposeOptimistic_allowsConfirmationPrefixIfNotAtStart() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = string.concat("Intro ", _confirmationDescription("manual confirmation"));
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_proposeOptimistic_allowsDescriptionShorterThanConfirmationPrefix() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, "Conf:");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
     }
 
     function test_proposeOptimistic_rejectsDescriptionSuffixForDifferentProposer() public {
@@ -436,26 +513,16 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
-        assertEq(
-            uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Optimistic)
-        );
-        assertEq(governor.vetoThresholds(proposalId), VETO_THRESHOLD);
+        assertTrue(governor.isOptimistic(proposalId));
+        assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
 
         _warpToActive(proposalId);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
 
-        // FOR/ABSTAIN votes do not matter for optimistic threshold checks.
-        vm.prank(alice);
-        governor.castVote(proposalId, 1);
-        vm.prank(bob);
-        governor.castVote(proposalId, 2);
-
         _warpPastDeadline(proposalId);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
-        assertEq(
-            uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Optimistic)
-        );
+        assertTrue(governor.isOptimistic(proposalId));
 
         uint256 aliceBalanceBefore = underlying.balanceOf(alice);
         bytes32 descriptionHash = keccak256(bytes(description));
@@ -501,7 +568,11 @@ contract ReserveOptimisticGovernorTest is Test {
                 IGovernor.GovernorUnexpectedProposalState.selector,
                 proposalId,
                 IGovernor.ProposalState.Pending,
-                bytes32(uint256((1 << uint8(IGovernor.ProposalState.Succeeded)) | (1 << uint8(IGovernor.ProposalState.Queued))))
+                bytes32(
+                    uint256(
+                        (1 << uint8(IGovernor.ProposalState.Succeeded)) | (1 << uint8(IGovernor.ProposalState.Queued))
+                    )
+                )
             )
         );
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
@@ -558,18 +629,24 @@ contract ReserveOptimisticGovernorTest is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
         _warpToActive(proposalId);
 
-        uint256 expectedVoteStart = governor.proposalSnapshot(proposalId);
-        uint256 expectedVoteEnd = block.timestamp + VOTING_PERIOD;
+        uint256 expectedConfirmationVoteStart = block.timestamp + VOTING_DELAY;
+        uint256 expectedConfirmationVoteEnd = expectedConfirmationVoteStart + VOTING_PERIOD;
 
         // Alice's 40% AGAINST vote exceeds the 20% veto threshold and schedules confirmation.
         vm.prank(alice);
         governor.castVote(proposalId, 0);
 
-        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
-        assertEq(governor.vetoThresholds(proposalId), 0);
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
-        assertEq(governor.proposalSnapshot(proposalId), expectedVoteStart);
-        assertEq(governor.proposalDeadline(proposalId), expectedVoteEnd);
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+        assertNotEq(proposalId, confirmationProposalId);
+
+        assertTrue(governor.isOptimistic(proposalId));
+        assertEq(governor.vetoThreshold(proposalId), type(uint256).max);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
+
+        assertFalse(governor.isOptimistic(confirmationProposalId));
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Pending));
+        assertEq(governor.proposalSnapshot(confirmationProposalId), expectedConfirmationVoteStart);
+        assertEq(governor.proposalDeadline(confirmationProposalId), expectedConfirmationVoteEnd);
 
         (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
         assertEq(againstVotes, ALICE_STAKE);
@@ -577,79 +654,132 @@ contract ReserveOptimisticGovernorTest is Test {
         assertEq(abstainVotes, 0);
     }
 
-    function test_confirmationVote_isImmediatelyActiveAfterTransition() public {
+    function test_optimisticProposal_proposerCannotCancelWhenDefeated() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-        string memory description = "Confirmation starts immediately";
+        string memory description = "Defeated optimistic proposal cannot be canceled";
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
         _warpToActive(proposalId);
-
-        uint256 expectedVoteStart = governor.proposalSnapshot(proposalId);
-        uint256 expectedVoteEnd = block.timestamp + VOTING_PERIOD;
 
         vm.prank(alice);
         governor.castVote(proposalId, 0); // trigger optimistic -> confirmation transition
 
-        assertEq(uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Standard));
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
-        assertEq(governor.proposalSnapshot(proposalId), expectedVoteStart);
-        assertEq(governor.proposalDeadline(proposalId), expectedVoteEnd);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
 
-        // Regression: confirmation vote should already be active here, so Bob can vote immediately.
-        vm.prank(bob);
-        governor.castVote(proposalId, 1);
-
-        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
-        assertEq(againstVotes, ALICE_STAKE);
-        assertEq(forVotes, BOB_STAKE);
-        assertEq(abstainVotes, 0);
+        vm.prank(optimisticProposer);
+        vm.expectRevert(
+            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticProposer)
+        );
+        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
     }
 
-    function test_optimisticProposal_forAndAbstainDoNotScheduleConfirmation() public {
+    function test_confirmationVote_startsPendingAfterTransition() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-        string memory description = "Non-against votes only";
+        string memory description = "Confirmation starts pending";
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
         _warpToActive(proposalId);
 
         vm.prank(alice);
+        governor.castVote(proposalId, 0); // trigger optimistic -> confirmation transition
+
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Pending));
+
+        vm.prank(bob);
+        vm.expectRevert();
+        governor.castVote(confirmationProposalId, 1);
+
+        _warpToActive(confirmationProposalId);
+        vm.prank(bob);
+        governor.castVote(confirmationProposalId, 1);
+
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(confirmationProposalId);
+        assertEq(againstVotes, 0);
+        assertEq(forVotes, BOB_STAKE);
+        assertEq(abstainVotes, 0);
+    }
+
+    function test_confirmationVote_transitionWorksWhenOptimisticProposerHasNoVotingWeight() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Transition with zero-vote proposer";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        _warpToActive(proposalId);
+
+        uint256 snapshot = governor.proposalSnapshot(proposalId);
+        assertEq(governor.getVotes(optimisticProposer, snapshot - 1), 0);
+
+        vm.prank(alice);
+        governor.castVote(proposalId, 0); // trigger optimistic -> confirmation transition
+
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_optimisticProposal_forAndAbstainRevert() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Only AGAINST allowed";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        _warpToActive(proposalId);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.OptimisticProposalCanOnlyBeVetoed.selector, proposalId)
+        );
         governor.castVote(proposalId, 1);
         vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(IReserveOptimisticGovernor.OptimisticProposalCanOnlyBeVetoed.selector, proposalId)
+        );
         governor.castVote(proposalId, 2);
 
-        assertEq(
-            uint256(governor.proposalType(proposalId)), uint256(IReserveOptimisticGovernor.ProposalType.Optimistic)
-        );
-        assertEq(governor.vetoThresholds(proposalId), VETO_THRESHOLD);
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
+        assertEq(againstVotes, 0);
+        assertEq(forVotes, 0);
+        assertEq(abstainVotes, 0);
+
+        assertTrue(governor.isOptimistic(proposalId));
+        assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);
 
         _warpPastDeadline(proposalId);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
     }
 
-    function test_confirmationVote_hasVotedCarriesOverFromVetoPhase() public {
+    function test_confirmationVote_voteDoesNotCarryOverFromVetoPhase() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "carry-over vote state";
 
         vm.prank(optimisticProposer);
-        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, "carry-over vote state");
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
         _warpToActive(proposalId);
 
         vm.prank(alice);
         governor.castVote(proposalId, 0); // triggers confirmation
 
-        _warpToActive(proposalId);
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+        _warpToActive(confirmationProposalId);
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Active));
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorAlreadyCastVote.selector, alice));
-        governor.castVote(proposalId, 1);
+        governor.castVote(confirmationProposalId, 1);
 
-        vm.prank(bob);
-        governor.castVote(proposalId, 1);
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(confirmationProposalId);
+        assertEq(againstVotes, 0);
+        assertEq(forVotes, ALICE_STAKE);
+        assertEq(abstainVotes, 0);
     }
 
     function test_confirmationVote_successLifecycle() public {
@@ -668,23 +798,25 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(alice);
         governor.castVote(proposalId, 0); // trigger confirmation
 
-        _warpToActive(proposalId);
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+
+        _warpToActive(confirmationProposalId);
         vm.prank(bob);
-        governor.castVote(proposalId, 1);
+        governor.castVote(confirmationProposalId, 1);
         vm.prank(carol);
-        governor.castVote(proposalId, 1);
+        governor.castVote(confirmationProposalId, 1);
 
-        _warpPastDeadline(proposalId);
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
+        _warpPastDeadline(confirmationProposalId);
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Succeeded));
 
-        bytes32 descriptionHash = keccak256(bytes(description));
+        bytes32 descriptionHash = keccak256(bytes(_confirmationDescription(description)));
         governor.queue(targets, values, calldatas, descriptionHash);
 
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
         uint256 recipientBalanceBefore = underlying.balanceOf(recipient);
         governor.execute(targets, values, calldatas, descriptionHash);
 
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Executed));
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Executed));
         assertEq(underlying.balanceOf(recipient), recipientBalanceBefore + transferAmount);
     }
 
@@ -700,14 +832,15 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(alice);
         governor.castVote(proposalId, 0); // trigger confirmation
 
-        _warpToActive(proposalId);
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+        _warpToActive(confirmationProposalId);
         vm.prank(bob);
-        governor.castVote(proposalId, 0);
+        governor.castVote(confirmationProposalId, 0);
         vm.prank(carol);
-        governor.castVote(proposalId, 2);
+        governor.castVote(confirmationProposalId, 2);
 
-        _warpPastDeadline(proposalId);
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
+        _warpPastDeadline(confirmationProposalId);
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Defeated));
     }
 
     function test_confirmationVote_defeatedWhenQuorumNotReached() public {
@@ -722,13 +855,15 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(alice);
         governor.castVote(proposalId, 0); // trigger confirmation
 
-        // No additional FOR/ABSTAIN votes in confirmation phase.
-        _warpPastDeadline(proposalId);
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
 
-        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
-        assertEq(againstVotes, ALICE_STAKE);
+        // No additional FOR/ABSTAIN votes in confirmation phase.
+        _warpPastDeadline(confirmationProposalId);
+
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(confirmationProposalId);
+        assertEq(againstVotes, 0);
         assertEq(forVotes + abstainVotes, 0);
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Defeated));
     }
 
     function test_confirmationVote_originalOptimisticProposerCanCancel() public {
@@ -743,10 +878,12 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(alice);
         governor.castVote(proposalId, 0); // trigger confirmation
 
-        vm.prank(optimisticProposer);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
 
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
+        vm.prank(optimisticProposer);
+        governor.cancel(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
+
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
     function test_confirmationVote_guardianCanCancel() public {
@@ -761,10 +898,12 @@ contract ReserveOptimisticGovernorTest is Test {
         vm.prank(alice);
         governor.castVote(proposalId, 0); // trigger confirmation
 
-        vm.prank(guardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
 
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
+        vm.prank(guardian);
+        governor.cancel(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
+
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
     function test_execute_revertsAfterConfirmationTransition() public {
@@ -784,14 +923,25 @@ contract ReserveOptimisticGovernorTest is Test {
             abi.encodeWithSelector(
                 IGovernor.GovernorUnexpectedProposalState.selector,
                 proposalId,
-                IGovernor.ProposalState.Active,
-                bytes32(uint256((1 << uint8(IGovernor.ProposalState.Succeeded)) | (1 << uint8(IGovernor.ProposalState.Queued))))
+                IGovernor.ProposalState.Defeated,
+                bytes32(
+                    uint256(
+                        (1 << uint8(IGovernor.ProposalState.Succeeded)) | (1 << uint8(IGovernor.ProposalState.Queued))
+                    )
+                )
             )
         );
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
     }
 
     function test_optimisticProposal_autoCancelsWhenPastSupplyIsZero() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Auto-cancel at zero supply";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
         vm.prank(alice);
         stakingVault.redeem(ALICE_STAKE, alice, alice);
         vm.prank(bob);
@@ -801,13 +951,6 @@ contract ReserveOptimisticGovernorTest is Test {
 
         // Move forward so the zero-supply point becomes observable via getPastTotalSupply(snapshot).
         vm.warp(block.timestamp + 1);
-
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-        string memory description = "Auto-cancel at zero supply";
-
-        vm.prank(optimisticProposer);
-        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         _warpToActive(proposalId);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
@@ -820,42 +963,48 @@ contract ReserveOptimisticGovernorTest is Test {
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
         vm.prank(alice);
-        governor.propose(targets, values, calldatas, "Throttle charge #1 standard");
+        governor.propose(targets, values, calldatas, "standard #1");
+        vm.prank(alice);
+        governor.propose(targets, values, calldatas, "standard #2");
+        vm.prank(alice);
+        governor.propose(targets, values, calldatas, "standard #3");
 
         vm.prank(optimisticProposer);
-        governor.proposeOptimistic(targets, values, calldatas, "Throttle charge #2 optimistic");
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #1");
+        vm.prank(optimisticProposer);
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #2");
 
-        // Alice still has one proposal charge left because proposer throttles are isolated per account.
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "Throttle charge #2 standard");
-
-        vm.prank(alice);
+        vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.ProposalThrottleExceeded.selector);
-        governor.propose(targets, values, calldatas, "Throttle should block alice #3");
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #3");
+
+        // Throttling is account-specific.
+        vm.prank(optimisticProposer2);
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic proposer2 #1");
     }
 
     function test_proposalThrottle_rechargesLinearlyOverTime() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "Consume charge #1");
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "Consume charge #2");
+        vm.prank(optimisticProposer);
+        governor.proposeOptimistic(targets, values, calldatas, "Consume charge #1");
+        vm.prank(optimisticProposer);
+        governor.proposeOptimistic(targets, values, calldatas, "Consume charge #2");
 
-        vm.prank(alice);
+        vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.ProposalThrottleExceeded.selector);
-        governor.propose(targets, values, calldatas, "No charge available");
+        governor.proposeOptimistic(targets, values, calldatas, "No charge available");
 
         // With capacity=2/day, each proposal charge refills in 12h.
         vm.warp(block.timestamp + 12 hours);
 
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "Recharged charge #1");
+        vm.prank(optimisticProposer);
+        governor.proposeOptimistic(targets, values, calldatas, "Recharged charge #1");
 
-        vm.prank(alice);
+        vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.ProposalThrottleExceeded.selector);
-        governor.propose(targets, values, calldatas, "Charge consumed again");
+        governor.proposeOptimistic(targets, values, calldatas, "Charge consumed again");
     }
 
     // ===== Registry Tests =====
@@ -905,31 +1054,23 @@ contract ReserveOptimisticGovernorTest is Test {
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(registry), selectors);
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(registry), selectors[0])
-        );
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(registry)));
         registry.registerSelectors(selectorData);
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(governor), selectors);
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(governor), selectors[0])
-        );
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(governor)));
         registry.registerSelectors(selectorData);
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(timelock), selectors);
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(timelock), selectors[0])
-        );
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(timelock)));
         registry.registerSelectors(selectorData);
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IOptimisticSelectorRegistry.InvalidCall.selector, address(stakingVault), selectors[0]
-            )
+            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(stakingVault))
         );
         registry.registerSelectors(selectorData);
 
@@ -1022,6 +1163,18 @@ contract ReserveOptimisticGovernorTest is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
     }
 
+    function test_setProposalThreshold_revertsAtZero() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(governor), 0, abi.encodeCall(governor.setProposalThreshold, (0)));
+
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Set proposalThreshold to 0%");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveOptimisticGovernor.InvalidProposalThreshold.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
     function test_setProposalThreshold_updatesProposerEligibility() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(governor), 0, abi.encodeCall(governor.setProposalThreshold, (0.6e18)));
@@ -1055,15 +1208,15 @@ contract ReserveOptimisticGovernorTest is Test {
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
         for (uint256 i = 0; i < newProposalThrottle; i++) {
-            vm.prank(alice);
-            governor.propose(
+            vm.prank(optimisticProposer);
+            governor.proposeOptimistic(
                 callTargets, callValues, callCalldatas, string.concat("Throttle reset propose #", vm.toString(i))
             );
         }
 
-        vm.prank(alice);
+        vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.ProposalThrottleExceeded.selector);
-        governor.propose(callTargets, callValues, callCalldatas, "Throttle reset should be exhausted");
+        governor.proposeOptimistic(callTargets, callValues, callCalldatas, "Throttle reset should be exhausted");
     }
 
     function test_setProposalThrottle_revertsWhenInvalid() public {
@@ -1184,6 +1337,21 @@ contract ReserveOptimisticGovernorTest is Test {
 
         vm.prank(address(timelock));
         registry.unregisterSelectors(selectorData);
+    }
+
+    function _confirmationDescription(string memory description) internal pure returns (string memory) {
+        return string.concat(CONFIRMATION_PREFIX, description);
+    }
+
+    function _confirmationProposalId(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) internal view returns (uint256) {
+        return governor.getProposalId(
+            targets, values, calldatas, keccak256(bytes(_confirmationDescription(description)))
+        );
     }
 
     function _warpToActive(uint256 proposalId) internal {

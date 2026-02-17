@@ -24,16 +24,3 @@ index 5860963e4486e3c45fd906a563a678701d421a4b..5878029ba4b798e635a52608a65dc8cc
          assembly {
              $.slot := TimelockControllerStorageLocation
          }
-diff --git a/governance/extensions/GovernorCountingSimpleUpgradeable.sol b/governance/extensions/GovernorCountingSimpleUpgradeable.sol
-index 755ef0e0503f1653135cb3cb3d310c6b3e4d28d4..91f33bf7380b4accbfd655cd8f846d408a4e1311 100644
---- a/governance/extensions/GovernorCountingSimpleUpgradeable.sol
-+++ b/governance/extensions/GovernorCountingSimpleUpgradeable.sol
-@@ -35,7 +35,7 @@ abstract contract GovernorCountingSimpleUpgradeable is Initializable, GovernorUp
-     // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.GovernorCountingSimple")) - 1)) & ~bytes32(uint256(0xff))
-     bytes32 private constant GovernorCountingSimpleStorageLocation = 0xa1cefa0f43667ef127a258e673c94202a79b656e62899531c4376d87a7f39800;
-
--    function _getGovernorCountingSimpleStorage() private pure returns (GovernorCountingSimpleStorage storage $) {
-+    function _getGovernorCountingSimpleStorage() internal pure returns (GovernorCountingSimpleStorage storage $) {
-         assembly {
-             $.slot := GovernorCountingSimpleStorageLocation
-         }
