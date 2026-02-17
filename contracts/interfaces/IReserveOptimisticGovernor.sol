@@ -8,27 +8,31 @@ import {
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error InvalidVotingPeriod();
     error InvalidProposalThreshold();
     error InvalidProposalThrottle();
     error InvalidOptimisticParameters();
     error OptimisticProposalCannotBeQueued(uint256 proposalId);
     error NotOptimisticProposer(address account);
+    error ConfirmationPrefixNotAllowed();
     error InvalidCall(address target, bytes call);
     error ProposalThrottleExceeded();
+    error InvalidDelay();
+    error OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
 
     // === Events ===
 
     /// @param vetoThreshold D18{1} Fraction of token supply required to start confirmation process
     event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
-    event ConfirmationVoteScheduled(uint256 indexed proposalId, uint256 voteStart, uint256 voteEnd);
     event ProposalThrottleUpdated(uint256 throttleCapacity);
 
     // === Data ===
 
-    enum ProposalType {
-        Optimistic,
-        Standard
+    struct OptimisticProposalDetails {
+        address[] targets;
+        uint256[] values;
+        bytes[] calldatas;
+        string description;
+        uint256 vetoThreshold; // D18{1} Fraction of token supply required to start confirmation process
     }
 
     struct OptimisticGovernanceParams {
@@ -44,16 +48,6 @@ interface IReserveOptimisticGovernor {
         uint256 proposalThreshold; // D18{1}
         uint256 quorumNumerator; // D18{1}
         uint256 proposalThrottleCapacity; // proposals-per-account per 24h
-    }
-
-    struct ProposalThrottleStorage {
-        uint256 capacity; // max number of proposals per 24h
-        mapping(address account => ProposalThrottle) throttles;
-    }
-
-    struct ProposalThrottle {
-        uint256 currentCharge; // D18{1}
-        uint256 lastUpdated; // {s}
     }
 
     function initialize(
