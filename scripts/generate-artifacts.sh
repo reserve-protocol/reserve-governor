@@ -74,18 +74,50 @@ generate_governor_artifact() {
     # Remove 0x prefix
     bytecode="${bytecode#0x}"
 
-    # Extract the library placeholder pattern (format: __$hash$__)
-    # The placeholder is 40 characters (20 bytes = address size)
-    local placeholder
-    placeholder=$(echo "$bytecode" | grep -oE '__\$[a-f0-9]{34}\$__' | head -1 || true)
+    # Solidity library placeholders are "__$" + first 34 chars of keccak256("path:Library") + "$__"
+    local proposal_lib_id="contracts/governance/lib/ProposalLib.sol:ProposalLib"
+    local throttle_lib_id="contracts/governance/lib/ThrottleLib.sol:ThrottleLib"
+    local proposal_placeholder
+    local throttle_placeholder
+    local proposal_hash
+    local throttle_hash
 
-    if [[ -z "$placeholder" ]]; then
-        echo "Error: Could not find library placeholder in ReserveOptimisticGovernor bytecode" >&2
+    proposal_hash=$(cast keccak "$proposal_lib_id")
+    throttle_hash=$(cast keccak "$throttle_lib_id")
+    proposal_hash="${proposal_hash#0x}"
+    throttle_hash="${throttle_hash#0x}"
+    proposal_placeholder=$(printf '__$%s$__' "${proposal_hash:0:34}")
+    throttle_placeholder=$(printf '__$%s$__' "${throttle_hash:0:34}")
+
+    local proposal_count
+    local throttle_count
+    local stripped
+
+    stripped="${bytecode//$proposal_placeholder/}"
+    proposal_count=$(( (${#bytecode} - ${#stripped}) / ${#proposal_placeholder} ))
+    stripped="${bytecode//$throttle_placeholder/}"
+    throttle_count=$(( (${#bytecode} - ${#stripped}) / ${#throttle_placeholder} ))
+
+    if [[ $proposal_count -eq 0 ]]; then
+        echo "Error: Could not find ProposalLib placeholder in ReserveOptimisticGovernor bytecode" >&2
         exit 1
     fi
 
-    # Split bytecode at the placeholder(s) - there may be multiple occurrences
-    # We'll use a runtime linking approach in Solidity
+    if [[ $throttle_count -eq 0 ]]; then
+        echo "Error: Could not find ThrottleLib placeholder in ReserveOptimisticGovernor bytecode" >&2
+        exit 1
+    fi
+
+    echo "Found $proposal_count ProposalLib placeholder(s) and $throttle_count ThrottleLib placeholder(s)"
+
+    local linked_template="$bytecode"
+    linked_template="${linked_template//$proposal_placeholder/|proposalLibAddr|}"
+    linked_template="${linked_template//$throttle_placeholder/|throttleLibAddr|}"
+
+    if echo "$linked_template" | grep -qE '__\$[a-f0-9]{34}\$__'; then
+        echo "Error: Found unknown unresolved library placeholders in ReserveOptimisticGovernor bytecode" >&2
+        exit 1
+    fi
 
     cat > "$artifact_path" << 'HEADER'
 // SPDX-License-Identifier: MIT
@@ -96,68 +128,69 @@ pragma solidity ^0.8.28;
 import { DeployHelper } from "./DeployHelper.sol";
 
 library ReserveOptimisticGovernorDeployer {
-    /// @notice Deploy ReserveOptimisticGovernor with linked ThrottleLib
-    /// @param proposalValidationLib Address of the deployed ThrottleLib
+    /// @notice Deploy ReserveOptimisticGovernor with linked ProposalLib/ThrottleLib
+    /// @param proposalLib Address of the deployed ProposalLib
+    /// @param throttleLib Address of the deployed ThrottleLib
     /// @param salt CREATE2 salt
-    function deploy(address proposalValidationLib, bytes32 salt) internal returns (address) {
-        return DeployHelper.deploy(initcode(proposalValidationLib), salt);
+    function deploy(address proposalLib, address throttleLib, bytes32 salt) internal returns (address) {
+        return DeployHelper.deploy(initcode(proposalLib, throttleLib), salt);
     }
 
-    /// @notice Deploy ReserveOptimisticGovernor with linked ThrottleLib
-    /// @param proposalValidationLib Address of the deployed ThrottleLib
-    function deploy(address proposalValidationLib) internal returns (address) {
-        return DeployHelper.deploy(initcode(proposalValidationLib));
+    /// @notice Deploy ReserveOptimisticGovernor with linked ProposalLib/ThrottleLib
+    /// @param proposalLib Address of the deployed ProposalLib
+    /// @param throttleLib Address of the deployed ThrottleLib
+    function deploy(address proposalLib, address throttleLib) internal returns (address) {
+        return DeployHelper.deploy(initcode(proposalLib, throttleLib));
     }
 
-    /// @notice Get the initcode with the library address linked
-    /// @param proposalValidationLib Address of the deployed ThrottleLib
-    function initcode(address proposalValidationLib) internal pure returns (bytes memory) {
-        bytes20 libAddr = bytes20(proposalValidationLib);
+    /// @notice Get the initcode with the library addresses linked
+    /// @param proposalLib Address of the deployed ProposalLib
+    /// @param throttleLib Address of the deployed ThrottleLib
+    function initcode(address proposalLib, address throttleLib) internal pure returns (bytes memory) {
+        bytes20 proposalLibAddr = bytes20(proposalLib);
+        bytes20 throttleLibAddr = bytes20(throttleLib);
         return abi.encodePacked(
 HEADER
 
-    # Now we need to generate the bytecode parts split by the placeholder
-    # First, let's count how many placeholders there are
-    local placeholder_count
-    placeholder_count=$(echo "$bytecode" | grep -o "$placeholder" | wc -l | tr -d ' ')
+    local -a parts=()
+    IFS='|' read -r -a parts <<< "$linked_template"
 
-    echo "Found $placeholder_count library placeholder(s)"
-
-    # Split the bytecode at each placeholder
-    local parts=()
-    local remaining="$bytecode"
-    local idx=0
-
-    while [[ "$remaining" == *"$placeholder"* ]]; do
-        local before="${remaining%%${placeholder}*}"
-        parts+=("$before")
-        remaining="${remaining#*${placeholder}}"
-        ((idx++)) || true
-    done
-    parts+=("$remaining")
-
-    # Generate the abi.encodePacked arguments
+    # Generate abi.encodePacked arguments from hex chunks and address placeholders.
+    # Keep hex literal chunks small to avoid Solidity parser limits with giant literals.
     local first=true
-    for i in "${!parts[@]}"; do
-        local part="${parts[$i]}"
-        if [[ -n "$part" ]]; then
+    local hex_chunk_size=2048
+    for part in "${parts[@]}"; do
+        if [[ -z "$part" ]]; then
+            continue
+        fi
+
+        if [[ "$part" == "proposalLibAddr" || "$part" == "throttleLibAddr" ]]; then
             if [[ "$first" == "true" ]]; then
+                echo "            $part" >> "$artifact_path"
                 first=false
             else
-                echo "," >> "$artifact_path"
+                echo "            , $part" >> "$artifact_path"
             fi
-            echo "            hex\"${part}\"" >> "$artifact_path"
+            continue
         fi
-        # Add libAddr after each part except the last
-        if [[ $i -lt $((${#parts[@]} - 1)) ]]; then
+
+        local remaining="$part"
+        while [[ -n "$remaining" ]]; do
+            local chunk="${remaining:0:$hex_chunk_size}"
+            remaining="${remaining:$hex_chunk_size}"
             if [[ "$first" == "true" ]]; then
+                echo "            hex\"${chunk}\"" >> "$artifact_path"
                 first=false
             else
-                echo "," >> "$artifact_path"
+                echo "            , hex\"${chunk}\"" >> "$artifact_path"
             fi
-            echo "            libAddr" >> "$artifact_path"
-        fi
+        done
     done
+
+    if [[ "$first" == "true" ]]; then
+        echo "Error: Failed to generate initcode segments for ReserveOptimisticGovernor artifact" >&2
+        exit 1
+    fi
 
     cat >> "$artifact_path" << 'FOOTER'
         );

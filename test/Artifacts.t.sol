@@ -4,7 +4,8 @@ pragma solidity ^0.8.28;
 import { Test } from "forge-std/Test.sol";
 
 import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultArtifact.sol";
-import { OptimisticProposalLibDeployer } from "../contracts/artifacts/OptimisticProposalLibArtifact.sol";
+import { ProposalLibDeployer } from "../contracts/artifacts/ProposalLibArtifact.sol";
+import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibArtifact.sol";
 import { ReserveOptimisticGovernorDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorArtifact.sol";
 import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticArtifact.sol";
 import { OptimisticSelectorRegistryDeployer } from "../contracts/artifacts/OptimisticSelectorRegistryArtifact.sol";
@@ -17,18 +18,25 @@ contract ArtifactsTest is Test {
         assertTrue(deployed.code.length > 0, "StakingVault has no code");
     }
 
-    function test_deployOptimisticProposalLib() public {
-        address deployed = OptimisticProposalLibDeployer.deploy();
-        assertNotEq(deployed, address(0), "OptimisticProposalLib deployment failed");
-        assertTrue(deployed.code.length > 0, "OptimisticProposalLib has no code");
+    function test_deployProposalLib() public {
+        address deployed = ProposalLibDeployer.deploy();
+        assertNotEq(deployed, address(0), "ProposalLib deployment failed");
+        assertTrue(deployed.code.length > 0, "ProposalLib has no code");
+    }
+
+    function test_deployThrottleLib() public {
+        address deployed = ThrottleLibDeployer.deploy();
+        assertNotEq(deployed, address(0), "ThrottleLib deployment failed");
+        assertTrue(deployed.code.length > 0, "ThrottleLib has no code");
     }
 
     function test_deployReserveOptimisticGovernor() public {
-        // First deploy the library
-        address lib = OptimisticProposalLibDeployer.deploy();
+        // First deploy both linked libraries
+        address proposalLib = ProposalLibDeployer.deploy();
+        address throttleLib = ThrottleLibDeployer.deploy();
 
-        // Then deploy the governor with the linked library
-        address deployed = ReserveOptimisticGovernorDeployer.deploy(lib);
+        // Then deploy the governor with the linked libraries
+        address deployed = ReserveOptimisticGovernorDeployer.deploy(proposalLib, throttleLib);
         assertNotEq(deployed, address(0), "ReserveOptimisticGovernor deployment failed");
         assertTrue(deployed.code.length > 0, "ReserveOptimisticGovernor has no code");
     }
@@ -48,8 +56,9 @@ contract ArtifactsTest is Test {
     function test_deployReserveOptimisticGovernorDeployer() public {
         // Deploy all implementations first
         address stakingVault = StakingVaultDeployer.deploy();
-        address lib = OptimisticProposalLibDeployer.deploy();
-        address governor = ReserveOptimisticGovernorDeployer.deploy(lib);
+        address proposalLib = ProposalLibDeployer.deploy();
+        address throttleLib = ThrottleLibDeployer.deploy();
+        address governor = ReserveOptimisticGovernorDeployer.deploy(proposalLib, throttleLib);
         address timelock = TimelockControllerOptimisticDeployer.deploy();
         address selectorRegistry = OptimisticSelectorRegistryDeployer.deploy();
 
