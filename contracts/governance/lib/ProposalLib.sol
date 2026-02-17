@@ -114,7 +114,9 @@ library ProposalLib {
 
         require(
             optimisticProposal.vetoThreshold != TRANSITIONED_VETO_THRESHOLD,
-            IGovernor.GovernorUnexpectedProposalState(proposalId, governor.state(proposalId), bytes32(0))
+            IGovernor.GovernorUnexpectedProposalState(
+                proposalId, governor.state(proposalId), bytes32(1 << uint8(IGovernor.ProposalState.Defeated))
+            )
         );
         optimisticProposal.vetoThreshold = TRANSITIONED_VETO_THRESHOLD;
 
