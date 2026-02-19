@@ -57,8 +57,8 @@ contract StakingVaultTest is Test {
         address[] memory rewardTokens = new address[](1);
         rewardTokens[0] = address(reward);
 
-        IReserveOptimisticGovernorDeployer.DeploymentParams memory params =
-            IReserveOptimisticGovernorDeployer.DeploymentParams({
+        IReserveOptimisticGovernorDeployer.BaseDeploymentParams memory baseParams =
+            IReserveOptimisticGovernorDeployer.BaseDeploymentParams({
                 optimisticParams: IReserveOptimisticGovernor.OptimisticGovernanceParams({
                     vetoDelay: 1 hours, vetoPeriod: 2 hours, vetoThreshold: 0.05e18
                 }),
@@ -73,7 +73,11 @@ contract StakingVaultTest is Test {
                 selectorData: new IOptimisticSelectorRegistry.SelectorData[](0),
                 optimisticProposers: new address[](0),
                 guardians: new address[](0),
-                timelockDelay: 2 days,
+                timelockDelay: 2 days
+            });
+
+        IReserveOptimisticGovernorDeployer.NewStakingVaultParams memory newStakingVaultParams =
+            IReserveOptimisticGovernorDeployer.NewStakingVaultParams({
                 underlying: IERC20Metadata(address(token)),
                 rewardTokens: rewardTokens,
                 rewardHalfLife: REWARD_HALF_LIFE,
@@ -81,7 +85,8 @@ contract StakingVaultTest is Test {
             });
 
         // Deploy system
-        (address stakingVaultAddr,, address timelockAddr,) = deployer.deploy(params, bytes32(0));
+        (address stakingVaultAddr,, address timelockAddr,) =
+            deployer.deployWithNewStakingVault(baseParams, newStakingVaultParams, bytes32(0));
         vault = StakingVault(stakingVaultAddr);
         timelock = timelockAddr;
 
