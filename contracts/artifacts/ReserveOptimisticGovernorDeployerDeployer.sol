@@ -7,7 +7,7 @@ library ReserveOptimisticGovernorDeployerDeployer {
      *
      * @notice Source Contract: contracts/Deployer.sol
      * - solc: 0.8.33+commit.64118f21
-     * - optimizer_runs: 200
+     * - optimizer_runs: 193
      * - evm_version: cancun
      */
 
