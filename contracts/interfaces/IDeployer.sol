@@ -5,9 +5,8 @@ import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/I
 
 import { IOptimisticSelectorRegistry } from "./IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "./IReserveOptimisticGovernor.sol";
-import { IVersioned } from "./IVersioned.sol";
 
-interface IReserveOptimisticGovernorDeployer is IVersioned {
+interface IReserveOptimisticGovernorDeployer {
     // === Events ===
 
     event ReserveOptimisticGovernorSystemDeployed(
