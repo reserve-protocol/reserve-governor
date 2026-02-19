@@ -124,6 +124,10 @@ contract ReserveOptimisticGovernor is
         return proposalThrottle.capacity;
     }
 
+    function proposalThrottleCharges(address account) external view returns (uint256) {
+        return ThrottleLib.getProposalsAvailable(proposalThrottle, account);
+    }
+
     function quorumDenominator() public pure override returns (uint256) {
         return 1e18;
     }
