@@ -28,7 +28,7 @@ contract DummyTarget {
     }
 }
 
-contract ReserveOptimisticGovernorTest is Test {
+abstract contract ReserveOptimisticGovernorTestBase is Test {
     // Contracts
     MockERC20 public underlying;
     StakingVault public stakingVault;
@@ -36,6 +36,7 @@ contract ReserveOptimisticGovernorTest is Test {
     ReserveOptimisticGovernorDeployer public deployer;
     ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
+    address public originalStakingVaultOwner;
 
     // Accounts
     address public alice = makeAddr("alice");
@@ -68,6 +69,8 @@ contract ReserveOptimisticGovernorTest is Test {
     uint256 internal constant ALICE_STAKE = 400_000e18;
     uint256 internal constant BOB_STAKE = 400_000e18;
     uint256 internal constant CAROL_STAKE = 200_000e18;
+
+    function _useExistingStakingVaultDeployment() internal pure virtual returns (bool);
 
     function setUp() public {
         underlying = new MockERC20("Underlying Token", "UNDL");
@@ -122,12 +125,32 @@ contract ReserveOptimisticGovernorTest is Test {
                 unstakingDelay: UNSTAKING_DELAY
             });
 
+        // Baseline deployment used directly in new-vault mode and reused as the preexisting vault in existing-vault
+        // mode.
         (address stakingVaultAddr, address governorAddr, address timelockAddr, address selectorRegistryAddr) =
             deployer.deployWithNewStakingVault(baseParams, newStakingVaultParams, bytes32(0));
-        stakingVault = StakingVault(stakingVaultAddr);
-        governor = ReserveOptimisticGovernor(payable(governorAddr));
-        timelock = TimelockControllerOptimistic(payable(timelockAddr));
-        registry = OptimisticSelectorRegistry(selectorRegistryAddr);
+        originalStakingVaultOwner = timelockAddr;
+
+        if (_useExistingStakingVaultDeployment()) {
+            (
+                address existingStakingVaultAddr,
+                address existingGovernorAddr,
+                address existingTimelockAddr,
+                address existingSelectorRegistryAddr
+            ) = deployer.deployWithExistingStakingVault(baseParams, stakingVaultAddr, bytes32(uint256(1)));
+
+            assertEq(existingStakingVaultAddr, stakingVaultAddr, "existing-vault deploy should reuse staking vault");
+
+            stakingVault = StakingVault(existingStakingVaultAddr);
+            governor = ReserveOptimisticGovernor(payable(existingGovernorAddr));
+            timelock = TimelockControllerOptimistic(payable(existingTimelockAddr));
+            registry = OptimisticSelectorRegistry(existingSelectorRegistryAddr);
+        } else {
+            stakingVault = StakingVault(stakingVaultAddr);
+            governor = ReserveOptimisticGovernor(payable(governorAddr));
+            timelock = TimelockControllerOptimistic(payable(timelockAddr));
+            registry = OptimisticSelectorRegistry(selectorRegistryAddr);
+        }
 
         _setupVoter(alice, ALICE_STAKE);
         _setupVoter(bob, BOB_STAKE);
@@ -162,6 +185,13 @@ contract ReserveOptimisticGovernorTest is Test {
         uint256 supply = stakingVault.getPastTotalSupply(block.timestamp - 1);
         uint256 expectedThreshold = (PROPOSAL_THRESHOLD * supply + (1e18 - 1)) / 1e18;
         assertEq(governor.proposalThreshold(), expectedThreshold);
+
+        if (_useExistingStakingVaultDeployment()) {
+            assertEq(stakingVault.owner(), originalStakingVaultOwner);
+            assertTrue(stakingVault.owner() != address(timelock));
+        } else {
+            assertEq(stakingVault.owner(), address(timelock));
+        }
     }
 
     function test_isOptimistic_revertsForNonexistentProposal() public {
@@ -1387,5 +1417,17 @@ contract ReserveOptimisticGovernorTest is Test {
         _warpPastDeadline(proposalId);
         descriptionHash = keccak256(bytes(description));
         governor.queue(targets, values, calldatas, descriptionHash);
+    }
+}
+
+contract ReserveOptimisticGovernorNewStakingVaultTest is ReserveOptimisticGovernorTestBase {
+    function _useExistingStakingVaultDeployment() internal pure override returns (bool) {
+        return false;
+    }
+}
+
+contract ReserveOptimisticGovernorExistingStakingVaultTest is ReserveOptimisticGovernorTestBase {
+    function _useExistingStakingVaultDeployment() internal pure override returns (bool) {
+        return true;
     }
 }

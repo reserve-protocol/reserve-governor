@@ -91,6 +91,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     }
 
     /// @notice Deploy a complete Reserve Governor system via proxies using an existing StakingVault
+    /// @dev Does NOT leave the old StakingVault owned by the newly-deployed system
     /// @param baseParams.optimisticParams.vetoDelay {s} Delay before optimistic snapshot.
     /// @param baseParams.optimisticParams.vetoPeriod {s} Veto period for optimistic proposals.
     /// @param baseParams.optimisticParams.vetoThreshold D18{1} Stake fraction to start confirmation.
