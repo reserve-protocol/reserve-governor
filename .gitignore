@@ -6,7 +6,7 @@
 # Foundry
 cache/
 out/
-artifacts/
+/artifacts/
 broadcast/
 .gas-snapshot
 lcov.info
