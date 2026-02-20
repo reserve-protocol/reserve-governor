@@ -34,6 +34,7 @@ import {
     CANCELLER_ROLE,
     MAX_OPTIMISTIC_DELAY,
     MAX_PROPOSAL_THROTTLE_CAPACITY,
+    MAX_VOTE_EXTENSION,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_PROPOSER_ROLE
@@ -411,7 +412,14 @@ contract ReserveOptimisticGovernor is
 
     function _setVotingDelay(uint48 newVotingDelay) internal override {
         require(newVotingDelay < MAX_OPTIMISTIC_DELAY, InvalidDelay());
+
         super._setVotingDelay(newVotingDelay);
+    }
+
+    function _setLateQuorumVoteExtension(uint48 newVoteExtension) internal override {
+        require(newVoteExtension < MAX_VOTE_EXTENSION, InvalidDelay());
+
+        super._setLateQuorumVoteExtension(newVoteExtension);
     }
 
     function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
