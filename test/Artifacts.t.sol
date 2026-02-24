@@ -3,13 +3,15 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
-import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultDeployer.sol";
-import { ProposalLibDeployer } from "../contracts/artifacts/ProposalLibDeployer.sol";
-import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibDeployer.sol";
-import { ReserveOptimisticGovernorDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorDeployer.sol";
-import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticDeployer.sol";
 import { OptimisticSelectorRegistryDeployer } from "../contracts/artifacts/OptimisticSelectorRegistryDeployer.sol";
-import { ReserveOptimisticGovernorDeployerDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorDeployerDeployer.sol";
+import { ProposalLibDeployer } from "../contracts/artifacts/ProposalLibDeployer.sol";
+import { ReserveOptimisticGovernorDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorDeployer.sol";
+import {
+    ReserveOptimisticGovernorDeployerDeployer
+} from "../contracts/artifacts/ReserveOptimisticGovernorDeployerDeployer.sol";
+import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultDeployer.sol";
+import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibDeployer.sol";
+import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticDeployer.sol";
 
 contract ArtifactsTest is Test {
     function test_deployStakingVault() public {
@@ -56,9 +58,8 @@ contract ArtifactsTest is Test {
         address selectorRegistry = OptimisticSelectorRegistryDeployer.deploy();
 
         // Deploy the factory
-        address deployer = ReserveOptimisticGovernorDeployerDeployer.deploy(
-            stakingVault, governor, timelock, selectorRegistry
-        );
+        address deployer =
+            ReserveOptimisticGovernorDeployerDeployer.deploy(stakingVault, governor, timelock, selectorRegistry);
 
         assertNotEq(deployer, address(0), "ReserveOptimisticGovernorDeployer deployment failed");
         assertTrue(deployer.code.length > 0, "ReserveOptimisticGovernorDeployer has no code");

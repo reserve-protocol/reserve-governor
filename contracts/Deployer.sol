@@ -42,11 +42,11 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.standardParams.voteExtension {s} Late-quorum extension window.
     /// @param baseParams.standardParams.proposalThreshold D18{1} Stake fraction required to propose.
     /// @param baseParams.standardParams.quorumNumerator D18{1} Stake fraction required for quorum.
-    /// @param baseParams.standardParams.proposalThrottleCapacity Standard proposal throttle capacity.
     /// @param baseParams.selectorData Initial selector registry entries.
     /// @param baseParams.optimisticProposers Addresses granted optimistic proposer role.
     /// @param baseParams.guardians Addresses granted canceller role.
     /// @param baseParams.timelockDelay {s} Timelock execution delay.
+    /// @param baseParams.proposalThrottleCapacity Optimistic proposal throttle capacity.
     /// @param newStakingVaultParams.underlying Underlying token for the newly deployed vault.
     /// @param newStakingVaultParams.rewardTokens Additional reward tokens for the new vault.
     /// @param newStakingVaultParams.rewardHalfLife {s} Reward streaming half-life for the new vault.
@@ -100,11 +100,11 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.standardParams.voteExtension {s} Late-quorum extension window.
     /// @param baseParams.standardParams.proposalThreshold D18{1} Stake fraction required to propose.
     /// @param baseParams.standardParams.quorumNumerator D18{1} Stake fraction required for quorum.
-    /// @param baseParams.standardParams.proposalThrottleCapacity Standard proposal throttle capacity.
     /// @param baseParams.selectorData Initial selector registry entries.
     /// @param baseParams.optimisticProposers Addresses granted optimistic proposer role.
     /// @param baseParams.guardians Addresses granted canceller role.
     /// @param baseParams.timelockDelay {s} Timelock execution delay.
+    /// @param baseParams.proposalThrottleCapacity Optimistic proposal throttle capacity.
     /// @param existingStakingVault Address of a pre-deployed StakingVault to use as governance token.
     /// @param deploymentNonce Arbitrary nonce used to derive deterministic deployment salt.
     /// @return stakingVault The provided StakingVault address.
@@ -149,7 +149,14 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Step 2.3: Deploy Governor proxy
         bytes memory governorInitData = abi.encodeCall(
             ReserveOptimisticGovernor.initialize,
-            (baseParams.optimisticParams, baseParams.standardParams, stakingVault, timelock, selectorRegistry)
+            (
+                baseParams.optimisticParams,
+                baseParams.standardParams,
+                baseParams.proposalThrottleCapacity,
+                stakingVault,
+                timelock,
+                selectorRegistry
+            )
         );
         governor = address(new ERC1967Proxy{ salt: deploymentSalt }(governorImpl, governorInitData));
 

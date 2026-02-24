@@ -67,13 +67,13 @@ contract StakingVaultTest is Test {
                     votingPeriod: 1 weeks,
                     voteExtension: 1 days,
                     proposalThreshold: 0.01e18,
-                    quorumNumerator: 0.1e18,
-                    proposalThrottleCapacity: 10
+                    quorumNumerator: 0.1e18
                 }),
                 selectorData: new IOptimisticSelectorRegistry.SelectorData[](0),
                 optimisticProposers: new address[](0),
                 guardians: new address[](0),
-                timelockDelay: 2 days
+                timelockDelay: 2 days,
+                proposalThrottleCapacity: 10
             });
 
         IReserveOptimisticGovernorDeployer.NewStakingVaultParams memory newStakingVaultParams =

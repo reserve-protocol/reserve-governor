@@ -212,7 +212,7 @@ The main hybrid governor contract.
 **Configuration:**
 
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
-- `setProposalThrottle(capacity)` -- Update proposals-per-24h throttle capacity (onlyGovernance)
+- `setProposalThrottle(capacity)` -- Update optimistic proposals-per-24h throttle capacity (onlyGovernance)
 - `proposalThrottleCapacity()` -- Read current throttle capacity
 
 ### OptimisticSelectorRegistry
@@ -332,7 +332,12 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `voteExtension`     | `uint48`  | Late quorum time extension                 |
 | `proposalThreshold` | `uint256` | Fraction of supply needed to propose (D18) |
 | `quorumNumerator`   | `uint256` | Fraction of supply needed for quorum (D18) |
-| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer per 24h |
+
+### Proposal Throttle Parameter
+
+| Parameter                  | Type      | Description                           |
+| -------------------------- | --------- | ------------------------------------- |
+| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer per 24h    |
 
 ### Parameter Constraints
 
@@ -341,9 +346,9 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `vetoDelay`         | >= 1 second and < `MAX_OPTIMISTIC_DELAY` | `MIN_OPTIMISTIC_VETO_DELAY`, `MAX_OPTIMISTIC_DELAY` |
 | `vetoPeriod`        | >= 15 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
 | `vetoThreshold`     | > 0 and <= 100% |                            |
+| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_PROPOSAL_THROTTLE_CAPACITY` |
 | `votingDelay`       | < `MAX_OPTIMISTIC_DELAY` | `MAX_OPTIMISTIC_DELAY` |
 | `proposalThreshold` | > 0 and <= 100% |                            |
-| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_PROPOSAL_THROTTLE_CAPACITY` |
 
 ### Proposal Throttle Behavior
 

@@ -108,13 +108,13 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                     votingPeriod: VOTING_PERIOD,
                     voteExtension: VOTE_EXTENSION,
                     proposalThreshold: PROPOSAL_THRESHOLD,
-                    quorumNumerator: QUORUM_NUMERATOR,
-                    proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
+                    quorumNumerator: QUORUM_NUMERATOR
                 }),
                 selectorData: selectorData,
                 optimisticProposers: optimisticProposers,
                 guardians: guardians,
-                timelockDelay: TIMELOCK_DELAY
+                timelockDelay: TIMELOCK_DELAY,
+                proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
             });
 
         IReserveOptimisticGovernorDeployer.NewStakingVaultParams memory newStakingVaultParams =
@@ -167,6 +167,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(vetoDelay, VETO_DELAY);
         assertEq(vetoPeriod, VETO_PERIOD);
         assertEq(vetoThreshold, VETO_THRESHOLD);
+        assertEq(governor.proposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
 
         assertEq(governor.votingDelay(), VOTING_DELAY);
         assertEq(governor.votingPeriod(), VOTING_PERIOD);
@@ -1164,6 +1165,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(vetoDelay, 2 hours);
         assertEq(vetoPeriod, 3 hours);
         assertEq(vetoThreshold, 0.25e18);
+        assertEq(governor.proposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
     }
 
     function test_setOptimisticParams_revertsWhenInvalid() public {
