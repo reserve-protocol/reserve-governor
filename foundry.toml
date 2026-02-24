@@ -32,6 +32,7 @@ mainnet = {key = "${ETHERSCAN_KEY}"}
 
 [fmt]
 bracket_spacing = true
+ignore = ["contracts/artifacts"]
 single_line_statement_blocks = "multi"
 sort_imports = true
 wrap_comments = true
