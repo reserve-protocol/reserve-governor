@@ -95,8 +95,11 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         transferSelectors[0] = IERC20.transfer.selector;
 
         IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
-            new IOptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(underlying), transferSelectors);
+            new IOptimisticSelectorRegistry.SelectorData[](2);
+        selectorData[0] =
+            IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(underlying), transferSelectors);
+        selectorData[1] =
+            IOptimisticSelectorRegistry.SelectorData(optimisticProposer2, address(underlying), transferSelectors);
 
         IReserveOptimisticGovernorDeployer.BaseDeploymentParams memory baseParams =
             IReserveOptimisticGovernorDeployer.BaseDeploymentParams({
@@ -181,7 +184,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
         assertTrue(timelock.hasRole(CANCELLER_ROLE, guardian));
 
-        assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
+        assertTrue(registry.isAllowed(optimisticProposer, address(underlying), IERC20.transfer.selector));
+        assertTrue(registry.isAllowed(optimisticProposer2, address(underlying), IERC20.transfer.selector));
 
         uint256 supply = stakingVault.getPastTotalSupply(block.timestamp - 1);
         uint256 expectedThreshold = (PROPOSAL_THRESHOLD * supply + (1e18 - 1)) / 1e18;
@@ -1050,7 +1054,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
             new IOptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(underlying), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(underlying), selectors);
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.OnlyOwner.selector, alice));
@@ -1063,7 +1067,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
             new IOptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(underlying), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(underlying), selectors);
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.OnlyOwner.selector, alice));
@@ -1071,14 +1075,33 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     function test_registry_registerAndUnregister() public {
-        _allowSelector(address(underlying), IERC20.approve.selector);
-        assertTrue(registry.isAllowed(address(underlying), IERC20.approve.selector));
+        _allowSelector(optimisticProposer, address(underlying), IERC20.approve.selector);
+        assertTrue(registry.isAllowed(optimisticProposer, address(underlying), IERC20.approve.selector));
 
-        _disallowSelector(address(underlying), IERC20.approve.selector);
-        assertFalse(registry.isAllowed(address(underlying), IERC20.approve.selector));
+        _disallowSelector(optimisticProposer, address(underlying), IERC20.approve.selector);
+        assertFalse(registry.isAllowed(optimisticProposer, address(underlying), IERC20.approve.selector));
 
-        _disallowSelector(address(underlying), IERC20.transfer.selector);
-        assertEq(registry.targets().length, 0);
+        _disallowSelector(optimisticProposer, address(underlying), IERC20.transfer.selector);
+        assertEq(registry.targets(optimisticProposer).length, 0);
+    }
+
+    function test_registry_whitelistIsolatedPerProposer() public {
+        bytes4 approveSelector = IERC20.approve.selector;
+
+        assertFalse(registry.isAllowed(optimisticProposer, address(underlying), approveSelector));
+        assertFalse(registry.isAllowed(optimisticProposer2, address(underlying), approveSelector));
+
+        _allowSelector(optimisticProposer, address(underlying), approveSelector);
+        assertTrue(registry.isAllowed(optimisticProposer, address(underlying), approveSelector));
+        assertFalse(registry.isAllowed(optimisticProposer2, address(underlying), approveSelector));
+
+        _allowSelector(optimisticProposer2, address(underlying), approveSelector);
+        assertTrue(registry.isAllowed(optimisticProposer, address(underlying), approveSelector));
+        assertTrue(registry.isAllowed(optimisticProposer2, address(underlying), approveSelector));
+
+        _disallowSelector(optimisticProposer, address(underlying), approveSelector);
+        assertFalse(registry.isAllowed(optimisticProposer, address(underlying), approveSelector));
+        assertTrue(registry.isAllowed(optimisticProposer2, address(underlying), approveSelector));
     }
 
     function test_registry_cannotRegisterBlockedTargetsOrZeroSelector() public {
@@ -1087,22 +1110,22 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
             new IOptimisticSelectorRegistry.SelectorData[](1);
 
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(registry), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(registry), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(registry)));
         registry.registerSelectors(selectorData);
 
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(governor), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(governor), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(governor)));
         registry.registerSelectors(selectorData);
 
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(timelock), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(timelock), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(timelock)));
         registry.registerSelectors(selectorData);
 
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(stakingVault), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(
             abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(stakingVault))
@@ -1111,11 +1134,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         DummyTarget dummy = new DummyTarget();
         selectors[0] = bytes4(0);
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(dummy), selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(dummy), selectors);
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidCall.selector, address(dummy), bytes4(0))
-        );
+        vm.expectRevert(abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidSelector.selector, bytes4(0)));
         registry.registerSelectors(selectorData);
     }
 
@@ -1351,25 +1372,25 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         calldatas[0] = callData;
     }
 
-    function _allowSelector(address target, bytes4 selector) internal {
+    function _allowSelector(address proposer, address target, bytes4 selector) internal {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = selector;
 
         IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
             new IOptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(target, selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(proposer, target, selectors);
 
         vm.prank(address(timelock));
         registry.registerSelectors(selectorData);
     }
 
-    function _disallowSelector(address target, bytes4 selector) internal {
+    function _disallowSelector(address proposer, address target, bytes4 selector) internal {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = selector;
 
         IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
             new IOptimisticSelectorRegistry.SelectorData[](1);
-        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(target, selectors);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(proposer, target, selectors);
 
         vm.prank(address(timelock));
         registry.unregisterSelectors(selectorData);
