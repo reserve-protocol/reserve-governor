@@ -337,7 +337,7 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 
 | Parameter                  | Type      | Description                           |
 | -------------------------- | --------- | ------------------------------------- |
-| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer per 24h    |
+| `proposalThrottleCapacity` | `uint256` | Max optimistic proposals per proposer per 24h    |
 
 ### Parameter Constraints
 
