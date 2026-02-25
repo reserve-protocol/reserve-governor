@@ -7,7 +7,7 @@ library ThrottleLibDeployer {
      *
      * @notice Source Contract: contracts/governance/lib/ThrottleLib.sol
      * - solc: 0.8.33+commit.64118f21
-     * - optimizer_runs: 193
+     * - optimizer_runs: 169
      * - evm_version: cancun
      */
 
