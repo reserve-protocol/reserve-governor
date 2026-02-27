@@ -7,7 +7,9 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 
-import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {
+    AccessControlEnumerableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { ERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {
@@ -45,7 +47,7 @@ contract StakingVault is
     ERC4626Upgradeable,
     ERC20PermitUpgradeable,
     ERC20VotesUpgradeable,
-    OwnableUpgradeable,
+    AccessControlEnumerableUpgradeable,
     Versioned,
     UUPSUpgradeable
 {
@@ -84,6 +86,7 @@ contract StakingVault is
     error Vault__RewardNotRegistered();
     error Vault__InvalidUnstakingDelay();
     error Vault__InvalidRewardsHalfLife();
+    error Vault__InvalidAdmin(address admin);
 
     event UnstakingDelaySet(uint256 delay);
     event RewardTokenAdded(address rewardToken);
@@ -98,23 +101,27 @@ contract StakingVault is
     /// @param _name Name of the vault
     /// @param _symbol Symbol of the vault
     /// @param _underlying Underlying token deposited during staking
-    /// @param _initialOwner Initial owner of the vault
+    /// @param _initialAdmin Initial admin of the vault
     /// @param _rewardPeriod {s} Half life of the reward handout rate
     /// @param _unstakingDelay {s} Delay after unstaking before user receives their deposit
     function initialize(
         string memory _name,
         string memory _symbol,
         IERC20 _underlying,
-        address _initialOwner,
+        address _initialAdmin,
         uint256 _rewardPeriod,
         uint256 _unstakingDelay
     ) external initializer {
+        require(_initialAdmin != address(0), Vault__InvalidAdmin(_initialAdmin));
+
         __ERC4626_init(_underlying);
         __ERC20_init(_name, _symbol);
         __ERC20Permit_init(_name);
         __ERC20Votes_init();
-        __Ownable_init(_initialOwner);
+        __AccessControlEnumerable_init();
         __UUPSUpgradeable_init();
+        
+        _grantRole(DEFAULT_ADMIN_ROLE, _initialAdmin);
 
         _setRewardRatio(_rewardPeriod);
         _setUnstakingDelay(_unstakingDelay);
@@ -128,7 +135,7 @@ contract StakingVault is
      * @dev Authorize upgrade to a new implementation.
      * @param newImplementation Address of the new implementation contract
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner { }
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) { }
 
     /**
      * Deposit & Delegate
@@ -189,7 +196,7 @@ contract StakingVault is
     }
 
     /// @param _delay {s} New unstaking delay
-    function setUnstakingDelay(uint256 _delay) external onlyOwner {
+    function setUnstakingDelay(uint256 _delay) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setUnstakingDelay(_delay);
     }
 
@@ -205,7 +212,7 @@ contract StakingVault is
      * Reward Management Logic
      */
     /// @param _rewardToken Reward token to add
-    function addRewardToken(address _rewardToken) external onlyOwner {
+    function addRewardToken(address _rewardToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(_rewardToken != address(this) && _rewardToken != asset(), Vault__InvalidRewardToken(_rewardToken));
         require(!disallowedRewardTokens[_rewardToken], Vault__DisallowedRewardToken(_rewardToken));
         require(rewardTokens.add(_rewardToken), Vault__RewardAlreadyRegistered());
@@ -219,7 +226,7 @@ contract StakingVault is
     }
 
     /// @param _rewardToken Reward token to remove
-    function removeRewardToken(address _rewardToken) external onlyOwner {
+    function removeRewardToken(address _rewardToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
         disallowedRewardTokens[_rewardToken] = true;
 
         require(rewardTokens.remove(_rewardToken), Vault__RewardNotRegistered());
@@ -266,7 +273,7 @@ contract StakingVault is
      * Reward Accrual Logic
      */
     /// @param rewardHalfLife {s}
-    function setRewardRatio(uint256 rewardHalfLife) external onlyOwner {
+    function setRewardRatio(uint256 rewardHalfLife) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setRewardRatio(rewardHalfLife);
     }
 

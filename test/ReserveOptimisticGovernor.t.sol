@@ -36,7 +36,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     ReserveOptimisticGovernorDeployer public deployer;
     ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
-    address public originalStakingVaultOwner;
+    address public originalStakingVaultAdmin;
 
     // Accounts
     address public alice = makeAddr("alice");
@@ -132,7 +132,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         // mode.
         (address stakingVaultAddr, address governorAddr, address timelockAddr, address selectorRegistryAddr) =
             deployer.deployWithNewStakingVault(baseParams, newStakingVaultParams, bytes32(0));
-        originalStakingVaultOwner = timelockAddr;
+        originalStakingVaultAdmin = timelockAddr;
 
         if (_useExistingStakingVaultDeployment()) {
             (
@@ -192,10 +192,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(governor.proposalThreshold(), expectedThreshold);
 
         if (_useExistingStakingVaultDeployment()) {
-            assertEq(stakingVault.owner(), originalStakingVaultOwner);
-            assertTrue(stakingVault.owner() != address(timelock));
+            assertTrue(stakingVault.hasRole(stakingVault.DEFAULT_ADMIN_ROLE(), originalStakingVaultAdmin));
+            assertFalse(stakingVault.hasRole(stakingVault.DEFAULT_ADMIN_ROLE(), address(timelock)));
         } else {
-            assertEq(stakingVault.owner(), address(timelock));
+            assertTrue(stakingVault.hasRole(stakingVault.DEFAULT_ADMIN_ROLE(), address(timelock)));
         }
     }
 

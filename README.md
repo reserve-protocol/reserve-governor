@@ -63,7 +63,7 @@ The system consists of five components:
 
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
 
-The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers vault ownership to the timelock, grants governor timelock roles, grants guardian/proposer roles, and renounces admin.
+The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers the vault admin role to the timelock, grants governor timelock roles, grants guardian/proposer roles, and renounces admin.
 
 ## Governance Flows
 
@@ -255,7 +255,7 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 - `claimRewards(rewardTokens[])` -- Claim accumulated rewards for specified reward tokens
 - `poke()` -- Trigger reward accrual without performing an action
 
-**Admin Functions (onlyOwner):**
+**Admin Functions (DEFAULT_ADMIN_ROLE):**
 
 - `addRewardToken(rewardToken)` -- Add a new reward token for distribution
 - `removeRewardToken(rewardToken)` -- Remove a reward token from distribution
@@ -268,7 +268,7 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 
 **Properties:**
 
-- UUPS upgradeable (owner-authorized)
+- UUPS upgradeable (admin-role-authorized)
 - Clock: timestamp-based (ERC5805)
 - Creates an `UnstakingManager` during initialization
 
@@ -387,7 +387,7 @@ Three contracts are UUPS upgradeable:
 
 | Contract                       | Upgrade Authorization                                    |
 | ------------------------------ | -------------------------------------------------------- |
-| `StakingVault`                 | Owner-authorized (`onlyOwner`)                          |
+| `StakingVault`                 | Admin-role-authorized (`DEFAULT_ADMIN_ROLE`)            |
 | `ReserveOptimisticGovernor`    | Via governance (timelock must call `upgradeToAndCall`)   |
 | `TimelockControllerOptimistic` | Self-administered (only the timelock itself can upgrade) |
 

@@ -76,7 +76,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         );
         stakingVault = address(new ERC1967Proxy{ salt: deploymentSalt }(stakingVaultImpl, stakingVaultInitData));
 
-        // Step 1.5: Register additional reward tokens while Deployer is temporary owner
+        // Step 1.5: Register additional reward tokens while Deployer is temporary vault admin
         for (uint256 i = 0; i < newStakingVaultParams.rewardTokens.length; ++i) {
             StakingVault(stakingVault).addRewardToken(newStakingVaultParams.rewardTokens[i]);
         }
@@ -84,8 +84,9 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Step 2: Deploy Timelock, OptimisticSelectorRegistry, and Governor
         (timelock, governor, selectorRegistry) = _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt);
 
-        // Step 3: Transfer StakingVault ownership to Timelock
-        StakingVault(stakingVault).transferOwnership(timelock);
+        // Step 3: Transfer StakingVault admin role to Timelock
+        StakingVault(stakingVault).grantRole(StakingVault(stakingVault).DEFAULT_ADMIN_ROLE(), timelock);
+        StakingVault(stakingVault).renounceRole(StakingVault(stakingVault).DEFAULT_ADMIN_ROLE(), address(this));
 
         emit ReserveOptimisticGovernorSystemDeployed(stakingVault, governor, timelock, selectorRegistry);
     }
