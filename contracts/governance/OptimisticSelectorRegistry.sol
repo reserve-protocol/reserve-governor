@@ -47,6 +47,8 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
         }
     }
 
+    /// @dev Warning: Does NOT cancel existing optimistic proposals using these selectors
+    ///      CANCELLER_ROLE must rememeber to cancel existing optimistic proposals if execution should be prevented
     function unregisterSelectors(SelectorData[] calldata selectorData) external onlyTimelock {
         for (uint256 i = 0; i < selectorData.length; i++) {
             _remove(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);

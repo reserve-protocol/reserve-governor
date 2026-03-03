@@ -222,7 +222,7 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 **Management (onlyTimelock):**
 
 - `registerSelectors(SelectorData[])` -- Add allowed `(target, selector)` pairs
-- `unregisterSelectors(SelectorData[])` -- Remove allowed pairs
+- `unregisterSelectors(SelectorData[])` -- Remove allowed pairs; does NOT impact existing optimistic proposals
 
 **Query:**
 
