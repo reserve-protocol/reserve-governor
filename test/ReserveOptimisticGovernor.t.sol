@@ -1046,6 +1046,38 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.proposeOptimistic(targets, values, calldatas, "Charge consumed again");
     }
 
+    function test_proposalThrottle_canAtomicallyCreateCapacityProposals() public {
+        uint256 capacity = 3;
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(governor), 0, abi.encodeCall(governor.setProposalThrottle, (capacity)));
+
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Set proposal throttle to three");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        (address[] memory callTargets, uint256[] memory callValues, bytes[] memory callCalldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        assertEq(governor.proposalThrottleCharges(optimisticProposer), capacity);
+
+        for (uint256 i = 0; i < capacity; i++) {
+            vm.prank(optimisticProposer);
+            governor.proposeOptimistic(
+                callTargets,
+                callValues,
+                callCalldatas,
+                string.concat("Atomic capacity consume #", vm.toString(i + 1))
+            );
+            assertEq(governor.proposalThrottleCharges(optimisticProposer), capacity - i - 1);
+        }
+
+        vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveOptimisticGovernor.ProposalThrottleExceeded.selector);
+        governor.proposeOptimistic(callTargets, callValues, callCalldatas, "Atomic capacity consume overflow");
+    }
+
     // ===== Registry Tests =====
 
     function test_registry_onlyTimelockCanRegister() public {
