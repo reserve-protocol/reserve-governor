@@ -335,7 +335,7 @@ contract StakingVault is
 
         if (tokensToHandout != 0) {
             // D18+decimals{reward/share} = D18 * {reward} * decimals / {share}
-            uint256 deltaIndex = (SCALAR * tokensToHandout * uint256(10 ** decimals())) / totalSupply();
+            uint256 deltaIndex = Math.mulDiv(tokensToHandout, SCALAR * uint256(10 ** decimals()), totalSupply());
 
             // D18+decimals{reward/share} += D18+decimals{reward/share}
             rewardInfo.rewardIndex += deltaIndex;
@@ -359,7 +359,7 @@ contract StakingVault is
         if (deltaIndex != 0) {
             // Accumulate rewards by multiplying user tokens by index and adding on unclaimed
             // {reward} = {share} * D18+decimals{reward/share} / decimals / D18
-            uint256 supplierDelta = (balanceOf(_user) * deltaIndex) / uint256(10 ** decimals()) / SCALAR;
+            uint256 supplierDelta = Math.mulDiv(balanceOf(_user), deltaIndex, uint256(10 ** decimals()) * SCALAR);
 
             // {reward} += {reward}
             userRewardTracker.accruedRewards += supplierDelta;
@@ -383,7 +383,7 @@ contract StakingVault is
         uint256 handoutPercentage = 1e18 - UD60x18.wrap(1e18 - rewardRatio).powu(elapsed).unwrap() - 1; // rounds down
 
         // {reward|asset} = {reward|asset} * D18{1} / D18
-        tokensToHandout = (balanceAvailable * handoutPercentage) / 1e18;
+        tokensToHandout = Math.mulDiv(balanceAvailable, handoutPercentage, 1e18);
     }
 
     /**

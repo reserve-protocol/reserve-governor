@@ -290,7 +290,7 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 
 #### Valid Ranges
 
-StakingVault asset tokens are assumed to be maximum 1e36 supply and up to 27 decimals.
+StakingVault asset tokens and reward tokens are assumed to be maximum 1e36 supply and up to 27 decimals.
 
 #### Governance Guidelines
  
