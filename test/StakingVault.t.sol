@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
 
-import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { IERC20, IERC4626 } from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -375,11 +375,7 @@ contract StakingVaultTest is Test {
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.addRewardToken(address(newReward));
     }
@@ -429,11 +425,7 @@ contract StakingVaultTest is Test {
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.removeRewardToken(address(reward));
     }
@@ -459,11 +451,7 @@ contract StakingVaultTest is Test {
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.setRewardRatio(REWARD_HALF_LIFE / 2);
     }
@@ -689,11 +677,7 @@ contract StakingVaultTest is Test {
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.setUnstakingDelay(newUnstakingDelay);
     }
@@ -785,6 +769,109 @@ contract StakingVaultTest is Test {
         uint256 totalAssetsAfterSecondPoke = vault.totalAssets();
         assertGt(totalAssetsAfterSecondPoke, initialTotalAssets);
         assertApproxEqRel(totalAssetsAfterSecondPoke, 1500e18, 0.001e18);
+    }
+
+    function test__accrual_nativeAssetRewardsPreciseMultiActionAccounting() public {
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(0);
+
+        _mintAndDepositFor(ACTOR_ALICE, 1000e18);
+        _mintAndDepositFor(ACTOR_BOB, 2000e18);
+
+        // No donation cycle should not change totalAssets.
+        _payoutRewards(1);
+        vault.poke();
+        _payoutRewards(1);
+        vault.poke();
+        assertEq(vault.totalAssets(), 3000e18);
+
+        // Donation #1: should not be distributed on the next state-changing action.
+        token.mint(address(vault), 900e18);
+        assertEq(vault.totalAssets(), 3000e18);
+
+        // Bob redeems before donation #1 starts streaming.
+        {
+            uint256 sharesToRedeem = 500e18;
+            uint256 expectedAssets = 500_000_000_000_000_000_000;
+
+            uint256 before = token.balanceOf(ACTOR_BOB);
+            _withdrawAs(ACTOR_BOB, sharesToRedeem);
+            uint256 received = token.balanceOf(ACTOR_BOB) - before;
+
+            assertEq(received, expectedAssets, "bob first redeem");
+            assertEq(vault.balanceOf(ACTOR_BOB), 1500e18);
+            assertEq(vault.totalAssets(), 2500e18);
+        }
+
+        // First streaming cycle from donation #1.
+        _payoutRewards(1);
+        vault.poke();
+
+        // Alice partially exits after first stream.
+        {
+            uint256 sharesToRedeem = 400e18;
+            uint256 expectedAssets = 512_000_103_801_724_453_055;
+
+            uint256 before = token.balanceOf(ACTOR_ALICE);
+            _withdrawAs(ACTOR_ALICE, sharesToRedeem);
+            uint256 received = token.balanceOf(ACTOR_ALICE) - before;
+
+            assertEq(received, expectedAssets, "alice partial redeem");
+            assertEq(vault.balanceOf(ACTOR_ALICE), 600e18);
+        }
+
+        // Donation #2, then Alice deposits again before the first stream for donation #2.
+        uint256 totalAssetsBeforeDonation2 = vault.totalAssets();
+        token.mint(address(vault), 600e18);
+        assertEq(vault.totalAssets(), totalAssetsBeforeDonation2);
+        {
+            uint256 depositAssets = 300e18;
+            uint256 expectedShares = 234_374_952_483_351_100_830;
+            uint256 beforeShares = vault.balanceOf(ACTOR_ALICE);
+
+            _mintAndDepositFor(ACTOR_ALICE, depositAssets);
+
+            uint256 mintedShares = vault.balanceOf(ACTOR_ALICE) - beforeShares;
+            assertEq(mintedShares, expectedShares, "alice second deposit shares");
+        }
+
+        // Stream again, then Bob exits fully.
+        _payoutRewards(1);
+        vault.poke();
+        {
+            uint256 sharesToRedeem = 1_500_000_000_000_000_000_000;
+            uint256 expectedAssets = 2_177_028_536_714_672_267_867;
+            assertEq(vault.balanceOf(ACTOR_BOB), sharesToRedeem, "bob final shares");
+
+            uint256 before = token.balanceOf(ACTOR_BOB);
+            _withdrawAs(ACTOR_BOB, sharesToRedeem);
+            uint256 received = token.balanceOf(ACTOR_BOB) - before;
+
+            assertEq(received, expectedAssets, "bob final redeem");
+            assertEq(vault.balanceOf(ACTOR_BOB), 0);
+        }
+
+        // Alice exits fully.
+        {
+            uint256 sharesToRedeem = 834_374_952_483_351_100_830;
+            uint256 expectedAssets = 1_210_972_054_584_136_033_972;
+            assertEq(vault.balanceOf(ACTOR_ALICE), sharesToRedeem, "alice final shares");
+
+            uint256 before = token.balanceOf(ACTOR_ALICE);
+            _withdrawAs(ACTOR_ALICE, sharesToRedeem);
+            uint256 received = token.balanceOf(ACTOR_ALICE) - before;
+
+            assertEq(received, expectedAssets, "alice final redeem");
+            assertEq(vault.balanceOf(ACTOR_ALICE), 0);
+        }
+
+        assertEq(token.balanceOf(ACTOR_BOB), 2_677_028_536_714_672_267_867, "bob payout");
+        assertEq(token.balanceOf(ACTOR_ALICE), 1_722_972_158_385_860_487_027, "alice payout");
+
+        // Conservation check across deposits, donations, payouts, and remaining vault balance.
+        uint256 totalInflow = 1000e18 + 2000e18 + 300e18 + 900e18 + 600e18;
+        uint256 totalOutflow = token.balanceOf(ACTOR_ALICE) + token.balanceOf(ACTOR_BOB);
+        assertEq(totalOutflow + token.balanceOf(address(vault)), totalInflow, "conservation");
     }
 
     function test__accrual_nativeAssetRewardsImproveExchangeRate() public {
@@ -973,11 +1060,7 @@ contract StakingVaultTest is Test {
 
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.upgradeToAndCall(address(newImpl), "");
     }
