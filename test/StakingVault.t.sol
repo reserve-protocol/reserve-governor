@@ -778,6 +778,21 @@ contract StakingVaultTest is Test {
         _mintAndDepositFor(ACTOR_ALICE, 1000e18);
         _mintAndDepositFor(ACTOR_BOB, 2000e18);
 
+        uint256 bobFirstRedeemBase = 500e18;
+        uint256 bobFirstRedeemHandout = 0;
+
+        uint256 alicePartialRedeemBase = 400e18;
+        uint256 alicePartialRedeemHandout = 112_000_103_801_724_453_055;
+
+        uint256 aliceSecondDepositBaseShares = 300e18;
+        uint256 aliceSecondDepositShareDiscount = 65_625_047_516_648_899_170;
+
+        uint256 bobFinalRedeemBase = 1_500e18;
+        uint256 bobFinalRedeemHandout = 677_028_536_714_672_267_867;
+
+        uint256 aliceFinalRedeemBase = 834_374_952_483_351_100_830;
+        uint256 aliceFinalRedeemHandout = 376_597_102_100_784_933_142;
+
         // No donation cycle should not change totalAssets.
         _payoutRewards(1);
         vault.poke();
@@ -792,7 +807,7 @@ contract StakingVaultTest is Test {
         // Bob redeems before donation #1 starts streaming.
         {
             uint256 sharesToRedeem = 500e18;
-            uint256 expectedAssets = 500_000_000_000_000_000_000;
+            uint256 expectedAssets = bobFirstRedeemBase + bobFirstRedeemHandout;
 
             uint256 before = token.balanceOf(ACTOR_BOB);
             _withdrawAs(ACTOR_BOB, sharesToRedeem);
@@ -810,7 +825,7 @@ contract StakingVaultTest is Test {
         // Alice partially exits after first stream.
         {
             uint256 sharesToRedeem = 400e18;
-            uint256 expectedAssets = 512_000_103_801_724_453_055;
+            uint256 expectedAssets = alicePartialRedeemBase + alicePartialRedeemHandout;
 
             uint256 before = token.balanceOf(ACTOR_ALICE);
             _withdrawAs(ACTOR_ALICE, sharesToRedeem);
@@ -826,7 +841,7 @@ contract StakingVaultTest is Test {
         assertEq(vault.totalAssets(), totalAssetsBeforeDonation2);
         {
             uint256 depositAssets = 300e18;
-            uint256 expectedShares = 234_374_952_483_351_100_830;
+            uint256 expectedShares = aliceSecondDepositBaseShares - aliceSecondDepositShareDiscount;
             uint256 beforeShares = vault.balanceOf(ACTOR_ALICE);
 
             _mintAndDepositFor(ACTOR_ALICE, depositAssets);
@@ -839,8 +854,8 @@ contract StakingVaultTest is Test {
         _payoutRewards(1);
         vault.poke();
         {
-            uint256 sharesToRedeem = 1_500_000_000_000_000_000_000;
-            uint256 expectedAssets = 2_177_028_536_714_672_267_867;
+            uint256 sharesToRedeem = bobFinalRedeemBase;
+            uint256 expectedAssets = bobFinalRedeemBase + bobFinalRedeemHandout;
             assertEq(vault.balanceOf(ACTOR_BOB), sharesToRedeem, "bob final shares");
 
             uint256 before = token.balanceOf(ACTOR_BOB);
@@ -853,8 +868,8 @@ contract StakingVaultTest is Test {
 
         // Alice exits fully.
         {
-            uint256 sharesToRedeem = 834_374_952_483_351_100_830;
-            uint256 expectedAssets = 1_210_972_054_584_136_033_972;
+            uint256 sharesToRedeem = aliceFinalRedeemBase;
+            uint256 expectedAssets = aliceFinalRedeemBase + aliceFinalRedeemHandout;
             assertEq(vault.balanceOf(ACTOR_ALICE), sharesToRedeem, "alice final shares");
 
             uint256 before = token.balanceOf(ACTOR_ALICE);
@@ -865,8 +880,13 @@ contract StakingVaultTest is Test {
             assertEq(vault.balanceOf(ACTOR_ALICE), 0);
         }
 
-        assertEq(token.balanceOf(ACTOR_BOB), 2_677_028_536_714_672_267_867, "bob payout");
-        assertEq(token.balanceOf(ACTOR_ALICE), 1_722_972_158_385_860_487_027, "alice payout");
+        uint256 bobShareBaseTotal = bobFirstRedeemBase + bobFinalRedeemBase;
+        uint256 bobTotalHandout = bobFirstRedeemHandout + bobFinalRedeemHandout;
+        assertEq(token.balanceOf(ACTOR_BOB), bobShareBaseTotal + bobTotalHandout, "bob payout");
+
+        uint256 aliceShareBaseTotal = (1_000e18 + aliceSecondDepositBaseShares) - aliceSecondDepositShareDiscount;
+        uint256 aliceTotalHandout = alicePartialRedeemHandout + aliceFinalRedeemHandout;
+        assertEq(token.balanceOf(ACTOR_ALICE), aliceShareBaseTotal + aliceTotalHandout, "alice payout");
 
         // Conservation check across deposits, donations, payouts, and remaining vault balance.
         uint256 totalInflow = 1000e18 + 2000e18 + 300e18 + 900e18 + 600e18;
