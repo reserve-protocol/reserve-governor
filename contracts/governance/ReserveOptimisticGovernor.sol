@@ -95,7 +95,7 @@ contract ReserveOptimisticGovernor is
         address _timelockController,
         address _selectorRegistry
     ) public initializer {
-        assert(keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"));
+        require(keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"), InvalidToken());
 
         __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
