@@ -78,6 +78,7 @@ contract StakingVault is
     mapping(address token => mapping(address user => UserRewardInfo userReward)) public userRewardTrackers;
 
     uint256 private totalDeposited; // {asset}
+    uint256 private nativeBalanceLastKnown; // {asset}
     uint256 private nativeRewardsLastPaid; // {s}
 
     error Vault__InvalidRewardToken(address rewardToken);
@@ -120,7 +121,7 @@ contract StakingVault is
         __ERC20Votes_init();
         __AccessControlEnumerable_init();
         __UUPSUpgradeable_init();
-        
+
         _grantRole(DEFAULT_ADMIN_ROLE, _initialAdmin);
 
         _setRewardRatio(_rewardPeriod);
@@ -153,7 +154,7 @@ contract StakingVault is
 
     function _currentAccountedNativeRewards() internal view returns (uint256) {
         uint256 elapsed = block.timestamp - nativeRewardsLastPaid;
-        uint256 rewardsBalance = IERC20(asset()).balanceOf(address(this)) - totalDeposited;
+        uint256 rewardsBalance = nativeBalanceLastKnown - totalDeposited;
 
         return _calculateHandout(rewardsBalance, elapsed);
     }
@@ -164,6 +165,8 @@ contract StakingVault is
         accrueRewards(caller, receiver)
     {
         totalDeposited += assets;
+        nativeBalanceLastKnown += assets;
+
         super._deposit(caller, receiver, assets, shares);
     }
 
@@ -176,6 +179,7 @@ contract StakingVault is
         accrueRewards(_owner, _receiver)
     {
         totalDeposited -= _assets;
+        nativeBalanceLastKnown -= _assets;
 
         if (unstakingDelay == 0) {
             super._withdraw(_caller, _receiver, _owner, _assets, _shares);
@@ -319,7 +323,9 @@ contract StakingVault is
         /**
          * Native asset() rewards are special cased
          */
+
         totalDeposited += _currentAccountedNativeRewards();
+        nativeBalanceLastKnown = IERC20(asset()).balanceOf(address(this));
         nativeRewardsLastPaid = block.timestamp;
     }
 
