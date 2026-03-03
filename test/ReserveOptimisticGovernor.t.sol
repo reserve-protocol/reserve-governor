@@ -1117,6 +1117,53 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(registry.targets(optimisticProposer).length, 0);
     }
 
+    function test_registry_registerSelectors_emitsSelectorAddedPerSelector() public {
+        bytes4[] memory selectors = new bytes4[](2);
+        selectors[0] = IERC20.approve.selector;
+        selectors[1] = IERC20.transferFrom.selector;
+
+        IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
+            new IOptimisticSelectorRegistry.SelectorData[](1);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(underlying), selectors);
+
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit IOptimisticSelectorRegistry.SelectorAdded(optimisticProposer, address(underlying), selectors[0]);
+
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit IOptimisticSelectorRegistry.SelectorAdded(optimisticProposer, address(underlying), selectors[1]);
+
+        vm.prank(address(timelock));
+        registry.registerSelectors(selectorData);
+
+        assertTrue(registry.isAllowed(optimisticProposer, address(underlying), selectors[0]));
+        assertTrue(registry.isAllowed(optimisticProposer, address(underlying), selectors[1]));
+    }
+
+    function test_registry_unregisterSelectors_emitsSelectorRemovedPerSelector() public {
+        _allowSelector(optimisticProposer, address(underlying), IERC20.approve.selector);
+        _allowSelector(optimisticProposer, address(underlying), IERC20.transferFrom.selector);
+
+        bytes4[] memory selectors = new bytes4[](2);
+        selectors[0] = IERC20.approve.selector;
+        selectors[1] = IERC20.transferFrom.selector;
+
+        IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
+            new IOptimisticSelectorRegistry.SelectorData[](1);
+        selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(underlying), selectors);
+
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit IOptimisticSelectorRegistry.SelectorRemoved(optimisticProposer, address(underlying), selectors[0]);
+
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit IOptimisticSelectorRegistry.SelectorRemoved(optimisticProposer, address(underlying), selectors[1]);
+
+        vm.prank(address(timelock));
+        registry.unregisterSelectors(selectorData);
+
+        assertFalse(registry.isAllowed(optimisticProposer, address(underlying), selectors[0]));
+        assertFalse(registry.isAllowed(optimisticProposer, address(underlying), selectors[1]));
+    }
+
     function test_registry_whitelistIsolatedPerProposer() public {
         bytes4 approveSelector = IERC20.approve.selector;
 

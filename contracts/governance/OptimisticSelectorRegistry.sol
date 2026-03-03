@@ -95,21 +95,23 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
 
             if (added) {
                 _targets[proposer].add(target);
+
+                emit SelectorAdded(proposer, target, selectors[i]);
             }
         }
-
-        emit SelectorsAdded(proposer, target, selectors);
     }
 
     function _remove(address proposer, address target, bytes4[] memory selectors) internal {
         for (uint256 i = 0; i < selectors.length; i++) {
             bool removed = _allowedSelectors[proposer][target].remove(bytes32(selectors[i]));
 
-            if (removed && _allowedSelectors[proposer][target].length() == 0) {
-                _targets[proposer].remove(target);
+            if (removed) {
+                if (_allowedSelectors[proposer][target].length() == 0) {
+                    _targets[proposer].remove(target);
+                }
+
+                emit SelectorRemoved(proposer, target, selectors[i]);
             }
         }
-
-        emit SelectorsRemoved(proposer, target, selectors);
     }
 }

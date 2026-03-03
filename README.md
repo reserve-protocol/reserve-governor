@@ -221,14 +221,14 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 
 **Management (onlyTimelock):**
 
-- `registerSelectors(SelectorData[])` -- Add allowed `(target, selector)` pairs
-- `unregisterSelectors(SelectorData[])` -- Remove allowed pairs
+- `registerSelectors(SelectorData[])` -- Add allowed `(proposer, target, selector)` pairs; emits `SelectorAdded` once per selector newly added
+- `unregisterSelectors(SelectorData[])` -- Remove allowed `(proposer, target, selector)` pairs; emits `SelectorRemoved` once per selector removed
 
 **Query:**
 
-- `isAllowed(target, selector)` -- Check if a `(target, selector)` pair is whitelisted
-- `targets()` -- List all targets that have at least one registered selector
-- `selectorsAllowed(target)` -- List all allowed selectors for a given target
+- `isAllowed(proposer, target, selector)` -- Check if a `(proposer, target, selector)` tuple is whitelisted
+- `targets(proposer)` -- List all targets that have at least one registered selector for the proposer
+- `selectorsAllowed(proposer, target)` -- List all allowed selectors for a given `(proposer, target)`
 
 **Constraints:**
 
