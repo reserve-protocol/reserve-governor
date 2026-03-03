@@ -225,6 +225,7 @@ contract StakingVault is
         emit RewardTokenAdded(_rewardToken);
     }
 
+    /// @dev To be called in event of bad ERC20; all rewards will be lost forever
     /// @param _rewardToken Reward token to remove
     function removeRewardToken(address _rewardToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
         disallowedRewardTokens[_rewardToken] = true;
