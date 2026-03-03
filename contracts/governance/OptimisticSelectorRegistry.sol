@@ -29,6 +29,10 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     function initialize(address _governor, SelectorData[] memory selectorData) public initializer {
         governor = ReserveOptimisticGovernor(payable(_governor));
 
+        // validate governor
+        governor.timelock();
+        governor.token();
+
         for (uint256 i = 0; i < selectorData.length; i++) {
             _add(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);
         }

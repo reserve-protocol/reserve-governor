@@ -9,6 +9,7 @@ interface IOptimisticSelectorRegistry {
 
     // === Errors ===
 
+    error InvalidGovernor();
     error OnlyOwner(address caller);
     error InvalidTarget(address target);
     error InvalidSelector(bytes4 selector);
