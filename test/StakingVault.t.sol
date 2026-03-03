@@ -764,6 +764,29 @@ contract StakingVaultTest is Test {
         assertApproxEqRel(totalAssetsAfterTwoCycles, 2750e18, 0.001e18);
     }
 
+    function test__accrual_nativeAssetRewardsDonationIsDelayedByOneIteration() public {
+        _mintAndDepositFor(ACTOR_ALICE, 1000e18);
+
+        uint256 initialTotalAssets = vault.totalAssets();
+        assertEq(initialTotalAssets, 1000e18);
+
+        // Let one full cycle pass with no native rewards, then donate.
+        _payoutRewards(1);
+        token.mint(address(vault), 1000e18);
+
+        // First poke should only snapshot the donation, not distribute it yet.
+        vault.poke();
+        uint256 totalAssetsAfterFirstPoke = vault.totalAssets();
+        assertEq(totalAssetsAfterFirstPoke, initialTotalAssets);
+
+        // Distribution starts on the next iteration.
+        _payoutRewards(1);
+        vault.poke();
+        uint256 totalAssetsAfterSecondPoke = vault.totalAssets();
+        assertGt(totalAssetsAfterSecondPoke, initialTotalAssets);
+        assertApproxEqRel(totalAssetsAfterSecondPoke, 1500e18, 0.001e18);
+    }
+
     function test__accrual_nativeAssetRewardsImproveExchangeRate() public {
         _mintAndDepositFor(ACTOR_ALICE, 1000e18);
 
