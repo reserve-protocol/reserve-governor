@@ -404,6 +404,7 @@ contract ReserveOptimisticGovernor is
         super._setProposalThreshold(newProposalThreshold);
     }
 
+    /// @dev Back-propagates `newCapacity` to all accounts, acceptable simplification
     function _setProposalThrottle(uint256 newCapacity) internal {
         require(newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY, InvalidProposalThrottle());
 
