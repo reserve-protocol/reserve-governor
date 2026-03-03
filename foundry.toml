@@ -13,7 +13,7 @@ memory_limit = 1073741824 # 1 GB
 bytecode_hash = "none"
 evm_version = "cancun"
 optimizer = true
-optimizer_runs = 193
+optimizer_runs = 169
 solc_version = "0.8.33"
 via_ir = false
 
@@ -32,6 +32,7 @@ mainnet = {key = "${ETHERSCAN_KEY}"}
 
 [fmt]
 bracket_spacing = true
+ignore = ["contracts/artifacts"]
 single_line_statement_blocks = "multi"
 sort_imports = true
 wrap_comments = true

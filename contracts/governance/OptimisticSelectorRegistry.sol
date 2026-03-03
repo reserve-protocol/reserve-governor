@@ -17,8 +17,8 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
 
     ReserveOptimisticGovernor public governor;
 
-    EnumerableSet.AddressSet private _targets;
-    mapping(address target => EnumerableSet.Bytes32Set) private _allowedSelectors;
+    mapping(address proposer => EnumerableSet.AddressSet) private _targets;
+    mapping(address proposer => mapping(address target => EnumerableSet.Bytes32Set)) private _allowedSelectors;
 
     // === Initialization ===
 
@@ -30,7 +30,7 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
         governor = ReserveOptimisticGovernor(payable(_governor));
 
         for (uint256 i = 0; i < selectorData.length; i++) {
-            _add(selectorData[i].target, selectorData[i].selectors);
+            _add(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);
         }
     }
 
@@ -43,28 +43,32 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
 
     function registerSelectors(SelectorData[] calldata selectorData) external onlyTimelock {
         for (uint256 i = 0; i < selectorData.length; i++) {
-            _add(selectorData[i].target, selectorData[i].selectors);
+            _add(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);
         }
     }
 
     function unregisterSelectors(SelectorData[] calldata selectorData) external onlyTimelock {
         for (uint256 i = 0; i < selectorData.length; i++) {
-            _remove(selectorData[i].target, selectorData[i].selectors);
+            _remove(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);
         }
     }
 
     // === View ===
 
-    function targets() external view returns (address[] memory) {
-        return _targets.values();
+    function targets(address proposer) external view returns (address[] memory) {
+        return _targets[proposer].values();
     }
 
-    function isAllowed(address target, bytes4 selector) external view returns (bool) {
-        return _allowedSelectors[target].contains(bytes32(selector));
+    function isAllowed(address proposer, address target, bytes4 selector) external view returns (bool) {
+        return _allowedSelectors[proposer][target].contains(bytes32(selector));
     }
 
-    function selectorsAllowed(address target) external view returns (bytes4[] memory allowedSelectors4) {
-        bytes32[] memory allowedSelectors = _allowedSelectors[target].values();
+    function selectorsAllowed(address proposer, address target)
+        external
+        view
+        returns (bytes4[] memory allowedSelectors4)
+    {
+        bytes32[] memory allowedSelectors = _allowedSelectors[proposer][target].values();
 
         allowedSelectors4 = new bytes4[](allowedSelectors.length);
 
@@ -75,39 +79,37 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
 
     // === Internal ===
 
-    function _add(address target, bytes4[] memory selectors) internal {
-        address timelock = address(governor.timelock());
-        address token = address(governor.token());
-
+    function _add(address proposer, address target, bytes4[] memory selectors) internal {
         // target != self, governor, timelock, token
         require(
-            target != address(this) && target != address(governor) && target != timelock && target != token,
+            target != address(this) && target != address(governor) && target != address(governor.timelock())
+                && target != address(governor.token()),
             InvalidTarget(target)
         );
 
         for (uint256 i = 0; i < selectors.length; i++) {
             // no empty selectors
-            require(selectors[i] != bytes4(0), InvalidCall(target, selectors[i]));
+            require(selectors[i] != bytes4(0), InvalidSelector(selectors[i]));
 
-            bool added = _allowedSelectors[target].add(bytes32(selectors[i]));
+            bool added = _allowedSelectors[proposer][target].add(bytes32(selectors[i]));
 
             if (added) {
-                _targets.add(target);
+                _targets[proposer].add(target);
             }
         }
 
-        emit SelectorsAdded(target, selectors);
+        emit SelectorsAdded(proposer, target, selectors);
     }
 
-    function _remove(address target, bytes4[] memory selectors) internal {
+    function _remove(address proposer, address target, bytes4[] memory selectors) internal {
         for (uint256 i = 0; i < selectors.length; i++) {
-            bool removed = _allowedSelectors[target].remove(bytes32(selectors[i]));
+            bool removed = _allowedSelectors[proposer][target].remove(bytes32(selectors[i]));
 
-            if (removed && _allowedSelectors[target].length() == 0) {
-                _targets.remove(target);
+            if (removed && _allowedSelectors[proposer][target].length() == 0) {
+                _targets[proposer].remove(target);
             }
         }
 
-        emit SelectorsRemoved(target, selectors);
+        emit SelectorsRemoved(proposer, target, selectors);
     }
 }

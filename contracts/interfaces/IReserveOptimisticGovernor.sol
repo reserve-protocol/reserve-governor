@@ -47,12 +47,12 @@ interface IReserveOptimisticGovernor {
         uint48 voteExtension; // {s}
         uint256 proposalThreshold; // D18{1}
         uint256 quorumNumerator; // D18{1}
-        uint256 proposalThrottleCapacity; // proposals-per-account per 24h
     }
 
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
+        uint256 _proposalThrottleCapacity,
         address _token,
         address _timelock,
         address _selectorRegistry

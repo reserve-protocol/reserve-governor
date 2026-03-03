@@ -63,7 +63,7 @@ The system consists of five components:
 
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
 
-The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers vault ownership to the timelock, grants governor timelock roles, grants guardian/proposer roles, and renounces admin.
+The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers the vault admin role to the timelock, grants governor timelock roles, grants guardian/proposer roles, and renounces admin.
 
 ## Governance Flows
 
@@ -212,7 +212,7 @@ The main hybrid governor contract.
 **Configuration:**
 
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
-- `setProposalThrottle(capacity)` -- Update proposals-per-24h throttle capacity (onlyGovernance)
+- `setProposalThrottle(capacity)` -- Update optimistic proposals-per-24h throttle capacity (onlyGovernance)
 - `proposalThrottleCapacity()` -- Read current throttle capacity
 
 ### OptimisticSelectorRegistry
@@ -255,7 +255,7 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 - `claimRewards(rewardTokens[])` -- Claim accumulated rewards for specified reward tokens
 - `poke()` -- Trigger reward accrual without performing an action
 
-**Admin Functions (onlyOwner):**
+**Admin Functions (DEFAULT_ADMIN_ROLE):**
 
 - `addRewardToken(rewardToken)` -- Add a new reward token for distribution
 - `removeRewardToken(rewardToken)` -- Remove a reward token from distribution
@@ -268,7 +268,7 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 
 **Properties:**
 
-- UUPS upgradeable (owner-authorized)
+- UUPS upgradeable (admin-role-authorized)
 - Clock: timestamp-based (ERC5805)
 - Creates an `UnstakingManager` during initialization
 
@@ -332,7 +332,12 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `voteExtension`     | `uint48`  | Late quorum time extension                 |
 | `proposalThreshold` | `uint256` | Fraction of supply needed to propose (D18) |
 | `quorumNumerator`   | `uint256` | Fraction of supply needed for quorum (D18) |
-| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer per 24h |
+
+### Proposal Throttle Parameter
+
+| Parameter                  | Type      | Description                           |
+| -------------------------- | --------- | ------------------------------------- |
+| `proposalThrottleCapacity` | `uint256` | Max optimistic proposals per proposer per 24h    |
 
 ### Parameter Constraints
 
@@ -341,9 +346,9 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `vetoDelay`         | >= 1 second and < `MAX_OPTIMISTIC_DELAY` | `MIN_OPTIMISTIC_VETO_DELAY`, `MAX_OPTIMISTIC_DELAY` |
 | `vetoPeriod`        | >= 15 minutes | `MIN_OPTIMISTIC_VETO_PERIOD` |
 | `vetoThreshold`     | > 0 and <= 100% |                            |
+| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_PROPOSAL_THROTTLE_CAPACITY` |
 | `votingDelay`       | < `MAX_OPTIMISTIC_DELAY` | `MAX_OPTIMISTIC_DELAY` |
 | `proposalThreshold` | > 0 and <= 100% |                            |
-| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day | `MAX_PROPOSAL_THROTTLE_CAPACITY` |
 
 ### Proposal Throttle Behavior
 
@@ -382,7 +387,7 @@ Three contracts are UUPS upgradeable:
 
 | Contract                       | Upgrade Authorization                                    |
 | ------------------------------ | -------------------------------------------------------- |
-| `StakingVault`                 | Owner-authorized (`onlyOwner`)                          |
+| `StakingVault`                 | Admin-role-authorized (`DEFAULT_ADMIN_ROLE`)            |
 | `ReserveOptimisticGovernor`    | Via governance (timelock must call `upgradeToAndCall`)   |
 | `TimelockControllerOptimistic` | Self-administered (only the timelock itself can upgrade) |
 

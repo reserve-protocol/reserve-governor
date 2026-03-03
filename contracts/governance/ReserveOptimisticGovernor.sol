@@ -86,10 +86,11 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
-    /// @param standardGovParams.proposalThrottleCapacity Proposals-per-account per 24h
+    /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 24h
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
+        uint256 _proposalThrottleCapacity,
         address _token,
         address _timelockController,
         address _selectorRegistry
@@ -107,18 +108,18 @@ contract ReserveOptimisticGovernor is
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelockController)));
         __UUPSUpgradeable_init();
 
+        _setProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
-        _setProposalThrottle(standardGovParams.proposalThrottleCapacity);
 
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
     }
 
-    function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
-        _setOptimisticParams(params);
-    }
-
     function setProposalThrottle(uint256 newProposalThrottleCapacity) external onlyGovernance {
         _setProposalThrottle(newProposalThrottleCapacity);
+    }
+
+    function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
+        _setOptimisticParams(params);
     }
 
     function proposalThrottleCapacity() external view returns (uint256) {
