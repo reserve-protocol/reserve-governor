@@ -245,10 +245,8 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Canceled;
             }
 
-            uint256 initialSupply = token().getPastTotalSupply(optimisticProposalDetails[proposalId].proposedAt);
-
             // cancel proposal under excess supply inflation
-            if (ProposalLib.supplyInflated(initialSupply, snapshotSupply, _vetoThreshold)) {
+            if (ProposalLib.supplyInflated(optimisticProposalDetails[proposalId], snapshotSupply)) {
                 return ProposalState.Canceled;
             }
 

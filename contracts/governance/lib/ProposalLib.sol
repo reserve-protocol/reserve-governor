@@ -141,15 +141,14 @@ library ProposalLib {
         _saveProposal(proposalData, proposalCores[newProposalId], governor.votingDelay(), governor.votingPeriod());
     }
 
-    /// @param initialSupply {tok}
     /// @param snapshotSupply {tok}
-    /// @param vetoThreshold D18{1}
-    /// @return true if the optimistic proposal underwent supply inflation between creation and snapshot
-    function supplyInflated(uint256 initialSupply, uint256 snapshotSupply, uint256 vetoThreshold)
-        external
-        pure
-        returns (bool)
-    {
+    /// @return true if the optimisticProposal underwent excess supply inflation between creation and snapshot
+    function supplyInflated(
+        IReserveOptimisticGovernor.OptimisticProposalDetails storage optimisticProposal,
+        uint256 snapshotSupply
+    ) external view returns (bool) {
+        uint256 initialSupply = _governor().token().getPastTotalSupply(optimisticProposal.proposedAt);
+
         if (snapshotSupply < initialSupply) {
             return false;
         }
@@ -164,7 +163,8 @@ library ProposalLib {
         // D18{1} = {tok} * D18{1} / {tok}
         uint256 activePortion = (activeSupply * 1e18) / (activeSupply + newSupply);
 
-        return activePortion < vetoThreshold;
+        // D18{1} < D18{1}
+        return activePortion < optimisticProposal.vetoThreshold;
     }
 
     // === Private ===
