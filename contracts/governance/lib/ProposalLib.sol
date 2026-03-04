@@ -164,7 +164,7 @@ library ProposalLib {
         uint256 activePortion = (activeSupply * 1e18) / (activeSupply + newSupply);
 
         // D18{1} < D18{1}
-        return activePortion < optimisticProposal.vetoThreshold;
+        return activePortion <= optimisticProposal.vetoThreshold;
     }
 
     // === Private ===
