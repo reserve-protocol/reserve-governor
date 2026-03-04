@@ -141,6 +141,32 @@ library ProposalLib {
         _saveProposal(proposalData, proposalCores[newProposalId], governor.votingDelay(), governor.votingPeriod());
     }
 
+    /// @param initialSupply {tok}
+    /// @param snapshotSupply {tok}
+    /// @param vetoThreshold D18{1}
+    /// @return true if the optimistic proposal underwent supply inflation between creation and snapshot
+    function supplyInflated(uint256 initialSupply, uint256 snapshotSupply, uint256 vetoThreshold)
+        external
+        pure
+        returns (bool)
+    {
+        if (snapshotSupply < initialSupply) {
+            return false;
+        }
+
+        // assumption: up to half of the initialSupply is inactive and will not veto
+        // {tok}
+        uint256 activeSupply = initialSupply / 2;
+
+        // {tok}
+        uint256 newSupply = snapshotSupply - initialSupply;
+
+        // D18{1} = {tok} * D18{1} / {tok}
+        uint256 activePortion = (activeSupply * 1e18) / (activeSupply + newSupply);
+
+        return activePortion < vetoThreshold;
+    }
+
     // === Private ===
 
     function _validateProposal(ProposalData calldata proposal, GovernorUpgradeable.ProposalCore storage proposalCore)
