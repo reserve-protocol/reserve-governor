@@ -34,8 +34,7 @@ NOT INTENDED FOR PRODUCTION USE
 EOF
 
 for contract in "${CONTRACTS[@]}"; do
-    echo "Generating deployer for ${contract}..."
-    pnpm dlx forge-pack "$contract" --out "./out" --output "$ARTIFACTS_DIR" --pragma "^0.8.28"
+    pnpm dlx forge-pack@latest "$contract" --out "./out" --output "$ARTIFACTS_DIR" --pragma "^0.8.28"
 done
 
 echo "All artifacts generated successfully!"
