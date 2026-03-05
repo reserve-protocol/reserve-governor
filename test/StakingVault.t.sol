@@ -782,16 +782,16 @@ contract StakingVaultTest is Test {
         uint256 bobFirstRedeemHandout = 0;
 
         uint256 alicePartialRedeemBase = 400e18;
-        uint256 alicePartialRedeemHandout = 112_000_103_801_724_453_055;
+        uint256 alicePartialRedeemHandout = 72_000_066_729_680_005_535;
 
         uint256 aliceSecondDepositBaseShares = 300e18;
-        uint256 aliceSecondDepositShareDiscount = 65_625_047_516_648_899_170;
+        uint256 aliceSecondDepositShareDiscount = 45_762_747_807_564_585_356;
 
         uint256 bobFinalRedeemBase = 1_500e18;
-        uint256 bobFinalRedeemHandout = 677_028_536_714_672_267_867;
+        uint256 bobFinalRedeemHandout = 604_503_672_237_134_043_237;
 
-        uint256 aliceFinalRedeemBase = 834_374_952_483_351_100_830;
-        uint256 aliceFinalRedeemHandout = 376_597_102_100_784_933_142;
+        uint256 aliceFinalRedeemBase = 854_237_252_192_435_414_644;
+        uint256 aliceFinalRedeemHandout = 344_259_703_941_390_661_515;
 
         // No donation cycle should not change totalAssets.
         _payoutRewards(1);

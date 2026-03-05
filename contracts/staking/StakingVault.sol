@@ -197,6 +197,8 @@ contract StakingVault is
 
             emit Withdraw(_caller, _receiver, _owner, _assets, _shares);
         }
+
+        nativeBalanceLastKnown = IERC20(asset()).balanceOf(address(this));
     }
 
     /// @param _delay {s} New unstaking delay
