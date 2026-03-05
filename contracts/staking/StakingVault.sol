@@ -23,6 +23,8 @@ import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Non
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
+import { UpgradeLib } from "@utils/UpgradeLib.sol";
+
 import { Versioned } from "../utils/Versioned.sol";
 import { UnstakingManager } from "./UnstakingManager.sol";
 
@@ -52,6 +54,8 @@ contract StakingVault is
     UUPSUpgradeable
 {
     using EnumerableSet for EnumerableSet.AddressSet;
+
+    address public versionRegistry;
 
     EnumerableSet.AddressSet private rewardTokens;
     uint256 public rewardRatio; // D18{1}
@@ -105,6 +109,7 @@ contract StakingVault is
     /// @param _rewardPeriod {s} Half life of the reward handout rate
     /// @param _unstakingDelay {s} Delay after unstaking before user receives their deposit
     function initialize(
+        address _versionRegistry,
         string memory _name,
         string memory _symbol,
         IERC20 _underlying,
@@ -120,22 +125,18 @@ contract StakingVault is
         __ERC20Votes_init();
         __AccessControlEnumerable_init();
         __UUPSUpgradeable_init();
-        
+
         _grantRole(DEFAULT_ADMIN_ROLE, _initialAdmin);
 
         _setRewardRatio(_rewardPeriod);
         _setUnstakingDelay(_unstakingDelay);
 
+        versionRegistry = _versionRegistry;
+
         unstakingManager = new UnstakingManager(_underlying);
 
         nativeRewardsLastPaid = block.timestamp;
     }
-
-    /**
-     * @dev Authorize upgrade to a new implementation.
-     * @param newImplementation Address of the new implementation contract
-     */
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) { }
 
     /**
      * Deposit & Delegate
@@ -413,5 +414,11 @@ contract StakingVault is
 
     function CLOCK_MODE() public pure override returns (string memory) {
         return "mode=timestamp";
+    }
+
+    // === UUPS ===
+
+    function _authorizeUpgrade(address newImplementation) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
+        UpgradeLib.authorizeUpgrade(versionRegistry, UpgradeLib.UpgradeType.STAKING_VAULT, newImplementation);
     }
 }

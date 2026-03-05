@@ -48,4 +48,12 @@ interface IReserveOptimisticGovernorDeployer {
         address existingStakingVault,
         bytes32 deploymentNonce
     ) external returns (address stakingVault, address governor, address timelock, address selectorRegistry);
+
+    function stakingVaultImpl() external view returns (address);
+
+    function governorImpl() external view returns (address);
+
+    function timelockImpl() external view returns (address);
+
+    function selectorRegistryImpl() external view returns (address);
 }

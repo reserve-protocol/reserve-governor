@@ -13,6 +13,7 @@ import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
 import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "../utils/Constants.sol";
 import { Versioned } from "../utils/Versioned.sol";
+import { UpgradeLib } from "@utils/UpgradeLib.sol";
 
 contract TimelockControllerOptimistic is
     TimelockControllerUpgradeable,
@@ -21,19 +22,25 @@ contract TimelockControllerOptimistic is
     UUPSUpgradeable,
     ITimelockControllerOptimistic
 {
+    address public versionRegistry;
+
     constructor() {
         _disableInitializers();
     }
 
-    function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
-        public
-        override(ITimelockControllerOptimistic, TimelockControllerUpgradeable)
-        initializer
-    {
+    function initialize(
+        address _versionRegistry,
+        uint256 minDelay,
+        address[] memory proposers,
+        address[] memory executors,
+        address admin
+    ) public override initializer {
         __TimelockController_init(minDelay, proposers, executors, admin);
         __AccessControlEnumerable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
+
+        versionRegistry = _versionRegistry;
     }
 
     function supportsInterface(bytes4 interfaceId)
@@ -91,8 +98,11 @@ contract TimelockControllerOptimistic is
         executeBatch(targets, values, payloads, predecessor, salt);
     }
 
+    // === UUPS ===
+
     /// @dev Timelock authorizes its own upgrades (self-admin pattern)
-    function _authorizeUpgrade(address) internal view override {
+    function _authorizeUpgrade(address newImplementation) internal view override {
         require(msg.sender == address(this), TimelockControllerOptimistic__UnauthorizedUpgrade());
+        UpgradeLib.authorizeUpgrade(versionRegistry, UpgradeLib.UpgradeType.TIMELOCK, newImplementation);
     }
 }

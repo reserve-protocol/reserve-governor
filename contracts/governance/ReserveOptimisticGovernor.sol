@@ -40,6 +40,8 @@ import {
     OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
 import { Versioned } from "../utils/Versioned.sol";
+import { UpgradeLib } from "@utils/UpgradeLib.sol";
+
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
 import { ProposalLib } from "./lib/ProposalLib.sol";
@@ -66,6 +68,8 @@ contract ReserveOptimisticGovernor is
     UUPSUpgradeable,
     IReserveOptimisticGovernor
 {
+    address public versionRegistry;
+
     OptimisticGovernanceParams public optimisticParams;
 
     OptimisticSelectorRegistry public selectorRegistry;
@@ -88,6 +92,7 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
     /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 24h
     function initialize(
+        address _versionRegistry,
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         uint256 _proposalThrottleCapacity,
@@ -110,6 +115,8 @@ contract ReserveOptimisticGovernor is
 
         _setProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
+
+        versionRegistry = _versionRegistry;
 
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
     }
@@ -393,9 +400,6 @@ contract ReserveOptimisticGovernor is
         return super._executor();
     }
 
-    /// @dev Upgrades authorized only through timelock
-    function _authorizeUpgrade(address) internal override onlyGovernance { }
-
     // === Setters ===
 
     function _setProposalThreshold(uint256 newProposalThreshold) internal override {
@@ -451,5 +455,11 @@ contract ReserveOptimisticGovernor is
 
     function version() public pure virtual override(GovernorUpgradeable, Versioned) returns (string memory) {
         return Versioned.version();
+    }
+
+    // === UUPS ===
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyGovernance {
+        UpgradeLib.authorizeUpgrade(versionRegistry, UpgradeLib.UpgradeType.GOVERNOR, newImplementation);
     }
 }

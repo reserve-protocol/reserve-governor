@@ -50,6 +50,7 @@ interface IReserveOptimisticGovernor {
     }
 
     function initialize(
+        address _versionRegistry,
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         uint256 _proposalThrottleCapacity,

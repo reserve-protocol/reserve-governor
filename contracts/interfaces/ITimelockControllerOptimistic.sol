@@ -7,8 +7,13 @@ interface ITimelockControllerOptimistic {
 
     // === Events ===
 
-    function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
-        external;
+    function initialize(
+        address versionRegistry,
+        uint256 minDelay,
+        address[] memory proposers,
+        address[] memory executors,
+        address admin
+    ) external;
 
     function executeBatchBypass(
         address[] calldata targets,

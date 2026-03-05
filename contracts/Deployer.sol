@@ -16,17 +16,20 @@ import { Versioned } from "./utils/Versioned.sol";
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
     error Deployer__InvalidStakingVault();
 
+    address public immutable versionRegistry;
     address public immutable stakingVaultImpl;
     address public immutable governorImpl;
     address public immutable timelockImpl;
     address public immutable selectorRegistryImpl;
 
     constructor(
+        address _versionRegistry,
         address _stakingVaultImpl,
         address _governorImpl,
         address _timelockImpl,
         address _selectorRegistryImpl
     ) {
+        versionRegistry = _versionRegistry;
         stakingVaultImpl = _stakingVaultImpl;
         governorImpl = _governorImpl;
         timelockImpl = _timelockImpl;
@@ -66,6 +69,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         bytes memory stakingVaultInitData = abi.encodeCall(
             StakingVault.initialize,
             (
+                versionRegistry,
                 string.concat("Vote-Locked ", newStakingVaultParams.underlying.name()),
                 string.concat("vl", newStakingVaultParams.underlying.symbol()),
                 newStakingVaultParams.underlying,
@@ -140,7 +144,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Step 2.1: Deploy Timelock proxy with Deployer as temporary admin
         bytes memory timelockInitData = abi.encodeCall(
             TimelockControllerOptimistic.initialize,
-            (baseParams.timelockDelay, new address[](0), new address[](0), address(this))
+            (versionRegistry, baseParams.timelockDelay, new address[](0), new address[](0), address(this))
         );
         timelock = address(new ERC1967Proxy{ salt: deploymentSalt }(timelockImpl, timelockInitData));
 
@@ -151,6 +155,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         bytes memory governorInitData = abi.encodeCall(
             ReserveOptimisticGovernor.initialize,
             (
+                versionRegistry,
                 baseParams.optimisticParams,
                 baseParams.standardParams,
                 baseParams.proposalThrottleCapacity,
