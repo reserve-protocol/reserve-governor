@@ -78,6 +78,7 @@ contract StakingVault is
     mapping(address token => mapping(address user => UserRewardInfo userReward)) public userRewardTrackers;
 
     uint256 private totalDeposited; // {asset}
+    uint256 private nativeBalanceLastKnown; // {asset}
     uint256 private nativeRewardsLastPaid; // {s}
 
     error Vault__InvalidRewardToken(address rewardToken);
@@ -153,7 +154,7 @@ contract StakingVault is
 
     function _currentAccountedNativeRewards() internal view returns (uint256) {
         uint256 elapsed = block.timestamp - nativeRewardsLastPaid;
-        uint256 rewardsBalance = IERC20(asset()).balanceOf(address(this)) - totalDeposited;
+        uint256 rewardsBalance = nativeBalanceLastKnown - totalDeposited;
 
         return _calculateHandout(rewardsBalance, elapsed);
     }
@@ -164,6 +165,8 @@ contract StakingVault is
         accrueRewards(caller, receiver)
     {
         totalDeposited += assets;
+        nativeBalanceLastKnown += assets;
+
         super._deposit(caller, receiver, assets, shares);
     }
 
@@ -176,6 +179,7 @@ contract StakingVault is
         accrueRewards(_owner, _receiver)
     {
         totalDeposited -= _assets;
+        nativeBalanceLastKnown -= _assets;
 
         if (unstakingDelay == 0) {
             super._withdraw(_caller, _receiver, _owner, _assets, _shares);
@@ -193,6 +197,8 @@ contract StakingVault is
 
             emit Withdraw(_caller, _receiver, _owner, _assets, _shares);
         }
+
+        nativeBalanceLastKnown = IERC20(asset()).balanceOf(address(this));
     }
 
     /// @param _delay {s} New unstaking delay
@@ -225,6 +231,7 @@ contract StakingVault is
         emit RewardTokenAdded(_rewardToken);
     }
 
+    /// @dev To be called in event of bad ERC20; all rewards will be lost forever
     /// @param _rewardToken Reward token to remove
     function removeRewardToken(address _rewardToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
         disallowedRewardTokens[_rewardToken] = true;
@@ -318,7 +325,9 @@ contract StakingVault is
         /**
          * Native asset() rewards are special cased
          */
+
         totalDeposited += _currentAccountedNativeRewards();
+        nativeBalanceLastKnown = IERC20(asset()).balanceOf(address(this));
         nativeRewardsLastPaid = block.timestamp;
     }
 
@@ -334,7 +343,7 @@ contract StakingVault is
 
         if (tokensToHandout != 0) {
             // D18+decimals{reward/share} = D18 * {reward} * decimals / {share}
-            uint256 deltaIndex = (SCALAR * tokensToHandout * uint256(10 ** decimals())) / totalSupply();
+            uint256 deltaIndex = Math.mulDiv(tokensToHandout, SCALAR * uint256(10 ** decimals()), totalSupply());
 
             // D18+decimals{reward/share} += D18+decimals{reward/share}
             rewardInfo.rewardIndex += deltaIndex;
@@ -358,7 +367,7 @@ contract StakingVault is
         if (deltaIndex != 0) {
             // Accumulate rewards by multiplying user tokens by index and adding on unclaimed
             // {reward} = {share} * D18+decimals{reward/share} / decimals / D18
-            uint256 supplierDelta = (balanceOf(_user) * deltaIndex) / uint256(10 ** decimals()) / SCALAR;
+            uint256 supplierDelta = Math.mulDiv(balanceOf(_user), deltaIndex, uint256(10 ** decimals()) * SCALAR);
 
             // {reward} += {reward}
             userRewardTracker.accruedRewards += supplierDelta;
@@ -382,7 +391,7 @@ contract StakingVault is
         uint256 handoutPercentage = 1e18 - UD60x18.wrap(1e18 - rewardRatio).powu(elapsed).unwrap() - 1; // rounds down
 
         // {reward|asset} = {reward|asset} * D18{1} / D18
-        tokensToHandout = (balanceAvailable * handoutPercentage) / 1e18;
+        tokensToHandout = Math.mulDiv(balanceAvailable, handoutPercentage, 1e18);
     }
 
     /**

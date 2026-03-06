@@ -4,11 +4,12 @@ pragma solidity ^0.8.28;
 interface IOptimisticSelectorRegistry {
     // === Events ===
 
-    event SelectorsAdded(address indexed proposer, address indexed target, bytes4[] indexed selectors);
-    event SelectorsRemoved(address indexed proposer, address indexed target, bytes4[] indexed selectors);
+    event SelectorAdded(address indexed proposer, address indexed target, bytes4 indexed selectors);
+    event SelectorRemoved(address indexed proposer, address indexed target, bytes4 indexed selectors);
 
     // === Errors ===
 
+    error InvalidGovernor();
     error OnlyOwner(address caller);
     error InvalidTarget(address target);
     error InvalidSelector(bytes4 selector);

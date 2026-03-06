@@ -55,15 +55,19 @@ contract UnstakingManager {
     function cancelLock(uint256 lockId) external {
         Lock storage lock = locks[lockId];
 
-        require(lock.user == msg.sender, UnstakingManager__Unauthorized());
+        address user = lock.user;
+        uint256 amount = lock.amount;
+
+        require(user == msg.sender, UnstakingManager__Unauthorized());
         require(lock.claimedAt == 0, UnstakingManager__AlreadyClaimed());
 
-        SafeERC20.forceApprove(targetToken, address(vault), lock.amount);
-        vault.deposit(lock.amount, lock.user);
+        delete locks[lockId];
+
+        SafeERC20.forceApprove(targetToken, address(vault), amount);
+        vault.deposit(amount, user);
 
         emit LockCancelled(lockId);
 
-        delete locks[lockId];
     }
 
     function claimLock(uint256 lockId) external {

@@ -97,6 +97,7 @@ library ProposalLib {
                 target.code.length != 0 || proposal.calldatas[i].length == 0,
                 IReserveOptimisticGovernor.InvalidCall(target, proposal.calldatas[i])
             );
+            // not a security feature, just a partial guard against accidental calls to EOAs
         }
 
         // finalize
