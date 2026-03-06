@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  check-artifacts:
+  check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -44,6 +44,6 @@ jobs:
       - name: Check for Changes
         run: |
           if ! git diff --exit-code contracts/artifacts/; then
-            echo "::error::Artifact files are outdated. Run ./scripts/generate-artifacts.sh and commit the changes."
+            echo "::error:: Artifact files are outdated. Run ./scripts/generate-artifacts.sh and commit the changes."
             exit 1
           fi

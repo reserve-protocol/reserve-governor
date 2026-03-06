@@ -22,7 +22,7 @@ library ThrottleLib {
 
         ProposalThrottle storage throttle = proposalThrottle.throttles[account];
 
-        throttle.currentCharge = charge - ((1e18 + proposalThrottle.capacity - 1) / proposalThrottle.capacity);
+        throttle.currentCharge = charge - (1e18 / proposalThrottle.capacity);
         throttle.lastUpdated = block.timestamp;
     }
 

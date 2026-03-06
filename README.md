@@ -161,7 +161,11 @@ Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or stand
 | `EXECUTOR_ROLE`            | Governor contract                      | Execute timelock operations for both slow and fast proposal paths       |
 | `CANCELLER_ROLE`           | Governor contract + Guardian addresses | Cancel proposals (fast or slow), revoke optimistic proposers            |
 
+**IMPORTANT**: Roles held exclusively by the Governor contract (`PROPOSER_ROLE`/`EXECUTOR_ROLE`) should NEVER be granted to other addresses. This could result in executing actions through the timelock without a delay.
+
 > **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself -- it allows the governor to schedule operations, not individual users to create proposals.
+
+
 
 #### OPTIMISTIC_PROPOSER_ROLE
 
@@ -221,14 +225,14 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 
 **Management (onlyTimelock):**
 
-- `registerSelectors(SelectorData[])` -- Add allowed `(target, selector)` pairs
-- `unregisterSelectors(SelectorData[])` -- Remove allowed pairs
+- `registerSelectors(SelectorData[])` -- Add allowed `(proposer, target, selector)` pairs; emits `SelectorAdded` once per selector newly added
+- `unregisterSelectors(SelectorData[])` -- Remove allowed `(proposer, target, selector)` pairs; emits `SelectorRemoved` once per selector removed
 
 **Query:**
 
-- `isAllowed(target, selector)` -- Check if a `(target, selector)` pair is whitelisted
-- `targets()` -- List all targets that have at least one registered selector
-- `selectorsAllowed(target)` -- List all allowed selectors for a given target
+- `isAllowed(proposer, target, selector)` -- Check if a `(proposer, target, selector)` tuple is whitelisted
+- `targets(proposer)` -- List all targets that have at least one registered selector for the proposer
+- `selectorsAllowed(proposer, target)` -- List all allowed selectors for a given `(proposer, target)`
 
 **Constraints:**
 
@@ -290,7 +294,7 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 
 #### Valid Ranges
 
-StakingVault asset tokens are assumed to be maximum 1e36 supply and up to 27 decimals.
+StakingVault asset tokens and reward tokens are assumed to be maximum 1e36 supply and up to 27 decimals.
 
 #### Governance Guidelines
  
