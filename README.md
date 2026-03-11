@@ -63,7 +63,7 @@ The system consists of five components:
 
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
 
-The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers the vault admin role to the timelock, grants governor timelock roles, grants guardian/proposer roles, and renounces admin.
+The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers the vault admin role to the timelock, grants governor timelock roles, grants proposer/guardian/optimistic-guardian roles, and renounces admin.
 
 ## Governance Flows
 
@@ -102,7 +102,7 @@ When AGAINST votes reach the veto threshold, the governor creates a **new** stan
 | F1   | Uncontested       | Pending -> Active -> Succeeded -> Executed                                                           | Executes via timelock bypass |
 | F2   | Vetoed, Confirmed | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Succeeded -> Queued -> Executed | Executes via timelock        |
 | F3   | Vetoed, Rejected  | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Defeated                        | Proposal blocked             |
-| F4   | Canceled          | Any non-final state -> Canceled                                                                      | Proposer or guardian cancels |
+| F4   | Canceled          | Any non-final optimistic state -> Canceled                                                           | Proposer, optimistic guardian, or guardian cancels |
 
 ### Slow Proposal Lifecycle
 
@@ -132,7 +132,7 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting, timel
 | ---- | --------------- | --------------------------------------------------------------- | --------------------------- |
 | S1   | Success         | Pending -> Active -> Succeeded -> Queued -> Executed            | Normal governance execution |
 | S2   | Voting Defeated | Pending -> Active -> Defeated                                   | Proposal rejected by voters |
-| S3   | Cancellation    | Pending -> Canceled (or guardian cancel in any non-final state) | Canceled                    |
+| S3   | Cancellation    | Anything -> Canceled | Canceled                    |
 
 ## Veto Mechanism
 
@@ -157,6 +157,7 @@ Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or stand
 | Role                       | Held By                                | Permissions                                                             |
 | -------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
 | `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs               | Create fast proposals (`proposeOptimistic`)                             |
+| `OPTIMISTIC_CANCELLER_ROLE` | Designated optimistic guardian addresses | Cancel optimistic proposals in any non-defeated state |
 | `PROPOSER_ROLE`            | Governor contract                      | Schedule operations on the timelock (granted automatically by Deployer) |
 | `EXECUTOR_ROLE`            | Governor contract                      | Execute timelock operations for both slow and fast proposal paths       |
 | `CANCELLER_ROLE`           | Governor contract + Guardian addresses | Cancel proposals (fast or slow), revoke optimistic proposers            |
@@ -175,7 +176,20 @@ The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessCon
 - Revocation blocks new `proposeOptimistic()` calls by that account
 - Execution of a succeeded optimistic proposal is done via `execute(...)` and is not restricted to the original optimistic proposer
 
-The guardian (`CANCELLER_ROLE`) is expected to revoke the optimistic proposer if they become malicious or otherwise compromised. This includes directly proposing malicious proposals as well as indirect griefing actions such as stuffing a proposal with excess data to increase the gas cost of veto actions.
+#### OPTIMISTIC_CANCELLER_ROLE
+
+The `OPTIMISTIC_CANCELLER_ROLE` (optimistic guardian) is also managed on the timelock via standard AccessControl:
+
+- Granted via `timelock.grantRole(OPTIMISTIC_CANCELLER_ROLE, address)`
+- Revoked via `timelock.revokeRole(OPTIMISTIC_CANCELLER_ROLE, address)`
+- Checked via `timelock.hasRole(OPTIMISTIC_CANCELLER_ROLE, address)`
+- Allows canceling optimistic proposals in any state except the transitioned `Defeated` state
+- Does NOT allow canceling ordinary standard proposals or pending confirmation proposals
+- Does NOT allow `revokeOptimisticProposer()`; that remains restricted to `CANCELLER_ROLE`
+
+#### CANCELLER_ROLE
+
+The `CANCELLER_ROLE` (guardian) is expected to revoke the optimistic proposer if they become malicious or otherwise compromised. This includes directly proposing malicious proposals as well as indirect griefing actions such as stuffing a proposal with excess data to increase the gas cost of veto actions.
 
 ## Contract Reference
 
@@ -194,7 +208,7 @@ The main hybrid governor contract.
 - `castVote(proposalId, support)` -- Cast a vote (works on both fast and slow proposals; optimistic proposals only allow `support = 0` / `Against`)
 - `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal (optimistic proposals cannot be queued)
 - `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal or a succeeded optimistic proposal
-- `cancel(targets, values, calldatas, descriptionHash)` -- Cancel a proposal
+- `cancel(targets, values, calldatas, descriptionHash)` -- Cancel a proposal (`CANCELLER_ROLE` can cancel any proposal; the original proposer can cancel pending standard proposals; the original proposer or `OPTIMISTIC_CANCELLER_ROLE` can cancel optimistic proposals)
 
 **Proposal Creation Rules:**
 

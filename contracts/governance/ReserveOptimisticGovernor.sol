@@ -37,6 +37,7 @@ import {
     MAX_VOTE_EXTENSION,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
+    OPTIMISTIC_CANCELLER_ROLE,
     OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
 import { Versioned } from "../utils/Versioned.sol";
@@ -339,17 +340,20 @@ contract ReserveOptimisticGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        if (_timelock().hasRole(CANCELLER_ROLE, caller)) {
-            return true;
-        }
+        TimelockControllerOptimistic t = _timelock();
 
-        if (caller != proposalProposer(proposalId)) {
-            return false;
+        if (t.hasRole(CANCELLER_ROLE, caller)) {
+            return true;
         }
 
         ProposalState s = state(proposalId);
 
-        return (_isOptimistic(proposalId) && s != ProposalState.Defeated) || s == ProposalState.Pending;
+        if (_isOptimistic(proposalId)) {
+            return (caller == proposalProposer(proposalId) || t.hasRole(OPTIMISTIC_CANCELLER_ROLE, caller))
+                && s != ProposalState.Defeated;
+        }
+
+        return caller == proposalProposer(proposalId) && s == ProposalState.Pending;
     }
 
     function _countVote(uint256 proposalId, address account, uint8 support, uint256 totalWeight, bytes memory params)

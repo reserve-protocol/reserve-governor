@@ -10,7 +10,13 @@ import { OptimisticSelectorRegistry } from "./governance/OptimisticSelectorRegis
 import { ReserveOptimisticGovernor } from "./governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./governance/TimelockControllerOptimistic.sol";
 import { StakingVault } from "./staking/StakingVault.sol";
-import { CANCELLER_ROLE, EXECUTOR_ROLE, OPTIMISTIC_PROPOSER_ROLE, PROPOSER_ROLE } from "./utils/Constants.sol";
+import {
+    CANCELLER_ROLE,
+    EXECUTOR_ROLE,
+    OPTIMISTIC_CANCELLER_ROLE,
+    OPTIMISTIC_PROPOSER_ROLE,
+    PROPOSER_ROLE
+} from "./utils/Constants.sol";
 import { Versioned } from "./utils/Versioned.sol";
 
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
@@ -44,6 +50,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.standardParams.quorumNumerator D18{1} Stake fraction required for quorum.
     /// @param baseParams.selectorData Initial selector registry entries.
     /// @param baseParams.optimisticProposers Addresses granted optimistic proposer role.
+    /// @param baseParams.optimisticGuardians Addresses granted optimistic canceller role.
     /// @param baseParams.guardians Addresses granted canceller role.
     /// @param baseParams.timelockDelay {s} Timelock execution delay.
     /// @param baseParams.proposalThrottleCapacity Optimistic proposal throttle capacity.
@@ -179,6 +186,11 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Grant CANCELLER_ROLE to all guardians
         for (uint256 i = 0; i < baseParams.guardians.length; ++i) {
             _timelock.grantRole(CANCELLER_ROLE, baseParams.guardians[i]);
+        }
+
+        // Grant OPTIMISTIC_CANCELLER_ROLE to all optimistic guardians
+        for (uint256 i = 0; i < baseParams.optimisticGuardians.length; ++i) {
+            _timelock.grantRole(OPTIMISTIC_CANCELLER_ROLE, baseParams.optimisticGuardians[i]);
         }
 
         // Grant OPTIMISTIC_PROPOSER_ROLE to all optimistic proposers

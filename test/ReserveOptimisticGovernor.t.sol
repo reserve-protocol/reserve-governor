@@ -16,7 +16,7 @@ import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovern
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
-import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { CANCELLER_ROLE, OPTIMISTIC_CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { ReserveOptimisticGovernorV2Mock } from "./mocks/ReserveOptimisticGovernorV2Mock.sol";
@@ -43,6 +43,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     address public bob = makeAddr("bob");
     address public carol = makeAddr("carol");
     address public guardian = makeAddr("guardian");
+    address public optimisticGuardian = makeAddr("optimisticGuardian");
     address public optimisticProposer = makeAddr("optimisticProposer");
     address public optimisticProposer2 = makeAddr("optimisticProposer2");
 
@@ -91,6 +92,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         address[] memory guardians = new address[](1);
         guardians[0] = guardian;
 
+        address[] memory optimisticGuardians = new address[](1);
+        optimisticGuardians[0] = optimisticGuardian;
+
         bytes4[] memory transferSelectors = new bytes4[](1);
         transferSelectors[0] = IERC20.transfer.selector;
 
@@ -115,6 +119,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                 }),
                 selectorData: selectorData,
                 optimisticProposers: optimisticProposers,
+                optimisticGuardians: optimisticGuardians,
                 guardians: guardians,
                 timelockDelay: TIMELOCK_DELAY,
                 proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
@@ -183,6 +188,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer));
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
         assertTrue(timelock.hasRole(CANCELLER_ROLE, guardian));
+        assertTrue(timelock.hasRole(OPTIMISTIC_CANCELLER_ROLE, optimisticGuardian));
 
         assertTrue(registry.isAllowed(optimisticProposer, address(underlying), IERC20.transfer.selector));
         assertTrue(registry.isAllowed(optimisticProposer2, address(underlying), IERC20.transfer.selector));
@@ -378,6 +384,21 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         vm.prank(random);
         vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, random));
+        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+    }
+
+    function test_standardProposal_optimisticGuardianCannotCancelWhilePending() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Optimistic guardian cannot cancel pending standard";
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        vm.prank(optimisticGuardian);
+        vm.expectRevert(
+            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticGuardian)
+        );
         governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
     }
 
@@ -643,6 +664,19 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
+    function test_optimisticProposal_optimisticGuardianCanCancelDuringVeto() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Optimistic guardian-cancelable optimistic proposal";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        vm.prank(optimisticGuardian);
+        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
+    }
+
     function test_optimisticProposal_randomUserCannotCancel() public {
         address random = makeAddr("random");
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
@@ -710,6 +744,27 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(optimisticProposer);
         vm.expectRevert(
             abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticProposer)
+        );
+        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+    }
+
+    function test_optimisticProposal_optimisticGuardianCannotCancelWhenDefeated() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Defeated optimistic proposal cannot be canceled by optimistic guardian";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        _warpToActive(proposalId);
+
+        vm.prank(alice);
+        governor.castVote(proposalId, 0); // trigger optimistic -> confirmation transition
+
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
+
+        vm.prank(optimisticGuardian);
+        vm.expectRevert(
+            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticGuardian)
         );
         governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
     }
@@ -943,6 +998,27 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.cancel(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
 
         assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Canceled));
+    }
+
+    function test_confirmationVote_optimisticGuardianCannotCancelWhilePending() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Optimistic guardian cannot cancel confirmation";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        _warpToActive(proposalId);
+        vm.prank(alice);
+        governor.castVote(proposalId, 0); // trigger confirmation
+
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+
+        vm.prank(optimisticGuardian);
+        vm.expectRevert(
+            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, confirmationProposalId, optimisticGuardian)
+        );
+        governor.cancel(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
     }
 
     function test_execute_revertsAfterConfirmationTransition() public {
@@ -1241,6 +1317,12 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     function test_nonGuardianCannotRevokeOptimisticProposer() public {
         vm.prank(alice);
+        vm.expectRevert();
+        timelock.revokeOptimisticProposer(optimisticProposer2);
+    }
+
+    function test_optimisticGuardianCannotRevokeOptimisticProposer() public {
+        vm.prank(optimisticGuardian);
         vm.expectRevert();
         timelock.revokeOptimisticProposer(optimisticProposer2);
     }

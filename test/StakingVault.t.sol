@@ -71,6 +71,7 @@ contract StakingVaultTest is Test {
                 }),
                 selectorData: new IOptimisticSelectorRegistry.SelectorData[](0),
                 optimisticProposers: new address[](0),
+                optimisticGuardians: new address[](0),
                 guardians: new address[](0),
                 timelockDelay: 2 days,
                 proposalThrottleCapacity: 10
