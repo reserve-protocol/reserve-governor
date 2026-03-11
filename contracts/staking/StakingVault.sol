@@ -121,7 +121,7 @@ contract StakingVault is
         __ERC20Votes_init();
         __AccessControlEnumerable_init();
         __UUPSUpgradeable_init();
-
+        
         _grantRole(DEFAULT_ADMIN_ROLE, _initialAdmin);
 
         _setRewardRatio(_rewardPeriod);

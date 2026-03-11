@@ -12,7 +12,6 @@ uint256 constant MIN_OPTIMISTIC_VETO_DELAY = 1 seconds;
 uint256 constant MAX_OPTIMISTIC_DELAY = type(uint48).max / 2;
 uint256 constant MAX_VOTE_EXTENSION = type(uint48).max / 2;
 uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 15 minutes;
-uint256 constant MAX_VETO_THRESHOLD = 0.5e18; // 50%
 
 // ProposalThrottle
 uint256 constant MAX_PROPOSAL_THROTTLE_CAPACITY = 10; // 10 per day

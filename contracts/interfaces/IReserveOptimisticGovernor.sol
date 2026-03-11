@@ -29,7 +29,6 @@ interface IReserveOptimisticGovernor {
     // === Data ===
 
     struct OptimisticProposalDetails {
-        uint256 proposedAt; // {s}
         address[] targets;
         uint256[] values;
         bytes[] calldatas;

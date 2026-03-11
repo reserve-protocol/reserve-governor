@@ -973,23 +973,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.execute(targets, values, calldatas, keccak256(bytes(description)));
     }
 
-    function test_optimisticProposal_autoCancelsWhenProposerInflatesSupplyAgainstHalfActiveAssumption() public {
-        uint256 inflationCutoff = _currentHalfActiveInflationCutoff();
-
-        _assertOptimisticProposalStateAfterProposerSupplyInflation(
-            inflationCutoff, IGovernor.ProposalState.Canceled, "Proposer inflation attack"
-        );
-    }
-
-    function test_optimisticProposal_notCanceledWhenProposerInflatesSupplyJustBelowHalfActiveCutoff() public {
-        uint256 inflationCutoff = _currentHalfActiveInflationCutoff();
-        assertGt(inflationCutoff, 0);
-
-        _assertOptimisticProposalStateAfterProposerSupplyInflation(
-            inflationCutoff - 1, IGovernor.ProposalState.Active, "Proposer inflation near boundary"
-        );
-    }
-
     function test_optimisticProposal_autoCancelsWhenPastSupplyIsZero() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
@@ -1452,52 +1435,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         underlying.approve(address(stakingVault), amount);
         stakingVault.depositAndDelegate(amount);
         vm.stopPrank();
-    }
-
-    function _currentHalfActiveInflationCutoff() internal view returns (uint256) {
-        uint256 assumedActiveSupply = stakingVault.getPastTotalSupply(block.timestamp - 1) / 2;
-        assertGt(assumedActiveSupply, 0);
-
-        uint256 quotient = (assumedActiveSupply * 1e18) / (VETO_THRESHOLD + 1);
-        uint256 maxNonInflatingIncrease = quotient - assumedActiveSupply;
-        return maxNonInflatingIncrease + 1;
-    }
-
-    function _assertOptimisticProposalStateAfterProposerSupplyInflation(
-        uint256 additionalStake,
-        IGovernor.ProposalState expectedState,
-        string memory description
-    ) internal {
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-
-        vm.prank(optimisticProposer);
-        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
-        uint256 proposedAt = block.timestamp;
-
-        // Ensure the proposer stake increase is not part of the proposal-time supply checkpoint.
-        vm.warp(block.timestamp + 1);
-
-        uint256 initialSupply = stakingVault.getPastTotalSupply(proposedAt);
-
-        underlying.mint(optimisticProposer, additionalStake);
-        vm.startPrank(optimisticProposer);
-        underlying.approve(address(stakingVault), additionalStake);
-        stakingVault.depositAndDelegate(additionalStake);
-        vm.stopPrank();
-
-        uint256 snapshot = governor.proposalSnapshot(proposalId);
-        _warpToActive(proposalId);
-
-        uint256 snapshotSupply = stakingVault.getPastTotalSupply(snapshot);
-        uint256 inflatedVetoThresholdTok = (VETO_THRESHOLD * snapshotSupply) / 1e18;
-        uint256 initialVetoThresholdTok = (VETO_THRESHOLD * initialSupply) / 1e18;
-        uint256 aliceVotes = governor.getVotes(alice, snapshot);
-
-        assertGt(aliceVotes, initialVetoThresholdTok);
-        assertEq(snapshotSupply, initialSupply + additionalStake);
-        assertGt(inflatedVetoThresholdTok, aliceVotes);
-        assertEq(uint256(governor.state(proposalId)), uint256(expectedState));
     }
 
     function _singleCall(address target, uint256 value, bytes memory callData)

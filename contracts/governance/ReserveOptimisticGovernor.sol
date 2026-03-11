@@ -34,7 +34,6 @@ import {
     CANCELLER_ROLE,
     MAX_OPTIMISTIC_DELAY,
     MAX_PROPOSAL_THROTTLE_CAPACITY,
-    MAX_VETO_THRESHOLD,
     MAX_VOTE_EXTENSION,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
@@ -135,7 +134,6 @@ contract ReserveOptimisticGovernor is
         return 1e18;
     }
 
-    /// @return D18{1} Fraction of token supply required to start confirmation process
     function vetoThreshold(uint256 proposalId) public view returns (uint256) {
         return optimisticProposalDetails[proposalId].vetoThreshold;
     }
@@ -162,7 +160,6 @@ contract ReserveOptimisticGovernor is
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         optimisticProposalDetails[proposalId] = OptimisticProposalDetails({
-            proposedAt: block.timestamp,
             targets: targets,
             values: values,
             calldatas: calldatas,
@@ -227,7 +224,6 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Pending;
             }
 
-            // D18{1}
             uint256 _vetoThreshold = vetoThreshold(proposalId);
 
             if (_vetoThreshold == ProposalLib.TRANSITIONED_VETO_THRESHOLD) {
@@ -235,18 +231,10 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Defeated;
             }
 
-            // {tok}
-            uint256 snapshotSupply = token().getPastTotalSupply(snapshot);
-
             // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (_vetoThreshold * snapshotSupply) / 1e18;
+            uint256 vetoThresholdTok = (_vetoThreshold * token().getPastTotalSupply(snapshot)) / 1e18;
 
             if (vetoThresholdTok == 0) {
-                return ProposalState.Canceled;
-            }
-
-            // cancel proposal under excess supply inflation
-            if (ProposalLib.supplyInflated(optimisticProposalDetails[proposalId], snapshotSupply)) {
                 return ProposalState.Canceled;
             }
 
@@ -440,7 +428,7 @@ contract ReserveOptimisticGovernor is
         require(
             params.vetoDelay >= MIN_OPTIMISTIC_VETO_DELAY && params.vetoDelay < MAX_OPTIMISTIC_DELAY
                 && params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
-                && params.vetoThreshold <= MAX_VETO_THRESHOLD,
+                && params.vetoThreshold <= 1e18,
             InvalidOptimisticParameters()
         );
         optimisticParams = params;
