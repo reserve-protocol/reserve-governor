@@ -40,6 +40,7 @@ import {
     OPTIMISTIC_CANCELLER_ROLE,
     OPTIMISTIC_PROPOSER_ROLE
 } from "../utils/Constants.sol";
+import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
 import { Versioned } from "../utils/Versioned.sol";
 import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
@@ -63,6 +64,7 @@ contract ReserveOptimisticGovernor is
     GovernorVotesUpgradeable,
     GovernorVotesQuorumFractionUpgradeable,
     GovernorTimelockControlUpgradeable,
+    UpgradeControlled,
     Versioned,
     UUPSUpgradeable,
     IReserveOptimisticGovernor
@@ -96,8 +98,6 @@ contract ReserveOptimisticGovernor is
         address _timelockController,
         address _selectorRegistry
     ) public initializer {
-        require(keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"), InvalidToken());
-
         __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
             standardGovParams.votingDelay, standardGovParams.votingPeriod, standardGovParams.proposalThreshold
@@ -397,8 +397,7 @@ contract ReserveOptimisticGovernor is
         return super._executor();
     }
 
-    /// @dev Upgrades authorized only through timelock
-    function _authorizeUpgrade(address) internal override onlyGovernance { }
+    function _authorizeUpgrade(address) internal view override onlyUpgradeManager { }
 
     // === Setters ===
 

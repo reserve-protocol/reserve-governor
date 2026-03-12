@@ -12,11 +12,13 @@ import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils
 
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
 import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "../utils/Constants.sol";
+import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
 import { Versioned } from "../utils/Versioned.sol";
 
 contract TimelockControllerOptimistic is
     TimelockControllerUpgradeable,
     AccessControlEnumerableUpgradeable,
+    UpgradeControlled,
     Versioned,
     UUPSUpgradeable,
     ITimelockControllerOptimistic
@@ -91,8 +93,5 @@ contract TimelockControllerOptimistic is
         executeBatch(targets, values, payloads, predecessor, salt);
     }
 
-    /// @dev Timelock authorizes its own upgrades (self-admin pattern)
-    function _authorizeUpgrade(address) internal view override {
-        require(msg.sender == address(this), TimelockControllerOptimistic__UnauthorizedUpgrade());
-    }
+    function _authorizeUpgrade(address) internal view override onlyUpgradeManager { }
 }

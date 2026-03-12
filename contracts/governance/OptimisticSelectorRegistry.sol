@@ -7,15 +7,13 @@ import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/I
 
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
 
-import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
+import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
 
-contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistry {
+contract OptimisticSelectorRegistry is Initializable, UpgradeControlled, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
     // === State ===
-
-    ReserveOptimisticGovernor public governor;
 
     mapping(address proposer => EnumerableSet.AddressSet) private _targets;
     mapping(address proposer => mapping(address target => EnumerableSet.Bytes32Set)) private _allowedSelectors;
@@ -26,13 +24,7 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
         _disableInitializers();
     }
 
-    function initialize(address _governor, SelectorData[] memory selectorData) public initializer {
-        governor = ReserveOptimisticGovernor(payable(_governor));
-
-        // validate governor
-        governor.timelock();
-        governor.token();
-
+    function initialize(SelectorData[] memory selectorData) public initializer {
         for (uint256 i = 0; i < selectorData.length; i++) {
             _add(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);
         }
@@ -41,7 +33,7 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     // === External ===
 
     modifier onlyTimelock() {
-        require(msg.sender == governor.timelock(), OnlyOwner(msg.sender));
+        require(msg.sender == upgradeManager.timelock(), OnlyOwner(msg.sender));
         _;
     }
 
@@ -88,8 +80,8 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     function _add(address proposer, address target, bytes4[] memory selectors) internal {
         // target != self, governor, timelock, token
         require(
-            target != address(this) && target != address(governor) && target != address(governor.timelock())
-                && target != address(governor.token()),
+            target != address(this) && target != address(upgradeManager) && target != upgradeManager.governor()
+                && target != upgradeManager.timelock() && target != upgradeManager.stakingVault(),
             InvalidTarget(target)
         );
 

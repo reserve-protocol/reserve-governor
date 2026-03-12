@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "./interfaces/IDeployer.sol";
 
+import { ReserveOptimisticGovernanceUpgradeManager } from "./UpgradeManager.sol";
 import { OptimisticSelectorRegistry } from "./governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "./governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./governance/TimelockControllerOptimistic.sol";
@@ -20,19 +22,22 @@ import {
 import { Versioned } from "./utils/Versioned.sol";
 
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
-    error Deployer__InvalidStakingVault();
+    error Deployer__InvalidStakingVaultClockMode();
 
+    address public immutable versionRegistry;
     address public immutable stakingVaultImpl;
     address public immutable governorImpl;
     address public immutable timelockImpl;
     address public immutable selectorRegistryImpl;
 
     constructor(
+        address _versionRegistry,
         address _stakingVaultImpl,
         address _governorImpl,
         address _timelockImpl,
         address _selectorRegistryImpl
     ) {
+        versionRegistry = _versionRegistry;
         stakingVaultImpl = _stakingVaultImpl;
         governorImpl = _governorImpl;
         timelockImpl = _timelockImpl;
@@ -91,11 +96,23 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Step 2: Deploy Timelock, OptimisticSelectorRegistry, and Governor
         (timelock, governor, selectorRegistry) = _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt);
 
-        // Step 3: Transfer StakingVault admin role to Timelock
+        // Step 3: Deploy UpgradeManager
+        ReserveOptimisticGovernanceUpgradeManager upgradeManager =
+            new ReserveOptimisticGovernanceUpgradeManager(versionRegistry, stakingVault, governor, timelock);
+
+        // Step 3.5: Attach UpgradeManager
+        StakingVault(stakingVault).setUpgradeManager(address(upgradeManager));
+        ReserveOptimisticGovernor(payable(governor)).setUpgradeManager(address(upgradeManager));
+        TimelockControllerOptimistic(payable(timelock)).setUpgradeManager(address(upgradeManager));
+        OptimisticSelectorRegistry(payable(selectorRegistry)).setUpgradeManager(address(upgradeManager));
+
+        // Step 4: Transfer StakingVault admin role to Timelock
         StakingVault(stakingVault).grantRole(StakingVault(stakingVault).DEFAULT_ADMIN_ROLE(), timelock);
         StakingVault(stakingVault).renounceRole(StakingVault(stakingVault).DEFAULT_ADMIN_ROLE(), address(this));
 
-        emit ReserveOptimisticGovernorSystemDeployed(stakingVault, governor, timelock, selectorRegistry);
+        emit ReserveOptimisticGovernorSystemDeployed(
+            address(upgradeManager), stakingVault, governor, timelock, selectorRegistry
+        );
     }
 
     /// @notice Deploy a complete Reserve Governor system via proxies using an existing StakingVault
@@ -124,17 +141,24 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         address existingStakingVault,
         bytes32 deploymentNonce
     ) external returns (address stakingVault, address governor, address timelock, address selectorRegistry) {
-        // Step 1: Validate existing StakingVault
-        require(existingStakingVault.code.length != 0, Deployer__InvalidStakingVault());
-
         bytes32 deploymentSalt = keccak256(abi.encode(msg.sender, baseParams, existingStakingVault, deploymentNonce));
 
         stakingVault = existingStakingVault;
 
-        // Step 2: Deploy Timelock, OptimisticSelectorRegistry, and Governor
+        // Deploy Timelock, OptimisticSelectorRegistry, and Governor
+        // The existing StakingVault predates this deployment and is not rewired to this system's UpgradeManager
         (timelock, governor, selectorRegistry) = _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt);
 
-        emit ReserveOptimisticGovernorSystemDeployed(stakingVault, governor, timelock, selectorRegistry);
+        ReserveOptimisticGovernanceUpgradeManager upgradeManager =
+            new ReserveOptimisticGovernanceUpgradeManager(versionRegistry, address(0), governor, timelock);
+
+        ReserveOptimisticGovernor(payable(governor)).setUpgradeManager(address(upgradeManager));
+        TimelockControllerOptimistic(payable(timelock)).setUpgradeManager(address(upgradeManager));
+        OptimisticSelectorRegistry(payable(selectorRegistry)).setUpgradeManager(address(upgradeManager));
+
+        emit ReserveOptimisticGovernorSystemDeployed(
+            address(upgradeManager), stakingVault, governor, timelock, selectorRegistry
+        );
     }
 
     // === Internal ===
@@ -144,6 +168,11 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         address stakingVault,
         bytes32 deploymentSalt
     ) internal returns (address timelock, address governor, address selectorRegistry) {
+        require(
+            keccak256(bytes(IERC5805(stakingVault).CLOCK_MODE())) == keccak256("mode=timestamp"),
+            Deployer__InvalidStakingVaultClockMode()
+        );
+
         // Step 2.1: Deploy Timelock proxy with Deployer as temporary admin
         bytes memory timelockInitData = abi.encodeCall(
             TimelockControllerOptimistic.initialize,
@@ -169,7 +198,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         governor = address(new ERC1967Proxy{ salt: deploymentSalt }(governorImpl, governorInitData));
 
         // Step 2.4: Finalize OptimisticSelectorRegistry proxy
-        OptimisticSelectorRegistry(payable(selectorRegistry)).initialize(governor, baseParams.selectorData);
+        OptimisticSelectorRegistry(payable(selectorRegistry)).initialize(baseParams.selectorData);
 
         // Step 2.5: Configure Timelock roles
         TimelockControllerOptimistic _timelock = TimelockControllerOptimistic(payable(timelock));

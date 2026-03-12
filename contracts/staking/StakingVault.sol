@@ -23,6 +23,7 @@ import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Non
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
+import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
 import { Versioned } from "../utils/Versioned.sol";
 import { UnstakingManager } from "./UnstakingManager.sol";
 
@@ -48,6 +49,7 @@ contract StakingVault is
     ERC20PermitUpgradeable,
     ERC20VotesUpgradeable,
     AccessControlEnumerableUpgradeable,
+    UpgradeControlled,
     Versioned,
     UUPSUpgradeable
 {
@@ -121,7 +123,7 @@ contract StakingVault is
         __ERC20Votes_init();
         __AccessControlEnumerable_init();
         __UUPSUpgradeable_init();
-        
+
         _grantRole(DEFAULT_ADMIN_ROLE, _initialAdmin);
 
         _setRewardRatio(_rewardPeriod);
@@ -132,11 +134,7 @@ contract StakingVault is
         nativeRewardsLastPaid = block.timestamp;
     }
 
-    /**
-     * @dev Authorize upgrade to a new implementation.
-     * @param newImplementation Address of the new implementation contract
-     */
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) { }
+    function _authorizeUpgrade(address) internal view override onlyUpgradeManager { }
 
     /**
      * Deposit & Delegate
