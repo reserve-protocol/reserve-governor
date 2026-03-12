@@ -21,7 +21,6 @@ import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
-import { StakingVaultV2Mock } from "./mocks/StakingVaultV2Mock.sol";
 
 contract StakingVaultTest is Test {
     MockERC20 private token;
@@ -86,7 +85,7 @@ contract StakingVaultTest is Test {
             });
 
         // Deploy system
-        (address stakingVaultAddr,, address timelockAddr,) =
+        (, address stakingVaultAddr,, address timelockAddr,) =
             deployer.deployWithNewStakingVault(baseParams, newStakingVaultParams, bytes32(0));
         vault = StakingVault(stakingVaultAddr);
         timelock = timelockAddr;
@@ -1040,51 +1039,6 @@ contract StakingVaultTest is Test {
         // Owner should have received their rewards (not lost due to missing accrual)
         assertApproxEqRel(claimedRewards[0], expectedOwnerRewards, 0.001e18);
         assertApproxEqRel(reward.balanceOf(address(this)), expectedOwnerRewards, 0.001e18);
-    }
-
-    // ============ UUPS Upgrade Tests ============
-
-    // Upgrade flow is now routed through UpgradeManager and needs dedicated coverage.
-    function skip_upgrade() public {
-        // Setup: deposit some tokens and accrue rewards
-        _mintAndDepositFor(ACTOR_ALICE, 1000e18);
-        vm.warp(block.timestamp + 1);
-        reward.mint(address(vault), 500e18);
-        vault.poke();
-        _payoutRewards(1);
-
-        // Deploy new implementation
-        StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
-
-        // Upgrade via deployer (the owner)
-        vm.prank(address(timelock));
-        vault.upgradeToAndCall(address(newImpl), "");
-
-        // Verify new implementation is active
-        assertEq(StakingVault(address(vault)).version(), "2.0.0");
-
-        // Verify state is preserved
-        assertEq(vault.name(), "Vote-Locked Test Token");
-        assertEq(vault.symbol(), "vlTEST");
-        assertEq(address(vault.asset()), address(token));
-        assertEq(vault.balanceOf(ACTOR_ALICE), 1000e18);
-        assertTrue(vault.hasRole(vault.DEFAULT_ADMIN_ROLE(), address(timelock)));
-        assertEq(vault.unstakingDelay(), UNSTAKING_DELAY);
-
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 1);
-        assertEq(_rewardTokens[0], address(reward));
-    }
-
-    function skip_cannotUpgradeIfNotOwner() public {
-        StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
-        bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
-
-        vm.prank(ACTOR_ALICE);
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
-        );
-        vault.upgradeToAndCall(address(newImpl), "");
     }
 
     function test_cannotInitializeTwice() public {

@@ -13,14 +13,11 @@ import { TimelockControllerOptimistic } from "@governance/TimelockControllerOpti
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
-import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
 import { CANCELLER_ROLE, OPTIMISTIC_CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
-import { ReserveOptimisticGovernorV2Mock } from "./mocks/ReserveOptimisticGovernorV2Mock.sol";
-import { TimelockControllerOptimisticV2Mock } from "./mocks/TimelockControllerOptimisticV2Mock.sol";
 
 contract DummyTarget {
     function ping() external pure returns (uint256) {
@@ -135,12 +132,13 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         // Baseline deployment used directly in new-vault mode and reused as the preexisting vault in existing-vault
         // mode.
-        (address stakingVaultAddr, address governorAddr, address timelockAddr, address selectorRegistryAddr) =
+        (, address stakingVaultAddr, address governorAddr, address timelockAddr, address selectorRegistryAddr) =
             deployer.deployWithNewStakingVault(baseParams, newStakingVaultParams, bytes32(0));
         originalStakingVaultAdmin = timelockAddr;
 
         if (_useExistingStakingVaultDeployment()) {
             (
+                ,
                 address existingStakingVaultAddr,
                 address existingGovernorAddr,
                 address existingTimelockAddr,
@@ -1280,11 +1278,17 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         registry.registerSelectors(selectorData);
 
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(optimisticProposer, address(stakingVault), selectors);
-        vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(stakingVault))
-        );
-        registry.registerSelectors(selectorData);
+        if (_useExistingStakingVaultDeployment()) {
+            vm.prank(address(timelock));
+            registry.registerSelectors(selectorData);
+            assertTrue(registry.isAllowed(optimisticProposer, address(stakingVault), selectors[0]));
+        } else {
+            vm.prank(address(timelock));
+            vm.expectRevert(
+                abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(stakingVault))
+            );
+            registry.registerSelectors(selectorData);
+        }
 
         DummyTarget dummy = new DummyTarget();
         selectors[0] = bytes4(0);
@@ -1446,51 +1450,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         vm.expectRevert(IReserveOptimisticGovernor.InvalidProposalThrottle.selector);
         governor.execute(targets, values, calldatas, descriptionHash);
-    }
-
-    // ===== Upgrades =====
-
-    // Upgrade flow is now routed through UpgradeManager and needs dedicated coverage.
-    function skip_upgradeGovernor_viaGovernance() public {
-        ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
-
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(governor), 0, abi.encodeCall(governor.upgradeToAndCall, (address(newImpl), "")));
-
-        (, bytes32 descriptionHash) = _proposePassAndQueueStandard(targets, values, calldatas, "Upgrade governor");
-        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
-        governor.execute(targets, values, calldatas, descriptionHash);
-
-        assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).version(), "2.0.0");
-    }
-
-    function skip_cannotUpgradeGovernor_unauthorized() public {
-        ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
-
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorOnlyExecutor.selector, alice));
-        governor.upgradeToAndCall(address(newImpl), "");
-    }
-
-    function skip_upgradeTimelock_viaGovernance() public {
-        TimelockControllerOptimisticV2Mock newImpl = new TimelockControllerOptimisticV2Mock();
-
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(timelock), 0, abi.encodeCall(timelock.upgradeToAndCall, (address(newImpl), "")));
-
-        (, bytes32 descriptionHash) = _proposePassAndQueueStandard(targets, values, calldatas, "Upgrade timelock");
-        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
-        governor.execute(targets, values, calldatas, descriptionHash);
-
-        assertEq(TimelockControllerOptimisticV2Mock(payable(address(timelock))).version(), "2.0.0");
-    }
-
-    function skip_cannotUpgradeTimelock_unauthorized() public {
-        TimelockControllerOptimisticV2Mock newImpl = new TimelockControllerOptimisticV2Mock();
-
-        vm.prank(alice);
-        vm.expectRevert(ITimelockControllerOptimistic.TimelockControllerOptimistic__UnauthorizedUpgrade.selector);
-        timelock.upgradeToAndCall(address(newImpl), "");
     }
 
     // ===== Misc Vote Validation =====
