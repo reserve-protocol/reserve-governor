@@ -486,14 +486,13 @@ For deployments created with `deployWithExistingStakingVault()`, `UpgradeManager
 
 ### Compatibility Assumption
 
-The upgrade design intentionally narrows which version combinations can exist:
+The upgrade design narrows which version combinations can exist:
 
-- Governance upgrades are latest-only. A system cannot choose an arbitrary intermediate governor or timelock version, or go backwards to an older version. 
-- For deployments created with `deployWithExistingStakingVault()`, the governor and timelock can only upgrade after their associated reused vault is already on that same latest version.
+- Governance upgrades are latest-only. A system cannot choose an arbitrary intermediate version or go backwards to an older version. 
+- For deployments created with `deployWithExistingStakingVault()`, the governor and timelock can only upgrade after their associated vault dependency is already on that same latest version.
 
 `StakingVault` upgrade requirements:
-
-- New `StakingVault` implementations must remain backwards compatible with older supported `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` implementations
+- New `StakingVault` implementations must remain backwards compatible with older `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` implementations
 
 ## Flow Summary
 

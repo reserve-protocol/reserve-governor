@@ -44,8 +44,10 @@ contract ReserveOptimisticGovernanceUpgradeManager {
 
         require(!deprecated, UpgradeManager__VersionDeprecated(versionHash));
         // If a bug is found in the latest version, the assumption is a non-bugged newer version will be
-        // released. In the meantime, nothing should be broken because:
-        //   - newer versions must always by backwards compatible with older versions
+        // released. In the meantime, nothing should be broken.
+        //
+        // Assumptions:
+        //   - newer version Governor/Timelocks must always by backwards compatible with older StakingVaults
         //   - the 2-part system version is always <= 3-part system version
 
         (address stakingVaultImpl, address governorImpl, address timelockImpl) =
