@@ -19,6 +19,7 @@ interface IReserveOptimisticGovernor {
     error ProposalThrottleExceeded();
     error InvalidDelay();
     error OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
+    error TimelockCannotBeUpdated();
 
     // === Events ===
 

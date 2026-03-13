@@ -152,6 +152,10 @@ contract ReserveOptimisticGovernor is
         return super.token();
     }
 
+    function updateTimelock(TimelockControllerUpgradeable) external pure override {
+        revert TimelockCannotBeUpdated();
+    }
+
     // === Proposal Creation ===
 
     /// @dev Only callable by OPTIMISTIC_PROPOSER_ROLE
