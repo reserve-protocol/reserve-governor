@@ -1043,12 +1043,13 @@ contract StakingVaultTest is Test {
 
     function test_cannotInitializeTwice() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        vault.initialize("New Name", "NEW", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0);
+        vault.initialize("New Name", "NEW", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0, address(this));
     }
 
     function test_implementationCannotBeInitialized() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        StakingVault(vaultImpl)
-            .initialize("Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0);
+        StakingVault(vaultImpl).initialize(
+            "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0, address(this)
+        );
     }
 }

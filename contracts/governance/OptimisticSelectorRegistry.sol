@@ -3,13 +3,11 @@ pragma solidity ^0.8.28;
 
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
 
 import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
 
-contract OptimisticSelectorRegistry is Initializable, UpgradeControlled, IOptimisticSelectorRegistry {
+contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
@@ -24,7 +22,9 @@ contract OptimisticSelectorRegistry is Initializable, UpgradeControlled, IOptimi
         _disableInitializers();
     }
 
-    function initialize(SelectorData[] memory selectorData) public initializer {
+    function initialize(SelectorData[] memory selectorData, address upgradeManager_) public initializer {
+        __UpgradeControlled_init(upgradeManager_);
+
         for (uint256 i = 0; i < selectorData.length; i++) {
             _add(selectorData[i].target, selectorData[i].selectors);
         }

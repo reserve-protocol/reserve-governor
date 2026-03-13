@@ -107,13 +107,15 @@ contract StakingVault is
     /// @param _initialAdmin Initial admin of the vault
     /// @param _rewardPeriod {s} Half life of the reward handout rate
     /// @param _unstakingDelay {s} Delay after unstaking before user receives their deposit
+    /// @param _upgradeManager Upgrade manager authorized for UUPS upgrades
     function initialize(
         string memory _name,
         string memory _symbol,
         IERC20 _underlying,
         address _initialAdmin,
         uint256 _rewardPeriod,
-        uint256 _unstakingDelay
+        uint256 _unstakingDelay,
+        address _upgradeManager
     ) external initializer {
         require(_initialAdmin != address(0), Vault__InvalidAdmin(_initialAdmin));
 
@@ -123,6 +125,7 @@ contract StakingVault is
         __ERC20Votes_init();
         __AccessControlEnumerable_init();
         __UUPSUpgradeable_init();
+        __UpgradeControlled_init(_upgradeManager);
 
         _grantRole(DEFAULT_ADMIN_ROLE, _initialAdmin);
 

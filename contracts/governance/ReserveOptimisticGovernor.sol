@@ -90,13 +90,15 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
     /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 24h
+    /// @param _upgradeManager Upgrade manager authorized for UUPS upgrades
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         uint256 _proposalThrottleCapacity,
         address _token,
         address _timelockController,
-        address _selectorRegistry
+        address _selectorRegistry,
+        address _upgradeManager
     ) public initializer {
         __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
@@ -108,6 +110,7 @@ contract ReserveOptimisticGovernor is
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelockController)));
         __UUPSUpgradeable_init();
+        __UpgradeControlled_init(_upgradeManager);
 
         _setProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);

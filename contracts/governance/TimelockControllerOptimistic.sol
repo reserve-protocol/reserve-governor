@@ -27,15 +27,24 @@ contract TimelockControllerOptimistic is
         _disableInitializers();
     }
 
-    function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
-        public
-        override(ITimelockControllerOptimistic, TimelockControllerUpgradeable)
-        initializer
-    {
+    /// @dev Invalid inherited initializer
+    function initialize(uint256, address[] memory, address[] memory, address) public pure override {
+        revert TimelockControllerOptimistic__InvalidInitialization();
+    }
+
+    /// @dev Real initializer
+    function initialize(
+        uint256 minDelay,
+        address[] memory proposers,
+        address[] memory executors,
+        address admin,
+        address upgradeManager
+    ) public initializer {
         __TimelockController_init(minDelay, proposers, executors, admin);
         __AccessControlEnumerable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
+        __UpgradeControlled_init(upgradeManager);
     }
 
     function supportsInterface(bytes4 interfaceId)

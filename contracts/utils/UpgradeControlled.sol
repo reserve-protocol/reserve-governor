@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
 import { ReserveOptimisticGovernanceUpgradeManager } from "../UpgradeManager.sol";
 
-abstract contract UpgradeControlled {
+abstract contract UpgradeControlled is Initializable {
     error UpgradeControlled__InvalidUpgradeManager(address upgradeManager);
     error UpgradeControlled__UnauthorizedCaller(address caller);
-    error UpgradeControlled__UpgradeManagerAlreadySet();
 
     ReserveOptimisticGovernanceUpgradeManager public upgradeManager;
 
@@ -15,10 +16,9 @@ abstract contract UpgradeControlled {
         _;
     }
 
-    function setUpgradeManager(address _upgradeManager) external {
+    function __UpgradeControlled_init(address _upgradeManager) internal onlyInitializing {
         require(_upgradeManager != address(0), UpgradeControlled__InvalidUpgradeManager(_upgradeManager));
 
-        require(address(upgradeManager) == address(0), UpgradeControlled__UpgradeManagerAlreadySet());
         upgradeManager = ReserveOptimisticGovernanceUpgradeManager(_upgradeManager);
     }
 }

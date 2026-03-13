@@ -66,7 +66,6 @@ The system has five runtime components and two upgrade-management components:
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
 The allowlist is universal: selector permissions do not depend on which optimistic proposer submits the proposal.
 
-The `ReserveOptimisticGovernorDeployer` deploys the full system, creates and attaches an `UpgradeManager`, transfers the vault admin role to the timelock for fresh-vault deployments, grants governor timelock roles, grants proposer/guardian/optimistic-guardian roles, and renounces admin.
 
 Upgrade infrastructure sits alongside the governance runtime:
 
@@ -449,7 +448,7 @@ Additional optimistic validations:
 
 ## Upgradeability
 
-Three contracts are UUPS upgradeable, but the supported upgrade path is versioned system upgrades through `ReserveOptimisticGovernanceUpgradeManager`. The proxy `upgradeToAndCall()` entrypoints still exist, but each managed contract authorizes upgrades with `onlyUpgradeManager`, so direct calls from EOAs or governance payloads targeting the component proxies will revert.
+Three contracts are UUPS upgradeable, but the supported upgrade path is versioned system upgrades through `ReserveOptimisticGovernanceUpgradeManager`. The proxy `upgradeToAndCall()` entrypoints still exist, but each managed contract stores its `upgradeManager` during initialization and authorizes upgrades with `onlyUpgradeManager`, so direct calls from EOAs or governance payloads targeting the component proxies will revert. All upgrades must be performed through `UpgradeManager.upgradeToLatestVersion()`.
 
 | Contract                       | Authorized Upgrader | Included in `UpgradeManager` |
 | ------------------------------ | ------------------- | ---------------------------- |
