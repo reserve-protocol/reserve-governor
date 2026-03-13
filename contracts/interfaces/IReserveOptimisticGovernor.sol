@@ -9,17 +9,17 @@ import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error InvalidProposalThreshold();
-    error InvalidProposalThrottle();
-    error InvalidOptimisticParameters();
-    error OptimisticProposalCannotBeQueued(uint256 proposalId);
-    error NotOptimisticProposer(address account);
-    error ConfirmationPrefixNotAllowed();
-    error InvalidCall(address target, bytes call);
-    error ProposalThrottleExceeded();
-    error InvalidDelay();
-    error OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
-    error TimelockCannotBeUpdated();
+    error OptimisticGovernor__InvalidProposalThreshold();
+    error OptimisticGovernor__InvalidProposalThrottle();
+    error OptimisticGovernor__InvalidOptimisticParameters();
+    error OptimisticGovernor__OptimisticProposalCannotBeQueued(uint256 proposalId);
+    error OptimisticGovernor__NotOptimisticProposer(address account);
+    error OptimisticGovernor__ConfirmationPrefixNotAllowed();
+    error OptimisticGovernor__InvalidCall(address target, bytes call);
+    error OptimisticGovernor__ProposalThrottleExceeded();
+    error OptimisticGovernor__InvalidDelay();
+    error OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
+    error OptimisticGovernor__TimelockCannotBeUpdated();
 
     // === Events ===
 

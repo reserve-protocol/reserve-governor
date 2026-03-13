@@ -5,17 +5,17 @@ import { Test } from "forge-std/Test.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
+import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
-import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { StakingVault } from "@src/staking/StakingVault.sol";
 import { ReserveOptimisticGovernanceUpgradeManager } from "@src/UpgradeManager.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { StakingVault } from "@src/staking/StakingVault.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockRoleRegistry } from "./mocks/MockRoleRegistry.sol";
@@ -112,12 +112,8 @@ abstract contract UpgradeManagerTestBase is Test {
                 unstakingDelay: UNSTAKING_DELAY
             });
 
-        (
-            address baseUpgradeManager,
-            address stakingVaultAddr,
-            address governorAddr,
-            address timelockAddr,
-        ) = deployer.deployWithNewStakingVault(baseParams, newStakingVaultParams, bytes32(0));
+        (address baseUpgradeManager, address stakingVaultAddr, address governorAddr, address timelockAddr,) =
+            deployer.deployWithNewStakingVault(baseParams, newStakingVaultParams, bytes32(0));
         originalStakingVaultAdmin = timelockAddr;
         freshGovernor = ReserveOptimisticGovernor(payable(governorAddr));
         freshTimelock = TimelockControllerOptimistic(payable(timelockAddr));
@@ -168,8 +164,7 @@ abstract contract UpgradeManagerTestBase is Test {
 
     function _assertCommonState() internal view {
         assertEq(
-            upgradeManager.stakingVault(),
-            _useExistingStakingVaultDeployment() ? address(0) : address(stakingVault)
+            upgradeManager.stakingVault(), _useExistingStakingVaultDeployment() ? address(0) : address(stakingVault)
         );
         assertEq(address(governor.token()), address(stakingVault));
         assertEq(governor.timelock(), address(timelock));

@@ -153,7 +153,7 @@ contract ReserveOptimisticGovernor is
     }
 
     function updateTimelock(TimelockControllerUpgradeable) external pure override {
-        revert TimelockCannotBeUpdated();
+        revert OptimisticGovernor__TimelockCannotBeUpdated();
     }
 
     // === Proposal Creation ===
@@ -316,7 +316,7 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint48) {
-        require(!_isOptimistic(proposalId), OptimisticProposalCannotBeQueued(proposalId));
+        require(!_isOptimistic(proposalId), OptimisticGovernor__OptimisticProposalCannotBeQueued(proposalId));
 
         return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
@@ -374,7 +374,7 @@ contract ReserveOptimisticGovernor is
     {
         require(
             !_isOptimistic(proposalId) || support == uint8(VoteType.Against),
-            OptimisticProposalCanOnlyBeVetoed(proposalId)
+            OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(proposalId)
         );
 
         return super._countVote(proposalId, account, support, totalWeight, params);
@@ -413,27 +413,32 @@ contract ReserveOptimisticGovernor is
     // === Setters ===
 
     function _setProposalThreshold(uint256 newProposalThreshold) internal override {
-        require(newProposalThreshold != 0 && newProposalThreshold <= 1e18, InvalidProposalThreshold());
+        require(
+            newProposalThreshold != 0 && newProposalThreshold <= 1e18, OptimisticGovernor__InvalidProposalThreshold()
+        );
 
         super._setProposalThreshold(newProposalThreshold);
     }
 
     /// @dev Back-propagates `newCapacity` to all accounts, acceptable simplification
     function _setProposalThrottle(uint256 newCapacity) internal {
-        require(newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY, InvalidProposalThrottle());
+        require(
+            newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY,
+            OptimisticGovernor__InvalidProposalThrottle()
+        );
 
         proposalThrottle.capacity = newCapacity;
         emit ProposalThrottleUpdated(newCapacity);
     }
 
     function _setVotingDelay(uint48 newVotingDelay) internal override {
-        require(newVotingDelay < MAX_OPTIMISTIC_DELAY, InvalidDelay());
+        require(newVotingDelay < MAX_OPTIMISTIC_DELAY, OptimisticGovernor__InvalidDelay());
 
         super._setVotingDelay(newVotingDelay);
     }
 
     function _setLateQuorumVoteExtension(uint48 newVoteExtension) internal override {
-        require(newVoteExtension < MAX_VOTE_EXTENSION, InvalidDelay());
+        require(newVoteExtension < MAX_VOTE_EXTENSION, OptimisticGovernor__InvalidDelay());
 
         super._setLateQuorumVoteExtension(newVoteExtension);
     }
@@ -443,7 +448,7 @@ contract ReserveOptimisticGovernor is
             params.vetoDelay >= MIN_OPTIMISTIC_VETO_DELAY && params.vetoDelay < MAX_OPTIMISTIC_DELAY
                 && params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
                 && params.vetoThreshold <= 1e18,
-            InvalidOptimisticParameters()
+            OptimisticGovernor__InvalidOptimisticParameters()
         );
         optimisticParams = params;
     }

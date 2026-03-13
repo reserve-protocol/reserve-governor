@@ -9,10 +9,10 @@ interface IOptimisticSelectorRegistry {
 
     // === Errors ===
 
-    error InvalidGovernor();
-    error OnlyOwner(address caller);
-    error InvalidTarget(address target);
-    error InvalidSelector(bytes4 selector);
+    error SelectorRegistry__InvalidGovernor();
+    error SelectorRegistry__OnlyOwner(address caller);
+    error SelectorRegistry__InvalidTarget(address target);
+    error SelectorRegistry__InvalidSelector(bytes4 selector);
 
     // === Data ===
 

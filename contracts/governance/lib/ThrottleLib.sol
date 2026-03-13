@@ -18,7 +18,7 @@ library ThrottleLib {
 
     function consumeProposalCharge(ProposalThrottleStorage storage proposalThrottle, address account) external {
         (uint256 proposalsAvailable, uint256 charge) = _getProposalsAvailable(proposalThrottle, account);
-        require(proposalsAvailable >= 1, IReserveOptimisticGovernor.ProposalThrottleExceeded());
+        require(proposalsAvailable >= 1, IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded());
 
         ProposalThrottle storage throttle = proposalThrottle.throttles[account];
 

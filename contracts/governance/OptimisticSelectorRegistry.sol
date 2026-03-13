@@ -33,7 +33,7 @@ contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorReg
     // === External ===
 
     modifier onlyTimelock() {
-        require(msg.sender == upgradeManager.timelock(), OnlyOwner(msg.sender));
+        require(msg.sender == upgradeManager.timelock(), SelectorRegistry__OnlyOwner(msg.sender));
         _;
     }
 
@@ -78,12 +78,12 @@ contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorReg
         require(
             target != address(this) && target != address(upgradeManager) && target != upgradeManager.governor()
                 && target != upgradeManager.timelock() && target != upgradeManager.stakingVault(),
-            InvalidTarget(target)
+            SelectorRegistry__InvalidTarget(target)
         );
 
         for (uint256 i = 0; i < selectors.length; i++) {
             // no empty selectors
-            require(selectors[i] != bytes4(0), InvalidSelector(selectors[i]));
+            require(selectors[i] != bytes4(0), SelectorRegistry__InvalidSelector(selectors[i]));
 
             bool added = _allowedSelectors[target].add(bytes32(selectors[i]));
 

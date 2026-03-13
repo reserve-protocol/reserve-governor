@@ -92,15 +92,16 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
             _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt, true);
 
         // Step 3: Initialize StakingVault now that the UpgradeManager exists
-        StakingVault(stakingVault).initialize(
-            string.concat("Vote-Locked ", newStakingVaultParams.underlying.name()),
-            string.concat("vl", newStakingVaultParams.underlying.symbol()),
-            newStakingVaultParams.underlying,
-            address(this),
-            newStakingVaultParams.rewardHalfLife,
-            newStakingVaultParams.unstakingDelay,
-            upgradeManager
-        );
+        StakingVault(stakingVault)
+            .initialize(
+                string.concat("Vote-Locked ", newStakingVaultParams.underlying.name()),
+                string.concat("vl", newStakingVaultParams.underlying.symbol()),
+                newStakingVaultParams.underlying,
+                address(this),
+                newStakingVaultParams.rewardHalfLife,
+                newStakingVaultParams.unstakingDelay,
+                upgradeManager
+            );
 
         // Step 3.5: Register additional reward tokens while Deployer is temporary vault admin
         for (uint256 i = 0; i < newStakingVaultParams.rewardTokens.length; ++i) {
@@ -187,18 +188,18 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         );
 
         // Step 2.5: Initialize Timelock, Governor, and OptimisticSelectorRegistry now that UpgradeManager exists
-        TimelockControllerOptimistic(payable(timelock)).initialize(
-            baseParams.timelockDelay, new address[](0), new address[](0), address(this), upgradeManager
-        );
-        ReserveOptimisticGovernor(payable(governor)).initialize(
-            baseParams.optimisticParams,
-            baseParams.standardParams,
-            baseParams.proposalThrottleCapacity,
-            stakingVault,
-            timelock,
-            selectorRegistry,
-            upgradeManager
-        );
+        TimelockControllerOptimistic(payable(timelock))
+            .initialize(baseParams.timelockDelay, new address[](0), new address[](0), address(this), upgradeManager);
+        ReserveOptimisticGovernor(payable(governor))
+            .initialize(
+                baseParams.optimisticParams,
+                baseParams.standardParams,
+                baseParams.proposalThrottleCapacity,
+                stakingVault,
+                timelock,
+                selectorRegistry,
+                upgradeManager
+            );
         OptimisticSelectorRegistry(payable(selectorRegistry)).initialize(baseParams.selectorData, upgradeManager);
 
         // Step 2.6: Configure Timelock roles
