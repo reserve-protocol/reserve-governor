@@ -80,15 +80,16 @@ RoleRegistry owner / emergency council
                     │
                     ▼
 ┌──────────────────────────────────────┐
-│            UpgradeManager            │◀──────── timelock executes upgradeToVersion(versionHash)
+│            UpgradeManager            │◀──────── timelock executes upgradeToLatestVersion()
 │ upgrades vault? -> timelock -> gov   │
 └───────┬──────────────────┬───────────┘
         │                  │
         ▼                  ▼
    StakingVault*     Timelock + Governor
 
-* Only for deployWithNewStakingVault(). Existing-vault deployments leave
-  stakingVault = address(0) inside UpgradeManager and do not rewire that vault.
+* Existing-vault deployments leave `UpgradeManager.stakingVault()` unset. The
+  shared vault is not hard-blocked in `OptimisticSelectorRegistry`, although
+  `UpgradeManager` still checks the governor's `token()` for version-match during upgrades.
 ```
 
 ## Governance Flows
@@ -277,7 +278,7 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 - Cannot register itself as a target
 - The `UpgradeManager` is additionally blocked as a target
 - The governor and timelock are additionally blocked as targets
-- The managed `StakingVault` is also blocked when the system was deployed with `deployWithNewStakingVault()`
+- For `deployWithNewStakingVault()` deployments, the managed `StakingVault` is also blocked as a target
 
 ### TimelockControllerOptimistic
 
@@ -292,9 +293,10 @@ Extended timelock supporting both flows.
 
 The upgrade coordinator for versioned system upgrades.
 
-- `upgradeToVersion(versionHash)` -- Only callable by the timelock
-- Reads implementations from `VersionRegistry`
+- `upgradeToLatestVersion()` -- Only callable by the timelock
+- Reads the latest registered version from `VersionRegistry`
 - Upgrades the managed `StakingVault` (if any), then the `TimelockControllerOptimistic`, then the `ReserveOptimisticGovernor`
+- For existing-vault deployments, only upgrades the governor/timelock after verifying the associated `StakingVault` is already on that latest version
 - Emits `SystemUpgraded(versionHash, stakingVaultImpl, governorImpl, timelockImpl)`
 - Rejects deprecated versions
 
@@ -332,7 +334,7 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 
 **Properties:**
 
-- UUPS upgradeable via `UpgradeManager` when the vault is part of a fresh deployment
+- UUPS upgradeable via `UpgradeManager`
 - Clock: timestamp-based (ERC5805)
 - Creates an `UnstakingManager` during initialization
 
@@ -435,7 +437,7 @@ Fast (optimistic) proposals can **only** call `(target, selector)` pairs registe
 - The `ReserveOptimisticGovernor` contract
 - The `TimelockControllerOptimistic` contract
 - The `OptimisticSelectorRegistry` itself
-- The managed `StakingVault` when the system was deployed with `deployWithNewStakingVault()`
+- For `deployWithNewStakingVault()` deployments, the managed `StakingVault`
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.
 
@@ -465,7 +467,7 @@ Three contracts are UUPS upgradeable, but the supported upgrade path is versione
 - `getLatestVersion()` returns the latest registered version metadata
 - `getImplementationsForVersion(versionHash)` resolves the staking vault, governor, and timelock implementations from the registered deployer
 - `deprecateVersion(versionHash)` can be called by a `RoleRegistry` owner or emergency council member
-- `UpgradeManager.upgradeToVersion(versionHash)` rejects deprecated versions
+- `UpgradeManager.upgradeToLatestVersion()` rejects a deprecated latest version
 
 ### Upgrade Process
 
@@ -473,28 +475,25 @@ Upgrades are intended to be executed as a normal slow governance action. They ca
 
 1. Deploy new implementations and a new `ReserveOptimisticGovernorDeployer` pointing at those implementation addresses and the shared `VersionRegistry`.
 2. Register that deployer in `VersionRegistry` from a `RoleRegistry` owner account.
-3. Submit a standard governance proposal that calls `UpgradeManager.upgradeToVersion(versionHash)`.
-4. After the proposal passes and the timelock executes it, `UpgradeManager` resolves the implementations for that version and upgrades, in order:
-   1. `StakingVault` if the manager controls one
+3. Submit a standard governance proposal that calls `UpgradeManager.upgradeToLatestVersion()`.
+4. After the proposal passes and the timelock executes it, `UpgradeManager` resolves the implementations for the current latest registered version and upgrades, in order:
+   1. `StakingVault` if the `UpgradeManager` controls one
    2. `TimelockControllerOptimistic`
    3. `ReserveOptimisticGovernor`
 5. `UpgradeManager` emits `SystemUpgraded(versionHash, stakingVaultImpl, governorImpl, timelockImpl)`.
 
-For deployments created with `deployWithExistingStakingVault()`, the reused vault is intentionally outside that upgrade set. The new system's `UpgradeManager` stores `stakingVault = address(0)` and upgrades only the governor and timelock.
+For deployments created with `deployWithExistingStakingVault()`, `UpgradeManager.stakingVault()` is intentionally left `address(0)`. In this 2-part case, the manager reads the reused vault from `governor.token()` during `upgradeToLatestVersion()` and verifies that it is already running the current latest registered version before upgrading the governor and timelock. 
 
 ### Compatibility Assumption
 
-The upgrade design assumes component versions may diverge.
+The upgrade design intentionally narrows which version combinations can exist:
 
-- `deployWithExistingStakingVault()` can leave a system running a newer `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` against an older `StakingVault`
-- Fresh-vault systems may also move through releases where governance components and vault components are not upgraded in lockstep across all deployments
+- Governance upgrades are latest-only. A system cannot choose an arbitrary intermediate governor or timelock version, or go backwards to an older version. 
+- For deployments created with `deployWithExistingStakingVault()`, the governor and timelock can only upgrade after their associated reused vault is already on that same latest version.
 
-Because of that:
+`StakingVault` upgrade requirements:
 
-- New `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` implementations must remain backwards compatible with older supported `StakingVault` implementations
 - New `StakingVault` implementations must remain backwards compatible with older supported `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` implementations
-
-In practice, interfaces and assumptions across those components should be treated as stable cross-version contracts unless a coordinated migration plan explicitly retires older pairings.
 
 ## Flow Summary
 

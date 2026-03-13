@@ -196,10 +196,9 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         governor = address(new ERC1967Proxy{ salt: deploymentSalt }(governorImpl, governorInitData));
 
         // Step 2.4: Deploy UpgradeManager
+        address managedStakingVault = isNewStakingVault ? stakingVault : address(0);
         upgradeManager = address(
-            new ReserveOptimisticGovernanceUpgradeManager(
-                versionRegistry, isNewStakingVault ? stakingVault : address(0), governor, timelock
-            )
+            new ReserveOptimisticGovernanceUpgradeManager(versionRegistry, managedStakingVault, governor, timelock)
         );
 
         // Step 2.5: Attach UpgradeManager to components
@@ -243,8 +242,6 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Step 2.8: Renounce admin role
         _timelock.renounceRole(_timelock.DEFAULT_ADMIN_ROLE(), address(this));
 
-        emit ReserveOptimisticGovernorSystemDeployed(
-            upgradeManager, isNewStakingVault ? stakingVault : address(0), governor, timelock, selectorRegistry
-        );
+        emit ReserveOptimisticGovernorSystemDeployed(upgradeManager, stakingVault, governor, timelock, selectorRegistry);
     }
 }

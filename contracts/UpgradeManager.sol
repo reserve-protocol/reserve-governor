@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IReserveOptimisticGovernor } from "./interfaces/IReserveOptimisticGovernor.sol";
+
 import { ReserveOptimisticGovernanceVersionRegistry } from "./VersionRegistry.sol";
+import { Versioned } from "./utils/Versioned.sol";
 
 interface IUUPSProxy {
     function upgradeToAndCall(address newImplementation, bytes calldata data) external payable;
@@ -11,6 +14,7 @@ contract ReserveOptimisticGovernanceUpgradeManager {
     error UpgradeManager__UnauthorizedCaller(address caller);
     error UpgradeManager__InvalidComponent(address component);
     error UpgradeManager__VersionDeprecated(bytes32 versionHash);
+    error UpgradeManager__OldStakingVaultVersion(address stakingVault);
 
     event SystemUpgraded(
         bytes32 indexed versionHash, address stakingVaultImpl, address governorImpl, address timelockImpl
@@ -23,8 +27,6 @@ contract ReserveOptimisticGovernanceUpgradeManager {
 
     constructor(address _versionRegistry, address _stakingVault, address _governor, address _timelock) {
         require(_versionRegistry != address(0), UpgradeManager__InvalidComponent(_versionRegistry));
-
-        // _stakingVault can be address(0)
         require(_governor != address(0), UpgradeManager__InvalidComponent(_governor));
         require(_timelock != address(0), UpgradeManager__InvalidComponent(_timelock));
 
@@ -34,10 +36,13 @@ contract ReserveOptimisticGovernanceUpgradeManager {
         timelock = _timelock;
     }
 
-    function upgradeToVersion(bytes32 versionHash) external {
+    function upgradeToLatestVersion() external {
         require(msg.sender == timelock, UpgradeManager__UnauthorizedCaller(msg.sender));
 
-        require(!versionRegistry.isDeprecated(versionHash), UpgradeManager__VersionDeprecated(versionHash));
+        (bytes32 versionHash,,, bool deprecated) = versionRegistry.getLatestVersion();
+
+        require(!deprecated, UpgradeManager__VersionDeprecated(versionHash));
+        // VersionRegistry is assumed to be honest administration that will not grief the latest release
 
         (address stakingVaultImpl, address governorImpl, address timelockImpl) =
             versionRegistry.getImplementationsForVersion(versionHash);
@@ -46,6 +51,13 @@ contract ReserveOptimisticGovernanceUpgradeManager {
             IUUPSProxy(stakingVault).upgradeToAndCall(stakingVaultImpl, "");
         } else {
             stakingVaultImpl = address(0);
+
+            // governors/timelocks can only be upgraded once their associated StakingVault is already on latest
+            address associatedStakingVault = address(IReserveOptimisticGovernor(governor).token());
+            require(
+                keccak256(abi.encodePacked(Versioned(associatedStakingVault).version())) == versionHash,
+                UpgradeManager__OldStakingVaultVersion(associatedStakingVault)
+            );
         }
 
         IUUPSProxy(timelock).upgradeToAndCall(timelockImpl, "");

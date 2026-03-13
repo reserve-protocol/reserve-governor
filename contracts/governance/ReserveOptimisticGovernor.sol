@@ -145,6 +145,10 @@ contract ReserveOptimisticGovernor is
         return _isOptimistic(proposalId);
     }
 
+    function token() public view override(GovernorVotesUpgradeable, IReserveOptimisticGovernor) returns (IERC5805) {
+        return super.token();
+    }
+
     // === Proposal Creation ===
 
     /// @dev Only callable by OPTIMISTIC_PROPOSER_ROLE

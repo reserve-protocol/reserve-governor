@@ -31,6 +31,9 @@ abstract contract UpgradeManagerTestBase is Test {
     ReserveOptimisticGovernor internal governor;
     TimelockControllerOptimistic internal timelock;
     ReserveOptimisticGovernanceUpgradeManager internal upgradeManager;
+    ReserveOptimisticGovernor internal freshGovernor;
+    TimelockControllerOptimistic internal freshTimelock;
+    ReserveOptimisticGovernanceUpgradeManager internal freshUpgradeManager;
     ReserveOptimisticGovernanceVersionRegistry internal versionRegistry;
 
     address internal selectorRegistryImplementation;
@@ -116,6 +119,9 @@ abstract contract UpgradeManagerTestBase is Test {
             address timelockAddr,
         ) = deployer.deployWithNewStakingVault(baseParams, newStakingVaultParams, bytes32(0));
         originalStakingVaultAdmin = timelockAddr;
+        freshGovernor = ReserveOptimisticGovernor(payable(governorAddr));
+        freshTimelock = TimelockControllerOptimistic(payable(timelockAddr));
+        freshUpgradeManager = ReserveOptimisticGovernanceUpgradeManager(baseUpgradeManager);
 
         if (_useExistingStakingVaultDeployment()) {
             (address upgradeManagerAddr,, address existingGovernorAddr, address existingTimelockAddr,) =
@@ -127,9 +133,9 @@ abstract contract UpgradeManagerTestBase is Test {
             upgradeManager = ReserveOptimisticGovernanceUpgradeManager(upgradeManagerAddr);
         } else {
             stakingVault = StakingVault(stakingVaultAddr);
-            governor = ReserveOptimisticGovernor(payable(governorAddr));
-            timelock = TimelockControllerOptimistic(payable(timelockAddr));
-            upgradeManager = ReserveOptimisticGovernanceUpgradeManager(baseUpgradeManager);
+            governor = freshGovernor;
+            timelock = freshTimelock;
+            upgradeManager = freshUpgradeManager;
         }
 
         underlying.mint(address(this), ALICE_STAKE);
@@ -137,8 +143,8 @@ abstract contract UpgradeManagerTestBase is Test {
         stakingVault.deposit(ALICE_STAKE, alice);
     }
 
-    function test_upgradeToVersion_revertsForUnauthorizedCaller() public {
-        bytes32 versionHash = _registerV2Version();
+    function test_upgradeToLatestVersion_revertsForUnauthorizedCaller() public {
+        _registerV2Version();
 
         vm.prank(alice);
         vm.expectRevert(
@@ -146,10 +152,10 @@ abstract contract UpgradeManagerTestBase is Test {
                 ReserveOptimisticGovernanceUpgradeManager.UpgradeManager__UnauthorizedCaller.selector, alice
             )
         );
-        upgradeManager.upgradeToVersion(versionHash);
+        upgradeManager.upgradeToLatestVersion();
     }
 
-    function _registerV2Version() internal returns (bytes32 versionHash) {
+    function _registerV2Version() internal {
         ReserveOptimisticGovernorDeployerV2Mock deployer = new ReserveOptimisticGovernorDeployerV2Mock(
             address(versionRegistry),
             address(new StakingVaultV2Mock()),
@@ -158,11 +164,13 @@ abstract contract UpgradeManagerTestBase is Test {
             selectorRegistryImplementation
         );
         versionRegistry.registerVersion(deployer);
-
-        versionHash = keccak256(bytes(deployer.version()));
     }
 
     function _assertCommonState() internal view {
+        assertEq(
+            upgradeManager.stakingVault(),
+            _useExistingStakingVaultDeployment() ? address(0) : address(stakingVault)
+        );
         assertEq(address(governor.token()), address(stakingVault));
         assertEq(governor.timelock(), address(timelock));
         assertEq(governor.proposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
@@ -180,11 +188,11 @@ contract UpgradeManagerNewStakingVaultTest is UpgradeManagerTestBase {
         return false;
     }
 
-    function test_upgradeToVersion_upgradesAllConfiguredComponents() public {
-        bytes32 versionHash = _registerV2Version();
+    function test_upgradeToLatestVersion_upgradesAllConfiguredComponents() public {
+        _registerV2Version();
 
         vm.prank(address(timelock));
-        upgradeManager.upgradeToVersion(versionHash);
+        upgradeManager.upgradeToLatestVersion();
 
         assertEq(stakingVault.version(), "2.0.0");
         assertEq(governor.version(), "2.0.0");
@@ -202,13 +210,29 @@ contract UpgradeManagerExistingStakingVaultTest is UpgradeManagerTestBase {
         return true;
     }
 
-    function test_upgradeToVersion_upgradesOnlyRewiredComponents() public {
-        bytes32 versionHash = _registerV2Version();
+    function test_upgradeToLatestVersion_revertsWhenAssociatedStakingVaultIsNotLatest() public {
+        _registerV2Version();
 
         vm.prank(address(timelock));
-        upgradeManager.upgradeToVersion(versionHash);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ReserveOptimisticGovernanceUpgradeManager.UpgradeManager__OldStakingVaultVersion.selector,
+                address(stakingVault)
+            )
+        );
+        upgradeManager.upgradeToLatestVersion();
+    }
 
-        assertEq(stakingVault.version(), "1.0.0");
+    function test_upgradeToLatestVersion_upgradesOnlyGovernanceComponentsAfterVaultMatchesLatest() public {
+        _registerV2Version();
+
+        vm.prank(address(freshTimelock));
+        freshUpgradeManager.upgradeToLatestVersion();
+
+        vm.prank(address(timelock));
+        upgradeManager.upgradeToLatestVersion();
+
+        assertEq(stakingVault.version(), "2.0.0");
         assertEq(governor.version(), "2.0.0");
         assertEq(timelock.version(), "2.0.0");
         assertEq(upgradeManager.stakingVault(), address(0));

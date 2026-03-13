@@ -1256,7 +1256,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(registry.isAllowed(optimisticProposer2, address(underlying), approveSelector));
     }
 
-    function test_registry_cannotRegisterBlockedTargetsOrZeroSelector() public {
+    function test_registry_enforcesBlockedTargetsAndZeroSelector() public {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = IERC20.transfer.selector;
         IOptimisticSelectorRegistry.SelectorData[] memory selectorData =
@@ -1281,7 +1281,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         if (_useExistingStakingVaultDeployment()) {
             vm.prank(address(timelock));
             registry.registerSelectors(selectorData);
-            assertTrue(registry.isAllowed(optimisticProposer, address(stakingVault), selectors[0]));
+            assertTrue(registry.isAllowed(optimisticProposer, address(stakingVault), IERC20.transfer.selector));
         } else {
             vm.prank(address(timelock));
             vm.expectRevert(
