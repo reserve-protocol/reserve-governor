@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
+import { ReserveOptimisticGovernanceVersionRegistry } from "../contracts/VersionRegistry.sol";
 import { OptimisticSelectorRegistryDeployer } from "../contracts/artifacts/OptimisticSelectorRegistryDeployer.sol";
 import { ProposalLibDeployer } from "../contracts/artifacts/ProposalLibDeployer.sol";
 import { ReserveOptimisticGovernorDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorDeployer.sol";
@@ -12,6 +13,8 @@ import {
 import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultDeployer.sol";
 import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibDeployer.sol";
 import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticDeployer.sol";
+
+import { MockRoleRegistry } from "./mocks/MockRoleRegistry.sol";
 
 contract ArtifactsTest is Test {
     function _salt(string memory label) internal pure returns (bytes32) {
@@ -60,10 +63,18 @@ contract ArtifactsTest is Test {
         address governor = ReserveOptimisticGovernorDeployer.deploy(_salt("GovernorImpl"));
         address timelock = TimelockControllerOptimisticDeployer.deploy(_salt("TimelockImpl"));
         address selectorRegistry = OptimisticSelectorRegistryDeployer.deploy(_salt("SelectorRegistryImpl"));
+        MockRoleRegistry roleRegistry = new MockRoleRegistry(address(this));
+        ReserveOptimisticGovernanceVersionRegistry versionRegistry =
+            new ReserveOptimisticGovernanceVersionRegistry(roleRegistry);
 
         // Deploy the factory
         address deployer = ReserveOptimisticGovernorDeployerDeployer.deploy(
-            stakingVault, governor, timelock, selectorRegistry, _salt("ReserveOptimisticGovernorDeployer")
+            address(versionRegistry),
+            stakingVault,
+            governor,
+            timelock,
+            selectorRegistry,
+            _salt("ReserveOptimisticGovernorDeployer")
         );
 
         assertNotEq(deployer, address(0), "ReserveOptimisticGovernorDeployer deployment failed");

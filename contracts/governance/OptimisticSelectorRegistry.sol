@@ -3,22 +3,18 @@ pragma solidity ^0.8.28;
 
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
 
-import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
+import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
 
-contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistry {
+contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
     // === State ===
 
-    ReserveOptimisticGovernor public governor;
-
-    mapping(address proposer => EnumerableSet.AddressSet) private _targets;
-    mapping(address proposer => mapping(address target => EnumerableSet.Bytes32Set)) private _allowedSelectors;
+    EnumerableSet.AddressSet private _targets;
+    mapping(address target => EnumerableSet.Bytes32Set) private _allowedSelectors;
 
     // === Initialization ===
 
@@ -26,53 +22,47 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
         _disableInitializers();
     }
 
-    function initialize(address _governor, SelectorData[] memory selectorData) public initializer {
-        governor = ReserveOptimisticGovernor(payable(_governor));
-
-        // validate governor
-        governor.timelock();
-        governor.token();
+    function initialize(SelectorData[] memory selectorData, address upgradeManager_) public initializer {
+        __UpgradeControlled_init(upgradeManager_);
 
         for (uint256 i = 0; i < selectorData.length; i++) {
-            _add(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);
+            _add(selectorData[i].target, selectorData[i].selectors);
         }
     }
 
     // === External ===
 
     modifier onlyTimelock() {
-        require(msg.sender == governor.timelock(), OnlyOwner(msg.sender));
+        require(msg.sender == upgradeManager.timelock(), SelectorRegistry__OnlyOwner(msg.sender));
         _;
     }
 
     function registerSelectors(SelectorData[] calldata selectorData) external onlyTimelock {
         for (uint256 i = 0; i < selectorData.length; i++) {
-            _add(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);
+            _add(selectorData[i].target, selectorData[i].selectors);
         }
     }
 
+    /// @dev Warning: Does NOT cancel existing optimistic proposals using these selectors
+    ///      CANCELLER_ROLE must rememeber to cancel existing optimistic proposals if execution should be prevented
     function unregisterSelectors(SelectorData[] calldata selectorData) external onlyTimelock {
         for (uint256 i = 0; i < selectorData.length; i++) {
-            _remove(selectorData[i].proposer, selectorData[i].target, selectorData[i].selectors);
+            _remove(selectorData[i].target, selectorData[i].selectors);
         }
     }
 
     // === View ===
 
-    function targets(address proposer) external view returns (address[] memory) {
-        return _targets[proposer].values();
+    function targets() external view returns (address[] memory) {
+        return _targets.values();
     }
 
-    function isAllowed(address proposer, address target, bytes4 selector) external view returns (bool) {
-        return _allowedSelectors[proposer][target].contains(bytes32(selector));
+    function isAllowed(address target, bytes4 selector) external view returns (bool) {
+        return _allowedSelectors[target].contains(bytes32(selector));
     }
 
-    function selectorsAllowed(address proposer, address target)
-        external
-        view
-        returns (bytes4[] memory allowedSelectors4)
-    {
-        bytes32[] memory allowedSelectors = _allowedSelectors[proposer][target].values();
+    function selectorsAllowed(address target) external view returns (bytes4[] memory allowedSelectors4) {
+        bytes32[] memory allowedSelectors = _allowedSelectors[target].values();
 
         allowedSelectors4 = new bytes4[](allowedSelectors.length);
 
@@ -83,38 +73,38 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
 
     // === Internal ===
 
-    function _add(address proposer, address target, bytes4[] memory selectors) internal {
+    function _add(address target, bytes4[] memory selectors) internal {
         // target != self, governor, timelock, token
         require(
-            target != address(this) && target != address(governor) && target != address(governor.timelock())
-                && target != address(governor.token()),
-            InvalidTarget(target)
+            target != address(this) && target != address(upgradeManager) && target != upgradeManager.governor()
+                && target != upgradeManager.timelock() && target != upgradeManager.stakingVault(),
+            SelectorRegistry__InvalidTarget(target)
         );
 
         for (uint256 i = 0; i < selectors.length; i++) {
             // no empty selectors
-            require(selectors[i] != bytes4(0), InvalidSelector(selectors[i]));
+            require(selectors[i] != bytes4(0), SelectorRegistry__InvalidSelector(selectors[i]));
 
-            bool added = _allowedSelectors[proposer][target].add(bytes32(selectors[i]));
+            bool added = _allowedSelectors[target].add(bytes32(selectors[i]));
 
             if (added) {
-                _targets[proposer].add(target);
+                _targets.add(target);
 
-                emit SelectorAdded(proposer, target, selectors[i]);
+                emit SelectorAdded(target, selectors[i]);
             }
         }
     }
 
-    function _remove(address proposer, address target, bytes4[] memory selectors) internal {
+    function _remove(address target, bytes4[] memory selectors) internal {
         for (uint256 i = 0; i < selectors.length; i++) {
-            bool removed = _allowedSelectors[proposer][target].remove(bytes32(selectors[i]));
+            bool removed = _allowedSelectors[target].remove(bytes32(selectors[i]));
 
             if (removed) {
-                if (_allowedSelectors[proposer][target].length() == 0) {
-                    _targets[proposer].remove(target);
+                if (_allowedSelectors[target].length() == 0) {
+                    _targets.remove(target);
                 }
 
-                emit SelectorRemoved(proposer, target, selectors[i]);
+                emit SelectorRemoved(target, selectors[i]);
             }
         }
     }

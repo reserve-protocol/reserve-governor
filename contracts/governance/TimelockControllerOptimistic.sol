@@ -12,11 +12,13 @@ import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils
 
 import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
 import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "../utils/Constants.sol";
+import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
 import { Versioned } from "../utils/Versioned.sol";
 
 contract TimelockControllerOptimistic is
     TimelockControllerUpgradeable,
     AccessControlEnumerableUpgradeable,
+    UpgradeControlled,
     Versioned,
     UUPSUpgradeable,
     ITimelockControllerOptimistic
@@ -25,15 +27,24 @@ contract TimelockControllerOptimistic is
         _disableInitializers();
     }
 
-    function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
-        public
-        override(ITimelockControllerOptimistic, TimelockControllerUpgradeable)
-        initializer
-    {
+    /// @dev Invalid inherited initializer
+    function initialize(uint256, address[] memory, address[] memory, address) public pure override {
+        revert TimelockControllerOptimistic__InvalidInitialization();
+    }
+
+    /// @dev Real initializer
+    function initialize(
+        uint256 minDelay,
+        address[] memory proposers,
+        address[] memory executors,
+        address admin,
+        address upgradeManager
+    ) public initializer {
         __TimelockController_init(minDelay, proposers, executors, admin);
         __AccessControlEnumerable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
+        __UpgradeControlled_init(upgradeManager);
     }
 
     function supportsInterface(bytes4 interfaceId)
@@ -91,8 +102,5 @@ contract TimelockControllerOptimistic is
         executeBatch(targets, values, payloads, predecessor, salt);
     }
 
-    /// @dev Timelock authorizes its own upgrades (self-admin pattern)
-    function _authorizeUpgrade(address) internal view override {
-        require(msg.sender == address(this), TimelockControllerOptimistic__UnauthorizedUpgrade());
-    }
+    function _authorizeUpgrade(address) internal view override onlyUpgradeManager { }
 }

@@ -43,7 +43,7 @@ library ProposalLib {
 
         require(
             AccessControl(governor.timelock()).hasRole(OPTIMISTIC_PROPOSER_ROLE, proposal.proposer),
-            IReserveOptimisticGovernor.NotOptimisticProposer(proposal.proposer)
+            IReserveOptimisticGovernor.OptimisticGovernor__NotOptimisticProposer(proposal.proposer)
         );
 
         // validate calls
@@ -56,8 +56,8 @@ library ProposalLib {
 
                 require(
                     target.code.length != 0 && proposal.calldatas[i].length >= 4
-                        && selectorRegistry.isAllowed(proposal.proposer, target, bytes4(proposal.calldatas[i])),
-                    IReserveOptimisticGovernor.InvalidCall(target, proposal.calldatas[i])
+                        && selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
+                    IReserveOptimisticGovernor.OptimisticGovernor__InvalidCall(target, proposal.calldatas[i])
                 );
             }
         }
@@ -95,7 +95,7 @@ library ProposalLib {
 
             require(
                 target.code.length != 0 || proposal.calldatas[i].length == 0,
-                IReserveOptimisticGovernor.InvalidCall(target, proposal.calldatas[i])
+                IReserveOptimisticGovernor.OptimisticGovernor__InvalidCall(target, proposal.calldatas[i])
             );
             // not a security feature, just a partial guard against accidental calls to EOAs
         }
@@ -161,7 +161,7 @@ library ProposalLib {
 
         require(
             bytes18(bytes(proposal.description)) != CONFIRMATION_PREFIX_BYTES,
-            IReserveOptimisticGovernor.ConfirmationPrefixNotAllowed()
+            IReserveOptimisticGovernor.OptimisticGovernor__ConfirmationPrefixNotAllowed()
         );
 
         require(

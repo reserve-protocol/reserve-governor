@@ -4,21 +4,22 @@ pragma solidity ^0.8.28;
 import {
     GovernorCountingSimpleUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error InvalidToken();
-    error InvalidProposalThreshold();
-    error InvalidProposalThrottle();
-    error InvalidOptimisticParameters();
-    error OptimisticProposalCannotBeQueued(uint256 proposalId);
-    error NotOptimisticProposer(address account);
-    error ConfirmationPrefixNotAllowed();
-    error InvalidCall(address target, bytes call);
-    error ProposalThrottleExceeded();
-    error InvalidDelay();
-    error OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
+    error OptimisticGovernor__InvalidProposalThreshold();
+    error OptimisticGovernor__InvalidProposalThrottle();
+    error OptimisticGovernor__InvalidOptimisticParameters();
+    error OptimisticGovernor__OptimisticProposalCannotBeQueued(uint256 proposalId);
+    error OptimisticGovernor__NotOptimisticProposer(address account);
+    error OptimisticGovernor__ConfirmationPrefixNotAllowed();
+    error OptimisticGovernor__InvalidCall(address target, bytes call);
+    error OptimisticGovernor__ProposalThrottleExceeded();
+    error OptimisticGovernor__InvalidDelay();
+    error OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
+    error OptimisticGovernor__TimelockCannotBeUpdated();
 
     // === Events ===
 
@@ -56,6 +57,9 @@ interface IReserveOptimisticGovernor {
         uint256 _proposalThrottleCapacity,
         address _token,
         address _timelock,
-        address _selectorRegistry
+        address _selectorRegistry,
+        address _upgradeManager
     ) external;
+
+    function token() external view returns (IERC5805);
 }
