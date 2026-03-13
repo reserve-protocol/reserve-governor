@@ -4,8 +4,8 @@ pragma solidity ^0.8.28;
 interface IOptimisticSelectorRegistry {
     // === Events ===
 
-    event SelectorAdded(address indexed proposer, address indexed target, bytes4 indexed selectors);
-    event SelectorRemoved(address indexed proposer, address indexed target, bytes4 indexed selectors);
+    event SelectorAdded(address indexed target, bytes4 indexed selector);
+    event SelectorRemoved(address indexed target, bytes4 indexed selector);
 
     // === Errors ===
 
@@ -17,12 +17,11 @@ interface IOptimisticSelectorRegistry {
     // === Data ===
 
     struct SelectorData {
-        address proposer;
         address target;
         bytes4[] selectors;
     }
 
     // === Functions ===
 
-    function isAllowed(address proposer, address target, bytes4 selector) external view returns (bool);
+    function isAllowed(address target, bytes4 selector) external view returns (bool);
 }

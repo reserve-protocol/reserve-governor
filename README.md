@@ -62,6 +62,7 @@ The system consists of five components:
 ```
 
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
+The allowlist is universal: selector permissions do not depend on which optimistic proposer submits the proposal.
 
 The `ReserveOptimisticGovernorDeployer` deploys the full system, transfers the vault admin role to the timelock, grants governor timelock roles, grants proposer/guardian/optimistic-guardian roles, and renounces admin.
 
@@ -91,7 +92,7 @@ Fast proposals use the standard OZ Governor `ProposalState` enum. During the vet
 When AGAINST votes reach the veto threshold, the governor creates a **new** standard confirmation proposal:
 
 1. The original optimistic proposal remains in `Defeated` state (internally marked with a sentinel veto threshold value)
-2. A confirmation proposal is created with description prefix `"Conf: "` and therefore a different `proposalId`
+2. A confirmation proposal is created with description prefix `"Confirmation For: "` and therefore a different `proposalId`
 3. The confirmation proposal follows normal standard timing (`Pending` for `votingDelay`, then `Active`)
 4. Voting starts fresh on the confirmation proposal (votes and `hasVoted` do **not** carry over from veto phase)
 
@@ -242,9 +243,9 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 
 **Query:**
 
-- `isAllowed(proposer, target, selector)` -- Check if a `(proposer, target, selector)` tuple is whitelisted
-- `targets(proposer)` -- List all targets that have at least one registered selector for the proposer
-- `selectorsAllowed(proposer, target)` -- List all allowed selectors for a given `(proposer, target)`
+- `isAllowed(target, selector)` -- Check if a `(target, selector)` tuple is whitelisted
+- `targets()` -- List all targets that have at least one registered selector
+- `selectorsAllowed(target)` -- List all allowed selectors for a given target
 
 **Constraints:**
 

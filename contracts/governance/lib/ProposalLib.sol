@@ -56,7 +56,7 @@ library ProposalLib {
 
                 require(
                     target.code.length != 0 && proposal.calldatas[i].length >= 4
-                        && selectorRegistry.isAllowed(proposal.proposer, target, bytes4(proposal.calldatas[i])),
+                        && selectorRegistry.isAllowed(target, bytes4(proposal.calldatas[i])),
                     IReserveOptimisticGovernor.InvalidCall(target, proposal.calldatas[i])
                 );
             }
