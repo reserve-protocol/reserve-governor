@@ -17,6 +17,8 @@ enum DeploymentMode {
 }
 
 contract DeployScript is Script {
+    error InvalidChainId();
+
     string seedPhrase = block.chainid != 31337 ? vm.readFile(".seed") : junkSeedPhrase;
     uint256 privateKey = vm.deriveKey(seedPhrase, 0);
     address walletAddress = vm.rememberKey(privateKey);
@@ -39,6 +41,10 @@ contract DeployScript is Script {
         console2.log("Mode:", deploymentMode == DeploymentMode.Production ? "Production" : "Testing");
         console2.log("Chain ID:", block.chainid);
         console2.log("Wallet Address:", walletAddress);
+
+        address versionRegistry = _getVersionRegistry();
+
+        console2.log("ReserveOptimisticGovernorVersionRegistry:", versionRegistry);
         console2.log("");
 
         vm.startBroadcast(privateKey);
@@ -49,9 +55,11 @@ contract DeployScript is Script {
         timelockImpl = address(new TimelockControllerOptimistic());
         selectorRegistryImpl = address(new OptimisticSelectorRegistry());
 
-        // Deploy Deployer
+        // Deploy the implementation bundle/deployer for the current version and register it immediately.
         deployer = address(
-            new ReserveOptimisticGovernorDeployer(stakingVaultImpl, governorImpl, timelockImpl, selectorRegistryImpl)
+            new ReserveOptimisticGovernorDeployer(
+                versionRegistry, stakingVaultImpl, governorImpl, timelockImpl, selectorRegistryImpl
+            )
         );
 
         vm.stopBroadcast();
@@ -62,5 +70,21 @@ contract DeployScript is Script {
         console2.log("OptimisticSelectorRegistry:", selectorRegistryImpl);
         console2.log("ReserveOptimisticGovernorDeployer:", deployer);
         console2.log("----- DONE -----");
+    }
+
+    function _getVersionRegistry() internal view returns (address) {
+        if (block.chainid == 1 || block.chainid == 31337) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        if (block.chainid == 8453) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        if (block.chainid == 56) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        revert InvalidChainId();
     }
 }

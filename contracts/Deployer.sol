@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "./interfaces/IDeployer.sol";
 
+import { ReserveOptimisticGovernanceUpgradeManager } from "./UpgradeManager.sol";
 import { OptimisticSelectorRegistry } from "./governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "./governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "./governance/TimelockControllerOptimistic.sol";
@@ -20,19 +22,22 @@ import {
 import { Versioned } from "./utils/Versioned.sol";
 
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
-    error Deployer__InvalidStakingVault();
+    error Deployer__InvalidStakingVaultClockMode();
 
+    address public immutable versionRegistry;
     address public immutable stakingVaultImpl;
     address public immutable governorImpl;
     address public immutable timelockImpl;
     address public immutable selectorRegistryImpl;
 
     constructor(
+        address _versionRegistry,
         address _stakingVaultImpl,
         address _governorImpl,
         address _timelockImpl,
         address _selectorRegistryImpl
     ) {
+        versionRegistry = _versionRegistry;
         stakingVaultImpl = _stakingVaultImpl;
         governorImpl = _governorImpl;
         timelockImpl = _timelockImpl;
@@ -58,6 +63,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param newStakingVaultParams.rewardTokens Additional reward tokens for the new vault.
     /// @param newStakingVaultParams.rewardHalfLife {s} Reward streaming half-life for the new vault.
     /// @param newStakingVaultParams.unstakingDelay {s} Unstaking delay for the new vault.
+    /// @return upgradeManager The deployed UpgradeManager address
     /// @return stakingVault The deployed StakingVault address
     /// @return governor The deployed Governor address
     /// @return timelock The deployed Timelock address
@@ -66,36 +72,44 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         BaseDeploymentParams calldata baseParams,
         NewStakingVaultParams calldata newStakingVaultParams,
         bytes32 deploymentNonce
-    ) external returns (address stakingVault, address governor, address timelock, address selectorRegistry) {
+    )
+        external
+        returns (
+            address upgradeManager,
+            address stakingVault,
+            address governor,
+            address timelock,
+            address selectorRegistry
+        )
+    {
         bytes32 deploymentSalt = keccak256(abi.encode(msg.sender, baseParams, newStakingVaultParams, deploymentNonce));
 
-        // Step 1: Deploy StakingVault proxy
-        bytes memory stakingVaultInitData = abi.encodeCall(
-            StakingVault.initialize,
-            (
-                string.concat("Vote-Locked ", newStakingVaultParams.underlying.name()),
-                string.concat("vl", newStakingVaultParams.underlying.symbol()),
-                newStakingVaultParams.underlying,
-                address(this),
-                newStakingVaultParams.rewardHalfLife,
-                newStakingVaultParams.unstakingDelay
-            )
-        );
-        stakingVault = address(new ERC1967Proxy{ salt: deploymentSalt }(stakingVaultImpl, stakingVaultInitData));
+        // Step 1: Deploy StakingVault proxy without initialization
+        stakingVault = address(new ERC1967Proxy{ salt: deploymentSalt }(stakingVaultImpl, ""));
 
-        // Step 1.5: Register additional reward tokens while Deployer is temporary vault admin
+        // Step 2: Deploy UpgradeManager, Timelock, Governor, and OptimisticSelectorRegistry
+        (upgradeManager, timelock, governor, selectorRegistry) =
+            _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt, true);
+
+        // Step 3: Initialize StakingVault now that the UpgradeManager exists
+        StakingVault(stakingVault).initialize(
+            string.concat("Vote-Locked ", newStakingVaultParams.underlying.name()),
+            string.concat("vl", newStakingVaultParams.underlying.symbol()),
+            newStakingVaultParams.underlying,
+            address(this),
+            newStakingVaultParams.rewardHalfLife,
+            newStakingVaultParams.unstakingDelay,
+            upgradeManager
+        );
+
+        // Step 3.5: Register additional reward tokens while Deployer is temporary vault admin
         for (uint256 i = 0; i < newStakingVaultParams.rewardTokens.length; ++i) {
             StakingVault(stakingVault).addRewardToken(newStakingVaultParams.rewardTokens[i]);
         }
 
-        // Step 2: Deploy Timelock, OptimisticSelectorRegistry, and Governor
-        (timelock, governor, selectorRegistry) = _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt);
-
-        // Step 3: Transfer StakingVault admin role to Timelock
+        // Step 4: Transfer StakingVault admin role to Timelock
         StakingVault(stakingVault).grantRole(StakingVault(stakingVault).DEFAULT_ADMIN_ROLE(), timelock);
         StakingVault(stakingVault).renounceRole(StakingVault(stakingVault).DEFAULT_ADMIN_ROLE(), address(this));
-
-        emit ReserveOptimisticGovernorSystemDeployed(stakingVault, governor, timelock, selectorRegistry);
     }
 
     /// @notice Deploy a complete Reserve Governor system via proxies using an existing StakingVault
@@ -115,6 +129,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.proposalThrottleCapacity Optimistic proposals-per-account per 24h
     /// @param existingStakingVault Address of a pre-deployed StakingVault to use as governance token.
     /// @param deploymentNonce Arbitrary nonce used to derive deterministic deployment salt.
+    /// @return upgradeManager The deployed UpgradeManager address
     /// @return stakingVault The provided StakingVault address.
     /// @return governor The deployed Governor address.
     /// @return timelock The deployed Timelock address.
@@ -123,18 +138,24 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         BaseDeploymentParams calldata baseParams,
         address existingStakingVault,
         bytes32 deploymentNonce
-    ) external returns (address stakingVault, address governor, address timelock, address selectorRegistry) {
-        // Step 1: Validate existing StakingVault
-        require(existingStakingVault.code.length != 0, Deployer__InvalidStakingVault());
-
+    )
+        external
+        returns (
+            address upgradeManager,
+            address stakingVault,
+            address governor,
+            address timelock,
+            address selectorRegistry
+        )
+    {
         bytes32 deploymentSalt = keccak256(abi.encode(msg.sender, baseParams, existingStakingVault, deploymentNonce));
 
         stakingVault = existingStakingVault;
 
-        // Step 2: Deploy Timelock, OptimisticSelectorRegistry, and Governor
-        (timelock, governor, selectorRegistry) = _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt);
-
-        emit ReserveOptimisticGovernorSystemDeployed(stakingVault, governor, timelock, selectorRegistry);
+        // Step 2: Deploy UpgradeManager, Timelock, Governor, and OptimisticSelectorRegistry
+        // The existing StakingVault predates this deployment and is not rewired to this system's UpgradeManager
+        (upgradeManager, timelock, governor, selectorRegistry) =
+            _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt, false);
     }
 
     // === Internal ===
@@ -142,36 +163,45 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     function _deployOptimisticGovernance(
         BaseDeploymentParams calldata baseParams,
         address stakingVault,
-        bytes32 deploymentSalt
-    ) internal returns (address timelock, address governor, address selectorRegistry) {
-        // Step 2.1: Deploy Timelock proxy with Deployer as temporary admin
-        bytes memory timelockInitData = abi.encodeCall(
-            TimelockControllerOptimistic.initialize,
-            (baseParams.timelockDelay, new address[](0), new address[](0), address(this))
+        bytes32 deploymentSalt,
+        bool isNewStakingVault
+    ) internal returns (address upgradeManager, address timelock, address governor, address selectorRegistry) {
+        require(
+            keccak256(bytes(IERC5805(stakingVault).CLOCK_MODE())) == keccak256("mode=timestamp"),
+            Deployer__InvalidStakingVaultClockMode()
         );
-        timelock = address(new ERC1967Proxy{ salt: deploymentSalt }(timelockImpl, timelockInitData));
+
+        // Step 2.1: Deploy Timelock proxy without initialization
+        timelock = address(new ERC1967Proxy{ salt: deploymentSalt }(timelockImpl, ""));
 
         // Step 2.2: Deploy OptimisticSelectorRegistry proxy
         selectorRegistry = Clones.cloneDeterministic(selectorRegistryImpl, deploymentSalt);
 
-        // Step 2.3: Deploy Governor proxy
-        bytes memory governorInitData = abi.encodeCall(
-            ReserveOptimisticGovernor.initialize,
-            (
-                baseParams.optimisticParams,
-                baseParams.standardParams,
-                baseParams.proposalThrottleCapacity,
-                stakingVault,
-                timelock,
-                selectorRegistry
-            )
+        // Step 2.3: Deploy Governor proxy without initialization
+        governor = address(new ERC1967Proxy{ salt: deploymentSalt }(governorImpl, ""));
+
+        // Step 2.4: Deploy UpgradeManager
+        address managedStakingVault = isNewStakingVault ? stakingVault : address(0);
+        upgradeManager = address(
+            new ReserveOptimisticGovernanceUpgradeManager(versionRegistry, managedStakingVault, governor, timelock)
         );
-        governor = address(new ERC1967Proxy{ salt: deploymentSalt }(governorImpl, governorInitData));
 
-        // Step 2.4: Finalize OptimisticSelectorRegistry proxy
-        OptimisticSelectorRegistry(payable(selectorRegistry)).initialize(governor, baseParams.selectorData);
+        // Step 2.5: Initialize Timelock, Governor, and OptimisticSelectorRegistry now that UpgradeManager exists
+        TimelockControllerOptimistic(payable(timelock)).initialize(
+            baseParams.timelockDelay, new address[](0), new address[](0), address(this), upgradeManager
+        );
+        ReserveOptimisticGovernor(payable(governor)).initialize(
+            baseParams.optimisticParams,
+            baseParams.standardParams,
+            baseParams.proposalThrottleCapacity,
+            stakingVault,
+            timelock,
+            selectorRegistry,
+            upgradeManager
+        );
+        OptimisticSelectorRegistry(payable(selectorRegistry)).initialize(baseParams.selectorData, upgradeManager);
 
-        // Step 2.5: Configure Timelock roles
+        // Step 2.6: Configure Timelock roles
         TimelockControllerOptimistic _timelock = TimelockControllerOptimistic(payable(timelock));
 
         // Grant Governor the PROPOSER_ROLE
@@ -198,7 +228,9 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
             _timelock.grantRole(OPTIMISTIC_PROPOSER_ROLE, baseParams.optimisticProposers[i]);
         }
 
-        // Step 2.6: Renounce admin role
+        // Step 2.7: Renounce admin role
         _timelock.renounceRole(_timelock.DEFAULT_ADMIN_ROLE(), address(this));
+
+        emit ReserveOptimisticGovernorSystemDeployed(upgradeManager, stakingVault, governor, timelock, selectorRegistry);
     }
 }

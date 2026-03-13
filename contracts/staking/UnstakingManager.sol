@@ -67,7 +67,6 @@ contract UnstakingManager {
         vault.deposit(amount, user);
 
         emit LockCancelled(lockId);
-
     }
 
     function claimLock(uint256 lockId) external {

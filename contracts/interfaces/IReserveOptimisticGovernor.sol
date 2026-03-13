@@ -4,11 +4,11 @@ pragma solidity ^0.8.28;
 import {
     GovernorCountingSimpleUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error InvalidToken();
     error InvalidProposalThreshold();
     error InvalidProposalThrottle();
     error InvalidOptimisticParameters();
@@ -56,6 +56,9 @@ interface IReserveOptimisticGovernor {
         uint256 _proposalThrottleCapacity,
         address _token,
         address _timelock,
-        address _selectorRegistry
+        address _selectorRegistry,
+        address _upgradeManager
     ) external;
+
+    function token() external view returns (IERC5805);
 }
