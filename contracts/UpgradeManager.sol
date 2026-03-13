@@ -29,6 +29,7 @@ contract ReserveOptimisticGovernanceUpgradeManager {
         require(_versionRegistry != address(0), UpgradeManager__InvalidComponent(_versionRegistry));
         require(_governor != address(0), UpgradeManager__InvalidComponent(_governor));
         require(_timelock != address(0), UpgradeManager__InvalidComponent(_timelock));
+        // stakingVault can be address(0) in 2-part system case
 
         versionRegistry = ReserveOptimisticGovernanceVersionRegistry(_versionRegistry);
         stakingVault = _stakingVault;
@@ -42,7 +43,10 @@ contract ReserveOptimisticGovernanceUpgradeManager {
         (bytes32 versionHash,,, bool deprecated) = versionRegistry.getLatestVersion();
 
         require(!deprecated, UpgradeManager__VersionDeprecated(versionHash));
-        // VersionRegistry is assumed to be honest administration that will not grief the latest release
+        // If a bug is found in the latest version, the assumption is a non-bugged newer version will be
+        // released. In the meantime, nothing should be broken because:
+        //   - newer versions must always by backwards compatible with older versions
+        //   - the 2-part system version is always <= 3-part system version
 
         (address stakingVaultImpl, address governorImpl, address timelockImpl) =
             versionRegistry.getImplementationsForVersion(versionHash);

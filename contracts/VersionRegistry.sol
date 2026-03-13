@@ -17,7 +17,7 @@ contract ReserveOptimisticGovernanceVersionRegistry {
     error VersionRegistry__ZeroAddress();
     error VersionRegistry__InvalidRegistration();
     error VersionRegistry__AlreadyDeprecated();
-    error VersionRegistry__Unconfigured();
+    error VersionRegistry__NotConfigured();
 
     event VersionRegistered(bytes32 indexed versionHash, address deployer);
     event VersionDeprecated(bytes32 indexed versionHash);
@@ -73,7 +73,7 @@ contract ReserveOptimisticGovernanceVersionRegistry {
         versionHash = latestVersion;
         deployer = deployments[versionHash];
 
-        require(address(deployer) != address(0), VersionRegistry__Unconfigured());
+        require(address(deployer) != address(0), VersionRegistry__NotConfigured());
 
         version = Versioned(address(deployer)).version();
         deprecated = isDeprecated[versionHash];

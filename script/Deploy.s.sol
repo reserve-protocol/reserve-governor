@@ -6,9 +6,7 @@ import { Script, console2 } from "forge-std/Script.sol";
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
-import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 
 string constant junkSeedPhrase = "test test test test test test test test test test test junk";
@@ -63,8 +61,6 @@ contract DeployScript is Script {
                 versionRegistry, stakingVaultImpl, governorImpl, timelockImpl, selectorRegistryImpl
             )
         );
-        ReserveOptimisticGovernanceVersionRegistry(versionRegistry)
-            .registerVersion(IReserveOptimisticGovernorDeployer(deployer));
 
         vm.stopBroadcast();
 
