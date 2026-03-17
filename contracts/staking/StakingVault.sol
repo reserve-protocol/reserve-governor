@@ -124,6 +124,7 @@ contract StakingVault is
         __ERC20Permit_init(_name);
         __ERC20Votes_init();
         __AccessControlEnumerable_init();
+        __AccessControl_init();
         __UUPSUpgradeable_init();
         __UpgradeControlled_init(_upgradeManager);
 
