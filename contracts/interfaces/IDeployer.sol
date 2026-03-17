@@ -31,7 +31,7 @@ interface IReserveOptimisticGovernorDeployer {
     }
 
     struct NewStakingVaultParams {
-        IERC20Metadata underlying; // MUST have strong value relationship to the system being governed
+        IERC20Metadata underlying;
         address[] rewardTokens;
         uint256 rewardHalfLife; // {s}
         uint256 unstakingDelay; // {s}
