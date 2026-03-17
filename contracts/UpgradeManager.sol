@@ -46,9 +46,7 @@ contract ReserveOptimisticGovernanceUpgradeManager {
         // If a bug is found in the latest version, the assumption is a non-bugged newer version will be
         // released. In the meantime, nothing should be broken.
         //
-        // Assumptions:
-        //   - newer version Governor/Timelocks must always by backwards compatible with older StakingVaults
-        //   - the 2-part system version is always <= 3-part system version
+        // Assumption: newer version StakingVault will always by backwards compatible with older Governor/Timelocks
 
         (address stakingVaultImpl, address governorImpl, address timelockImpl) =
             versionRegistry.getImplementationsForVersion(versionHash);
