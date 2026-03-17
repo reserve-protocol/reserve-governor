@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 interface ITimelockControllerOptimistic {
     error TimelockControllerOptimistic__OperationConflict();
-    error TimelockControllerOptimistic__UnauthorizedUpgrade();
     error TimelockControllerOptimistic__InvalidInitialization();
 
     // === Events ===
