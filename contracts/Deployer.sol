@@ -47,13 +47,15 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     ) {
         require(address(_versionRegistry) != address(0), Deployer__InvalidVersionRegistry());
         require(address(_rewardTokenRegistry) != address(0), Deployer__InvalidRewardTokenRegistry());
-        versionRegistry = _versionRegistry;
-        rewardTokenRegistry = _rewardTokenRegistry;
 
         require(address(_stakingVaultImpl) != address(0), Deployer__InvalidStakingVaultImpl());
         require(address(_governorImpl) != address(0), Deployer__InvalidGovernorImpl());
         require(address(_timelockImpl) != address(0), Deployer__InvalidTimelockImpl());
         require(address(_selectorRegistryImpl) != address(0), Deployer__InvalidSelectorRegistryImpl());
+
+        versionRegistry = _versionRegistry;
+        rewardTokenRegistry = _rewardTokenRegistry;
+
         stakingVaultImpl = _stakingVaultImpl;
         governorImpl = _governorImpl;
         timelockImpl = _timelockImpl;

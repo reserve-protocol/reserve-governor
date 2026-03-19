@@ -67,12 +67,7 @@ contract StakingVaultTest is Test {
 
         // Deploy Deployer
         ReserveOptimisticGovernorDeployer deployer = new ReserveOptimisticGovernorDeployer(
-            address(versionRegistry),
-            address(rewardTokenRegistry),
-            vaultImpl,
-            governorImpl,
-            timelockImpl,
-            registryImpl
+            address(versionRegistry), address(rewardTokenRegistry), vaultImpl, governorImpl, timelockImpl, registryImpl
         );
 
         rewardTokenRegistry.registerRewardToken(address(reward));
@@ -1129,9 +1124,7 @@ contract StakingVaultTest is Test {
         StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
 
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(StakingVault.Vault__NotLatestStakingVault.selector, address(newImpl))
-        );
+        vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__NotLatestStakingVault.selector, address(newImpl)));
         vault.upgradeToAndCall(address(newImpl), "");
     }
 
@@ -1142,9 +1135,7 @@ contract StakingVaultTest is Test {
         StakingVaultV2Mock rogueImpl = new StakingVaultV2Mock();
 
         vm.prank(address(timelock));
-        vm.expectRevert(
-            abi.encodeWithSelector(StakingVault.Vault__NotLatestStakingVault.selector, address(rogueImpl))
-        );
+        vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__NotLatestStakingVault.selector, address(rogueImpl)));
         vault.upgradeToAndCall(address(rogueImpl), "");
     }
 
