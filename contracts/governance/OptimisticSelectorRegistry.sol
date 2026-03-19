@@ -3,15 +3,19 @@ pragma solidity ^0.8.28;
 
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
 import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
 
-import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
+import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
 
-contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorRegistry {
+contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
     // === State ===
+
+    ReserveOptimisticGovernor public governor;
 
     EnumerableSet.AddressSet private _targets;
     mapping(address target => EnumerableSet.Bytes32Set) private _allowedSelectors;
@@ -22,8 +26,12 @@ contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorReg
         _disableInitializers();
     }
 
-    function initialize(SelectorData[] memory selectorData, address upgradeManager_) public initializer {
-        __UpgradeControlled_init(upgradeManager_);
+    function initialize(address _governor, SelectorData[] memory selectorData) public initializer {
+        governor = ReserveOptimisticGovernor(payable(_governor));
+
+        // validate governor
+        governor.timelock();
+        governor.token();
 
         for (uint256 i = 0; i < selectorData.length; i++) {
             _add(selectorData[i].target, selectorData[i].selectors);
@@ -33,7 +41,7 @@ contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorReg
     // === External ===
 
     modifier onlyTimelock() {
-        require(msg.sender == upgradeManager.timelock(), SelectorRegistry__OnlyOwner(msg.sender));
+        require(msg.sender == governor.timelock(), OnlyOwner(msg.sender));
         _;
     }
 
@@ -77,9 +85,9 @@ contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorReg
     function _add(address target, bytes4[] memory selectors) internal {
         // target != self, governor, timelock, token
         require(
-            target != address(this) && target != address(upgradeManager) && target != upgradeManager.governor()
-                && target != upgradeManager.timelock() && target != upgradeManager.stakingVault(),
-            SelectorRegistry__InvalidTarget(target)
+            target != address(this) && target != address(governor) && target != address(governor.timelock())
+                && target != address(governor.token()),
+            InvalidTarget(target)
         );
 
         for (uint256 i = 0; i < selectors.length; i++) {

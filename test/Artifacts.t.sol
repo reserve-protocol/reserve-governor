@@ -14,8 +14,6 @@ import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultDeploye
 import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibDeployer.sol";
 import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticDeployer.sol";
 
-import { MockRoleRegistry } from "./mocks/MockRoleRegistry.sol";
-
 contract ArtifactsTest is Test {
     function _salt(string memory label) internal pure returns (bytes32) {
         return keccak256(bytes(label));
@@ -63,18 +61,10 @@ contract ArtifactsTest is Test {
         address governor = ReserveOptimisticGovernorDeployer.deploy(_salt("GovernorImpl"));
         address timelock = TimelockControllerOptimisticDeployer.deploy(_salt("TimelockImpl"));
         address selectorRegistry = OptimisticSelectorRegistryDeployer.deploy(_salt("SelectorRegistryImpl"));
-        MockRoleRegistry roleRegistry = new MockRoleRegistry(address(this));
-        ReserveOptimisticGovernanceVersionRegistry versionRegistry =
-            new ReserveOptimisticGovernanceVersionRegistry(roleRegistry);
 
         // Deploy the factory
         address deployer = ReserveOptimisticGovernorDeployerDeployer.deploy(
-            address(versionRegistry),
-            stakingVault,
-            governor,
-            timelock,
-            selectorRegistry,
-            _salt("ReserveOptimisticGovernorDeployer")
+            stakingVault, governor, timelock, selectorRegistry, _salt("ReserveOptimisticGovernorDeployer")
         );
 
         assertNotEq(deployer, address(0), "ReserveOptimisticGovernorDeployer deployment failed");

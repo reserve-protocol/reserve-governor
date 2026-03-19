@@ -23,7 +23,6 @@ import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Non
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
-import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
 import { Versioned } from "../utils/Versioned.sol";
 import { UnstakingManager } from "./UnstakingManager.sol";
 
@@ -49,7 +48,6 @@ contract StakingVault is
     ERC20PermitUpgradeable,
     ERC20VotesUpgradeable,
     AccessControlEnumerableUpgradeable,
-    UpgradeControlled,
     Versioned,
     UUPSUpgradeable
 {
@@ -107,15 +105,13 @@ contract StakingVault is
     /// @param _initialAdmin Initial admin of the vault
     /// @param _rewardPeriod {s} Half life of the reward handout rate
     /// @param _unstakingDelay {s} Delay after unstaking before user receives their deposit
-    /// @param _upgradeManager Upgrade manager authorized for UUPS upgrades
     function initialize(
         string memory _name,
         string memory _symbol,
         IERC20 _underlying,
         address _initialAdmin,
         uint256 _rewardPeriod,
-        uint256 _unstakingDelay,
-        address _upgradeManager
+        uint256 _unstakingDelay
     ) external initializer {
         require(_initialAdmin != address(0), Vault__InvalidAdmin(_initialAdmin));
 
@@ -126,8 +122,7 @@ contract StakingVault is
         __AccessControlEnumerable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
-        __UpgradeControlled_init(_upgradeManager);
-
+        
         _grantRole(DEFAULT_ADMIN_ROLE, _initialAdmin);
 
         _setRewardRatio(_rewardPeriod);
@@ -138,7 +133,11 @@ contract StakingVault is
         nativeRewardsLastPaid = block.timestamp;
     }
 
-    function _authorizeUpgrade(address) internal view override onlyUpgradeManager { }
+    /**
+     * @dev Authorize upgrade to a new implementation.
+     * @param newImplementation Address of the new implementation contract
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) { }
 
     /**
      * Deposit & Delegate
