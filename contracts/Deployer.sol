@@ -22,17 +22,38 @@ import { Versioned } from "./utils/Versioned.sol";
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
     error Deployer__InvalidStakingVault();
 
+    error Deployer__InvalidVersionRegistry();
+    error Deployer__InvalidRewardTokenRegistry();
+    error Deployer__InvalidStakingVaultImpl();
+    error Deployer__InvalidGovernorImpl();
+    error Deployer__InvalidTimelockImpl();
+    error Deployer__InvalidSelectorRegistryImpl();
+
+    address public immutable versionRegistry;
+    address public immutable rewardTokenRegistry;
+
     address public immutable stakingVaultImpl;
     address public immutable governorImpl;
     address public immutable timelockImpl;
     address public immutable selectorRegistryImpl;
 
     constructor(
+        address _versionRegistry,
+        address _rewardTokenRegistry,
         address _stakingVaultImpl,
         address _governorImpl,
         address _timelockImpl,
         address _selectorRegistryImpl
     ) {
+        require(address(_versionRegistry) != address(0), Deployer__InvalidVersionRegistry());
+        require(address(_rewardTokenRegistry) != address(0), Deployer__InvalidRewardTokenRegistry());
+        versionRegistry = _versionRegistry;
+        rewardTokenRegistry = _rewardTokenRegistry;
+
+        require(address(_stakingVaultImpl) != address(0), Deployer__InvalidStakingVaultImpl());
+        require(address(_governorImpl) != address(0), Deployer__InvalidGovernorImpl());
+        require(address(_timelockImpl) != address(0), Deployer__InvalidTimelockImpl());
+        require(address(_selectorRegistryImpl) != address(0), Deployer__InvalidSelectorRegistryImpl());
         stakingVaultImpl = _stakingVaultImpl;
         governorImpl = _governorImpl;
         timelockImpl = _timelockImpl;
@@ -55,7 +76,8 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.timelockDelay {s} Timelock execution delay.
     /// @param baseParams.proposalThrottleCapacity Optimistic proposal throttle capacity.
     /// @param newStakingVaultParams.underlying Underlying token for the newly deployed vault.
-    /// @param newStakingVaultParams.rewardTokens Additional reward tokens for the new vault.
+    /// @param newStakingVaultParams.rewardTokens Additional reward tokens for the new vault, must already be registered
+    /// @param newStakingVaultParams.rewardTokenRegistry Reward Token Registry address, required
     /// @param newStakingVaultParams.rewardHalfLife {s} Reward streaming half-life for the new vault.
     /// @param newStakingVaultParams.unstakingDelay {s} Unstaking delay for the new vault.
     /// @return stakingVault The deployed StakingVault address
@@ -115,7 +137,6 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.proposalThrottleCapacity Optimistic proposals-per-account per 24h
     /// @param existingStakingVault Address of a pre-deployed StakingVault to use as governance token.
     /// @param deploymentNonce Arbitrary nonce used to derive deterministic deployment salt.
-    /// @return stakingVault The provided StakingVault address.
     /// @return governor The deployed Governor address.
     /// @return timelock The deployed Timelock address.
     /// @return selectorRegistry The deployed OptimisticSelectorRegistry address.
@@ -123,18 +144,18 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         BaseDeploymentParams calldata baseParams,
         address existingStakingVault,
         bytes32 deploymentNonce
-    ) external returns (address stakingVault, address governor, address timelock, address selectorRegistry) {
+    ) external returns (address governor, address timelock, address selectorRegistry) {
         // Step 1: Validate existing StakingVault
         require(existingStakingVault.code.length != 0, Deployer__InvalidStakingVault());
 
         bytes32 deploymentSalt = keccak256(abi.encode(msg.sender, baseParams, existingStakingVault, deploymentNonce));
 
-        stakingVault = existingStakingVault;
+        // Step 2: Deploy UpgradeManager, Timelock, Governor, and OptimisticSelectorRegistry
+        // The existing StakingVault predates this deployment and is not rewired to this system's UpgradeManager
+        (timelock, governor, selectorRegistry) =
+            _deployOptimisticGovernance(baseParams, existingStakingVault, deploymentSalt);
 
-        // Step 2: Deploy Timelock, OptimisticSelectorRegistry, and Governor
-        (timelock, governor, selectorRegistry) = _deployOptimisticGovernance(baseParams, stakingVault, deploymentSalt);
-
-        emit ReserveOptimisticGovernorSystemDeployed(stakingVault, governor, timelock, selectorRegistry);
+        emit ReserveOptimisticGovernorSystemDeployed(address(0), governor, timelock, selectorRegistry);
     }
 
     // === Internal ===

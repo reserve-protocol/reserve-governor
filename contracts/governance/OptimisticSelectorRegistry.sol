@@ -41,7 +41,7 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
     // === External ===
 
     modifier onlyTimelock() {
-        require(msg.sender == governor.timelock(), OnlyOwner(msg.sender));
+        require(msg.sender == governor.timelock(), SelectorRegistry__OnlyOwner(msg.sender));
         _;
     }
 
@@ -87,7 +87,7 @@ contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistr
         require(
             target != address(this) && target != address(governor) && target != address(governor.timelock())
                 && target != address(governor.token()),
-            InvalidTarget(target)
+            SelectorRegistry__InvalidTarget(target)
         );
 
         for (uint256 i = 0; i < selectors.length; i++) {

@@ -96,7 +96,10 @@ contract ReserveOptimisticGovernor is
         address _timelockController,
         address _selectorRegistry
     ) public initializer {
-        require(keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"), InvalidToken());
+        require(
+            keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"),
+            OptimisticGovernor__InvalidToken()
+        );
 
         __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
@@ -143,6 +146,11 @@ contract ReserveOptimisticGovernor is
         require(_proposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
 
         return _isOptimistic(proposalId);
+    }
+
+    /// @dev Timelock cannot be changed by default (OptimisticSelectorRegistry assumes static addresses)
+    function updateTimelock(TimelockControllerUpgradeable) external pure override {
+        revert OptimisticGovernor__TimelockCannotBeUpdated();
     }
 
     // === Proposal Creation ===

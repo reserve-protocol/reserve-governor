@@ -15,10 +15,13 @@ import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegi
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
+import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
 import { CANCELLER_ROLE, OPTIMISTIC_CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
+import { MockRoleRegistry } from "./mocks/MockRoleRegistry.sol";
 import { ReserveOptimisticGovernorV2Mock } from "./mocks/ReserveOptimisticGovernorV2Mock.sol";
 import { TimelockControllerOptimisticV2Mock } from "./mocks/TimelockControllerOptimisticV2Mock.sol";
 
@@ -76,14 +79,25 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     function setUp() public {
         underlying = new MockERC20("Underlying Token", "UNDL");
 
+        MockRoleRegistry roleRegistry = new MockRoleRegistry(address(this));
+        ReserveOptimisticGovernanceVersionRegistry versionRegistry =
+            new ReserveOptimisticGovernanceVersionRegistry(roleRegistry);
+        RewardTokenRegistry rewardTokenRegistry = new RewardTokenRegistry(roleRegistry);
+
         StakingVault stakingVaultImpl = new StakingVault();
         ReserveOptimisticGovernor governorImpl = new ReserveOptimisticGovernor();
         TimelockControllerOptimistic timelockImpl = new TimelockControllerOptimistic();
         OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
 
         deployer = new ReserveOptimisticGovernorDeployer(
-            address(stakingVaultImpl), address(governorImpl), address(timelockImpl), address(registryImpl)
+            address(versionRegistry),
+            address(rewardTokenRegistry),
+            address(stakingVaultImpl),
+            address(governorImpl),
+            address(timelockImpl),
+            address(registryImpl)
         );
+        versionRegistry.registerVersion(deployer);
 
         address[] memory optimisticProposers = new address[](2);
         optimisticProposers[0] = optimisticProposer;
@@ -137,24 +151,23 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         originalStakingVaultAdmin = timelockAddr;
 
         if (_useExistingStakingVaultDeployment()) {
-            (
-                address existingStakingVaultAddr,
-                address existingGovernorAddr,
-                address existingTimelockAddr,
-                address existingSelectorRegistryAddr
-            ) = deployer.deployWithExistingStakingVault(baseParams, stakingVaultAddr, bytes32(uint256(1)));
+            (address existingGovernorAddr, address existingTimelockAddr, address existingSelectorRegistryAddr) =
+                deployer.deployWithExistingStakingVault(baseParams, stakingVaultAddr, bytes32(uint256(1)));
 
-            assertEq(existingStakingVaultAddr, stakingVaultAddr, "existing-vault deploy should reuse staking vault");
-
-            stakingVault = StakingVault(existingStakingVaultAddr);
             governor = ReserveOptimisticGovernor(payable(existingGovernorAddr));
             timelock = TimelockControllerOptimistic(payable(existingTimelockAddr));
             registry = OptimisticSelectorRegistry(existingSelectorRegistryAddr);
+
+            address existingStakingVaultAddr = address(governor.token());
+            assertEq(existingStakingVaultAddr, stakingVaultAddr, "existing-vault deploy should reuse staking vault");
+
+            stakingVault = StakingVault(existingStakingVaultAddr);
         } else {
-            stakingVault = StakingVault(stakingVaultAddr);
             governor = ReserveOptimisticGovernor(payable(governorAddr));
             timelock = TimelockControllerOptimistic(payable(timelockAddr));
             registry = OptimisticSelectorRegistry(selectorRegistryAddr);
+
+            stakingVault = StakingVault(stakingVaultAddr);
         }
 
         _setupVoter(alice, ALICE_STAKE);
@@ -1040,7 +1053,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         vm.prank(optimisticGuardian);
         vm.expectRevert(
-            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, confirmationProposalId, optimisticGuardian)
+            abi.encodeWithSelector(
+                IGovernor.GovernorUnableToCancel.selector, confirmationProposalId, optimisticGuardian
+            )
         );
         governor.cancel(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
     }
@@ -1165,10 +1180,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         for (uint256 i = 0; i < capacity; i++) {
             vm.prank(optimisticProposer);
             governor.proposeOptimistic(
-                callTargets,
-                callValues,
-                callCalldatas,
-                string.concat("Atomic capacity consume #", vm.toString(i + 1))
+                callTargets, callValues, callCalldatas, string.concat("Atomic capacity consume #", vm.toString(i + 1))
             );
             assertEq(governor.proposalThrottleCharges(optimisticProposer), capacity - i - 1);
         }
@@ -1321,7 +1333,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         selectorData[0] = IOptimisticSelectorRegistry.SelectorData(address(stakingVault), selectors);
         vm.prank(address(timelock));
         vm.expectRevert(
-            abi.encodeWithSelector(IOptimisticSelectorRegistry.InvalidTarget.selector, address(stakingVault))
+            abi.encodeWithSelector(
+                IOptimisticSelectorRegistry.SelectorRegistry__InvalidTarget.selector, address(stakingVault)
+            )
         );
         registry.registerSelectors(selectorData);
 

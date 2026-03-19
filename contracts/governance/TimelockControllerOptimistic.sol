@@ -27,7 +27,7 @@ contract TimelockControllerOptimistic is
 
     function initialize(uint256 minDelay, address[] memory proposers, address[] memory executors, address admin)
         public
-        override(ITimelockControllerOptimistic, TimelockControllerUpgradeable)
+        override(TimelockControllerUpgradeable, ITimelockControllerOptimistic)
         initializer
     {
         __TimelockController_init(minDelay, proposers, executors, admin);

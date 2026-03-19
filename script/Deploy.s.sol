@@ -39,6 +39,12 @@ contract DeployScript is Script {
         console2.log("Mode:", deploymentMode == DeploymentMode.Production ? "Production" : "Testing");
         console2.log("Chain ID:", block.chainid);
         console2.log("Wallet Address:", walletAddress);
+
+        address versionRegistry = _getVersionRegistry();
+        address rewardTokenRegistry = _getRewardTokenRegistry();
+
+        console2.log("ReserveOptimisticGovernorStakingVaultVersionRegistry:", versionRegistry);
+        console2.log("RewardTokenRegistry:", rewardTokenRegistry);
         console2.log("");
 
         vm.startBroadcast(privateKey);
@@ -51,7 +57,9 @@ contract DeployScript is Script {
 
         // Deploy Deployer
         deployer = address(
-            new ReserveOptimisticGovernorDeployer(stakingVaultImpl, governorImpl, timelockImpl, selectorRegistryImpl)
+            new ReserveOptimisticGovernorDeployer(
+                versionRegistry, rewardTokenRegistry, stakingVaultImpl, governorImpl, timelockImpl, selectorRegistryImpl
+            )
         );
 
         vm.stopBroadcast();
@@ -62,5 +70,37 @@ contract DeployScript is Script {
         console2.log("OptimisticSelectorRegistry:", selectorRegistryImpl);
         console2.log("ReserveOptimisticGovernorDeployer:", deployer);
         console2.log("----- DONE -----");
+    }
+
+    function _getVersionRegistry() internal view returns (address) {
+        if (block.chainid == 1 || block.chainid == 31337) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        if (block.chainid == 8453) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        if (block.chainid == 56) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        revert("invalid chain id");
+    }
+
+    function _getRewardTokenRegistry() internal view returns (address) {
+        if (block.chainid == 1 || block.chainid == 31337) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        if (block.chainid == 8453) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        if (block.chainid == 56) {
+            return 0x0000000000000000000000000000000000000000; // TODO
+        }
+
+        revert("invalid chain id");
     }
 }

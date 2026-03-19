@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
 
-import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { IERC20, IERC4626 } from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -17,13 +17,21 @@ import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegist
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
+import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
+import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
+import { MockRoleRegistry } from "./mocks/MockRoleRegistry.sol";
+import { ReserveOptimisticGovernorDeployerV2Mock } from "./mocks/ReserveOptimisticGovernorDeployerV2Mock.sol";
 import { StakingVaultV2Mock } from "./mocks/StakingVaultV2Mock.sol";
 
 contract StakingVaultTest is Test {
+    MockRoleRegistry private roleRegistry;
+    ReserveOptimisticGovernanceVersionRegistry private versionRegistry;
+    RewardTokenRegistry private rewardTokenRegistry;
+
     MockERC20 private token;
     MockERC20 private reward;
 
@@ -44,6 +52,13 @@ contract StakingVaultTest is Test {
         vm.label(address(token), "Test Token");
         vm.label(address(reward), "Reward Token");
 
+        // Deploy mock role registry
+        roleRegistry = new MockRoleRegistry(address(this));
+
+        // Deploy registries
+        versionRegistry = new ReserveOptimisticGovernanceVersionRegistry(roleRegistry);
+        rewardTokenRegistry = new RewardTokenRegistry(roleRegistry);
+
         // Deploy implementations
         vaultImpl = address(new StakingVault());
         address governorImpl = address(new ReserveOptimisticGovernor());
@@ -51,8 +66,17 @@ contract StakingVaultTest is Test {
         address registryImpl = address(new OptimisticSelectorRegistry());
 
         // Deploy Deployer
-        ReserveOptimisticGovernorDeployer deployer =
-            new ReserveOptimisticGovernorDeployer(vaultImpl, governorImpl, timelockImpl, registryImpl);
+        ReserveOptimisticGovernorDeployer deployer = new ReserveOptimisticGovernorDeployer(
+            address(versionRegistry),
+            address(rewardTokenRegistry),
+            vaultImpl,
+            governorImpl,
+            timelockImpl,
+            registryImpl
+        );
+
+        rewardTokenRegistry.registerRewardToken(address(reward));
+        versionRegistry.registerVersion(deployer);
 
         address[] memory rewardTokens = new address[](1);
         rewardTokens[0] = address(reward);
@@ -119,6 +143,29 @@ contract StakingVaultTest is Test {
         vm.stopPrank();
     }
 
+    function _registerRewardToken(address rewardToken) internal {
+        rewardTokenRegistry.registerRewardToken(rewardToken);
+    }
+
+    function _registerV2Deployer(address stakingVaultImplementation)
+        internal
+        returns (ReserveOptimisticGovernorDeployerV2Mock deployer)
+    {
+        deployer = new ReserveOptimisticGovernorDeployerV2Mock(
+            address(versionRegistry),
+            address(rewardTokenRegistry),
+            stakingVaultImplementation,
+            address(new ReserveOptimisticGovernor()),
+            address(new TimelockControllerOptimistic()),
+            address(new OptimisticSelectorRegistry())
+        );
+        versionRegistry.registerVersion(deployer);
+    }
+
+    function _v2VersionHash() internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("2.0.0"));
+    }
+
     function test_deployment() public view {
         assertEq(vault.name(), "Vote-Locked Test Token");
         assertEq(vault.symbol(), "vlTEST");
@@ -169,7 +216,7 @@ contract StakingVaultTest is Test {
     }
 
     function testGas_pokeWithTokens() public {
-        uint8[4] memory rewardTokens = [1, 10, 25, 50];
+        uint8[4] memory rewardTokens = [1, 10, 15, 20];
 
         for (uint8 i = 0; i < rewardTokens.length; i++) {
             uint256 snap = vm.snapshotState();
@@ -190,6 +237,7 @@ contract StakingVaultTest is Test {
                 MockERC20 rewardToken = new MockERC20("Reward Token", "REWARD");
                 rewardToken.mint(address(vault), 1000 * 1e18);
 
+                _registerRewardToken(address(rewardToken));
                 vm.prank(address(timelock));
                 vault.addRewardToken(address(rewardToken));
             }
@@ -360,6 +408,7 @@ contract StakingVaultTest is Test {
 
     function test_addRewardToken() public {
         MockERC20 newReward = new MockERC20("New Reward Token", "NREWARD");
+        _registerRewardToken(address(newReward));
         vm.expectEmit(true, false, false, true);
         emit StakingVault.RewardTokenAdded(address(newReward));
         vm.prank(address(timelock));
@@ -373,14 +422,11 @@ contract StakingVaultTest is Test {
 
     function test_cannotAddRewardTokenIfNotOwner() public {
         MockERC20 newReward = new MockERC20("New Reward Token", "NREWARD");
+        _registerRewardToken(address(newReward));
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.addRewardToken(address(newReward));
     }
@@ -430,11 +476,7 @@ contract StakingVaultTest is Test {
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.removeRewardToken(address(reward));
     }
@@ -460,11 +502,7 @@ contract StakingVaultTest is Test {
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.setRewardRatio(REWARD_HALF_LIFE / 2);
     }
@@ -690,11 +728,7 @@ contract StakingVaultTest is Test {
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
         vault.setUnstakingDelay(newUnstakingDelay);
     }
@@ -1058,51 +1092,71 @@ contract StakingVaultTest is Test {
         assertApproxEqRel(reward.balanceOf(address(this)), expectedOwnerRewards, 0.001e18);
     }
 
-    // ============ UUPS Upgrade Tests ============
+    function test_upgradeToLatestRegisteredVersion() public {
+        _mintAndDepositFor(address(this), 100e18);
+        uint256 totalSupplyBefore = vault.totalSupply();
+        uint256 unstakingDelayBefore = vault.unstakingDelay();
 
-    function test_upgrade() public {
-        // Setup: deposit some tokens and accrue rewards
-        _mintAndDepositFor(ACTOR_ALICE, 1000e18);
-        vm.warp(block.timestamp + 1);
-        reward.mint(address(vault), 500e18);
-        vault.poke();
-        _payoutRewards(1);
-
-        // Deploy new implementation
         StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
+        _registerV2Deployer(address(newImpl));
 
-        // Upgrade via deployer (the owner)
         vm.prank(address(timelock));
         vault.upgradeToAndCall(address(newImpl), "");
 
-        // Verify new implementation is active
-        assertEq(StakingVault(address(vault)).version(), "2.0.0");
-
-        // Verify state is preserved
-        assertEq(vault.name(), "Vote-Locked Test Token");
-        assertEq(vault.symbol(), "vlTEST");
-        assertEq(address(vault.asset()), address(token));
-        assertEq(vault.balanceOf(ACTOR_ALICE), 1000e18);
-        assertTrue(vault.hasRole(vault.DEFAULT_ADMIN_ROLE(), address(timelock)));
-        assertEq(vault.unstakingDelay(), UNSTAKING_DELAY);
-
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 1);
-        assertEq(_rewardTokens[0], address(reward));
+        StakingVaultV2Mock upgradedVault = StakingVaultV2Mock(address(vault));
+        assertEq(upgradedVault.version(), "2.0.0");
+        assertEq(upgradedVault.totalSupply(), totalSupplyBefore);
+        assertEq(upgradedVault.unstakingDelay(), unstakingDelayBefore);
+        assertEq(address(upgradedVault.asset()), address(token));
+        assertEq(address(upgradedVault.versionRegistry()), address(versionRegistry));
+        assertTrue(upgradedVault.hasRole(upgradedVault.DEFAULT_ADMIN_ROLE(), address(timelock)));
     }
 
-    function test_cannotUpgradeIfNotOwner() public {
+    function test_cannotUpgradeIfNotAdmin() public {
         StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
-        bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
 
-        vm.prank(ACTOR_ALICE);
+        vm.startPrank(ACTOR_ALICE);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                ACTOR_ALICE,
-                adminRole
+                IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, vault.DEFAULT_ADMIN_ROLE()
             )
         );
+        vault.upgradeToAndCall(address(newImpl), "");
+        vm.stopPrank();
+    }
+
+    function test_cannotUpgradeIfVersionIsNotLatest() public {
+        StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
+
+        vm.prank(address(timelock));
+        vm.expectRevert(
+            abi.encodeWithSelector(StakingVault.Vault__NotLatestStakingVault.selector, address(newImpl))
+        );
+        vault.upgradeToAndCall(address(newImpl), "");
+    }
+
+    function test_cannotUpgradeIfImplementationDoesNotMatchRegisteredLatestVersion() public {
+        StakingVaultV2Mock registeredImpl = new StakingVaultV2Mock();
+        _registerV2Deployer(address(registeredImpl));
+
+        StakingVaultV2Mock rogueImpl = new StakingVaultV2Mock();
+
+        vm.prank(address(timelock));
+        vm.expectRevert(
+            abi.encodeWithSelector(StakingVault.Vault__NotLatestStakingVault.selector, address(rogueImpl))
+        );
+        vault.upgradeToAndCall(address(rogueImpl), "");
+    }
+
+    function test_cannotUpgradeIfLatestVersionIsDeprecated() public {
+        StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
+        _registerV2Deployer(address(newImpl));
+
+        bytes32 versionHash = _v2VersionHash();
+        versionRegistry.deprecateVersion(versionHash);
+
+        vm.prank(address(timelock));
+        vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__VersionDeprecated.selector, versionHash));
         vault.upgradeToAndCall(address(newImpl), "");
     }
 

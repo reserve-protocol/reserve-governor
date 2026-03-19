@@ -16,3 +16,9 @@ uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 15 minutes;
 
 // ProposalThrottle
 uint256 constant MAX_PROPOSAL_THROTTLE_CAPACITY = 10; // 10 per day
+
+// StakingVault
+uint256 constant MAX_REWARD_TOKENS = 20;
+uint256 constant MAX_REWARD_HALF_LIFE = 2 weeks; // {s}
+uint256 constant MIN_REWARD_HALF_LIFE = 1 days; // {s}
+uint256 constant MAX_UNSTAKING_DELAY = 4 weeks; // {s}
