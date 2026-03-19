@@ -73,32 +73,36 @@ contract DeployScript is Script {
     }
 
     function _getVersionRegistry() internal view returns (address) {
+        // TODO ReserveOptimisticGovernanceVersionRegistry deployments
+
         if (block.chainid == 1 || block.chainid == 31337) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
         if (block.chainid == 8453) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
         if (block.chainid == 56) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
         revert("invalid chain id");
     }
 
     function _getRewardTokenRegistry() internal view returns (address) {
+        // TODO RewardTokenRegistry deployments
+
         if (block.chainid == 1 || block.chainid == 31337) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
         if (block.chainid == 8453) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
         if (block.chainid == 56) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
         revert("invalid chain id");

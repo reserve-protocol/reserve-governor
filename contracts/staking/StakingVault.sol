@@ -299,9 +299,32 @@ contract StakingVault is
         }
     }
 
-    /// @return All reward tokens, including ones not registered with the registry
+    /// @return All reward tokens, including ones not registered with the registry anymore
     function getAllRewardTokens() external view returns (address[] memory) {
         return rewardTokens.values();
+    }
+
+    /// @return registeredRewardTokens All reward tokens still registered with the registry
+    function getAllRegisteredRewardTokens() external view returns (address[] memory registeredRewardTokens) {
+        uint256 registeredRewardTokensLength = 0;
+        for (uint256 i; i < rewardTokens.length(); i++) {
+            if (rewardTokenRegistry.isRegistered(rewardTokens.at(i))) {
+                registeredRewardTokensLength++;
+            }
+        }
+
+        registeredRewardTokens = new address[](registeredRewardTokensLength);
+        uint256 index = 0;
+
+        for (uint256 i; i < rewardTokens.length(); i++) {
+            address rewardToken = rewardTokens.at(i);
+            if (rewardTokenRegistry.isRegistered(rewardToken)) {
+                registeredRewardTokens[index] = rewardToken;
+                index++;
+            }
+        }
+
+        return registeredRewardTokens;
     }
 
     /**

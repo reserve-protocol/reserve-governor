@@ -79,7 +79,6 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.proposalThrottleCapacity Optimistic proposal throttle capacity.
     /// @param newStakingVaultParams.underlying Underlying token for the newly deployed vault.
     /// @param newStakingVaultParams.rewardTokens Additional reward tokens for the new vault, must already be registered
-    /// @param newStakingVaultParams.rewardTokenRegistry Reward Token Registry address, required
     /// @param newStakingVaultParams.rewardHalfLife {s} Reward streaming half-life for the new vault.
     /// @param newStakingVaultParams.unstakingDelay {s} Unstaking delay for the new vault.
     /// @return stakingVault The deployed StakingVault address
@@ -152,8 +151,8 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
 
         bytes32 deploymentSalt = keccak256(abi.encode(msg.sender, baseParams, existingStakingVault, deploymentNonce));
 
-        // Step 2: Deploy UpgradeManager, Timelock, Governor, and OptimisticSelectorRegistry
-        // The existing StakingVault predates this deployment and is not rewired to this system's UpgradeManager
+        // Step 2: Deploy Timelock, Governor, and OptimisticSelectorRegistry
+        // The existing StakingVault predates this deployment and will not be owned by the new system
         (timelock, governor, selectorRegistry) =
             _deployOptimisticGovernance(baseParams, existingStakingVault, deploymentSalt);
 
