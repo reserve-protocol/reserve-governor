@@ -17,6 +17,8 @@ enum DeploymentMode {
 }
 
 contract DeployScript is Script {
+    error DeployScript__InvalidChainId();
+
     string seedPhrase = block.chainid != 31337 ? vm.readFile(".seed") : junkSeedPhrase;
     uint256 privateKey = vm.deriveKey(seedPhrase, 0);
     address walletAddress = vm.rememberKey(privateKey);
@@ -87,7 +89,7 @@ contract DeployScript is Script {
             return 0x0000000000000000000000000000000000000000;
         }
 
-        revert("invalid chain id");
+        revert DeployScript__InvalidChainId();
     }
 
     function _getRewardTokenRegistry() internal view returns (address) {
@@ -105,6 +107,6 @@ contract DeployScript is Script {
             return 0x0000000000000000000000000000000000000000;
         }
 
-        revert("invalid chain id");
+        revert DeployScript__InvalidChainId();
     }
 }
