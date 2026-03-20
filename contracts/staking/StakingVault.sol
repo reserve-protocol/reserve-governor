@@ -182,6 +182,7 @@ contract StakingVault is
     {
         totalDeposited -= _assets;
         nativeBalanceLastKnown -= _assets;
+        // nativeBalanceLastKnown update is redundant, final value set at bottom of function
 
         if (unstakingDelay == 0) {
             super._withdraw(_caller, _receiver, _owner, _assets, _shares);
