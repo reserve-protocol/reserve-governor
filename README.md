@@ -281,7 +281,8 @@ Governance-owned registry of tokens that may be used as `StakingVault` reward to
 
 - `registerRewardToken(rewardToken)` -- Register a reward token (owner only)
 - `unregisterRewardToken(rewardToken)` -- Unregister a reward token (owner or emergency council)
-- `rewardTokens()` -- Return all currently registered reward tokens
+- `getAllRewardTokens()` -- Return all reward tokens, even those not registered with the registry anymore
+- `getAllRegisteredRewardTokens()` -- Return all reward tokens registered with the registry
 - `isRegistered(rewardToken)` -- Check whether a token is currently in the registry
 
 ### ReserveOptimisticGovernanceVersionRegistry
@@ -296,8 +297,6 @@ Governance-owned registry of release versions.
 ### StakingVault
 
 ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to receive vault shares that carry voting power.
-
-IMPORTANT: StakingVault should only be deployed with an underlying token that has a STRONG value relationship to the system being governed. The token should not derive value from many sources. It is important that withdrawals that occur AFTER a malicious proposal executes do not recoup much value.
 
 **User Functions:**
 
@@ -444,12 +443,11 @@ Three contracts are UUPS upgradeable, but they do not share a central onchain up
 
 `OptimisticSelectorRegistry` is clone-initialized and is not upgradeable.
 
-### Version Registry
+### Version Registry (StakingVault)
 
-`ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple.
+`ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple. Only `StakingVault` upgrades are currently tied to the version registry. 
 
 - `registerVersion(deployer)` can only be called by a `RoleRegistry` owner
-- The registry reads `deployer.version()` and stores the deployer under `versionHash = keccak256(abi.encodePacked(version))`
 - `getLatestVersion()` returns the latest registered version metadata
 - `getImplementationsForVersion(versionHash)` resolves the staking vault, governor, and timelock implementations from the registered deployer
 - `deprecateVersion(versionHash)` can be called by a `RoleRegistry` owner or emergency council member
@@ -468,6 +466,7 @@ Upgrades are intended to be executed by the existing vault admin. They cannot be
    2. `ReserveOptimisticGovernor`: call `governor.upgradeToAndCall(newGovernorImpl, data)` from timelock.
    3. `TimelockControllerOptimistic`: call `timelock.upgradeToAndCall(newTimelockImpl, data)` from timelock.
 
+Only the `StakingVault` upgrade path is constrained by the version registry. This guarantees that `StakingVault` governance cannot brick the other governors that also depend on the same `StakingVault`. 
 
 For deployments created with `deployWithExistingStakingVault()`, the new timelock does not automatically become the existing vault's admin. Any later `StakingVault` upgrade is still controlled by whichever address currently holds that vault's `DEFAULT_ADMIN_ROLE`.
 
