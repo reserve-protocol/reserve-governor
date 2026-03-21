@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import { IRewardTokenRegistry } from "@interfaces/IRewardTokenRegistry.sol";
-import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
+import { IRewardTokenRegistry } from "../interfaces/IRewardTokenRegistry.sol";
+import { IRoleRegistry } from "../interfaces/IRoleRegistry.sol";
 
 contract RewardTokenRegistry is IRewardTokenRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;

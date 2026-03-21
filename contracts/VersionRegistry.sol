@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
-import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
+import { IReserveOptimisticGovernorDeployer } from "./interfaces/IDeployer.sol";
+import { IRoleRegistry } from "./interfaces/IRoleRegistry.sol";
 
-import { Versioned } from "@utils/Versioned.sol";
+import { Versioned } from "./utils/Versioned.sol";
 
 /**
  * @title ReserveOptimisticGovernanceVersionRegistry
