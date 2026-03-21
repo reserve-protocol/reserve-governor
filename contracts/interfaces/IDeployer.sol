@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
-import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
+import { IOptimisticSelectorRegistry } from "./IOptimisticSelectorRegistry.sol";
+import { IReserveOptimisticGovernor } from "./IReserveOptimisticGovernor.sol";
 
 interface IReserveOptimisticGovernorDeployer {
     // === Events ===
