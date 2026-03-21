@@ -8,3 +8,4 @@ forge-std/=node_modules/forge-std/src/
 @interfaces/=contracts/interfaces/
 @staking/=contracts/staking/
 @utils/=contracts/utils/
+@mocks/=test/mocks/

@@ -3,18 +3,20 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
-import { ReserveOptimisticGovernanceVersionRegistry } from "../contracts/VersionRegistry.sol";
-import { OptimisticSelectorRegistryDeployer } from "../contracts/artifacts/OptimisticSelectorRegistryDeployer.sol";
-import { ProposalLibDeployer } from "../contracts/artifacts/ProposalLibDeployer.sol";
-import { ReserveOptimisticGovernorDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorDeployer.sol";
+import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { OptimisticSelectorRegistryDeployer } from "@src/artifacts/OptimisticSelectorRegistryDeployer.sol";
+import { ProposalLibDeployer } from "@src/artifacts/ProposalLibDeployer.sol";
+import { ReserveOptimisticGovernorDeployer } from "@src/artifacts/ReserveOptimisticGovernorDeployer.sol";
 import {
     ReserveOptimisticGovernorDeployerDeployer
-} from "../contracts/artifacts/ReserveOptimisticGovernorDeployerDeployer.sol";
-import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultDeployer.sol";
-import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibDeployer.sol";
-import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticDeployer.sol";
-import { IRoleRegistry } from "../contracts/interfaces/IRoleRegistry.sol";
-import { RewardTokenRegistry } from "../contracts/staking/RewardTokenRegistry.sol";
+} from "@src/artifacts/ReserveOptimisticGovernorDeployerDeployer.sol";
+import { StakingVaultDeployer } from "@src/artifacts/StakingVaultDeployer.sol";
+import { ThrottleLibDeployer } from "@src/artifacts/ThrottleLibDeployer.sol";
+import { TimelockControllerOptimisticDeployer } from "@src/artifacts/TimelockControllerOptimisticDeployer.sol";
+import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
+import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
+
+import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
 
 contract ArtifactsTest is Test {
     function _salt(string memory label) internal pure returns (bytes32) {

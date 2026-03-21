@@ -28,8 +28,12 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
+import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
+import { ProposalLib } from "@governance/lib/ProposalLib.sol";
+import { ThrottleLib } from "@governance/lib/ThrottleLib.sol";
 import {
     CANCELLER_ROLE,
     MAX_OPTIMISTIC_DELAY,
@@ -39,12 +43,12 @@ import {
     MIN_OPTIMISTIC_VETO_PERIOD,
     OPTIMISTIC_CANCELLER_ROLE,
     OPTIMISTIC_PROPOSER_ROLE
-} from "../utils/Constants.sol";
-import { Versioned } from "../utils/Versioned.sol";
-import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
-import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
-import { ProposalLib } from "./lib/ProposalLib.sol";
-import { ThrottleLib } from "./lib/ThrottleLib.sol";
+} from "@utils/Constants.sol";
+import { Versioned } from "@utils/Versioned.sol";
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
+import { ProposalLib } from "@governance/lib/ProposalLib.sol";
+import { ThrottleLib } from "@governance/lib/ThrottleLib.sol";
 
 /**
  * @title Reserve Optimistic Governor

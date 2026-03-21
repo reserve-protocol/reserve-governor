@@ -4,20 +4,20 @@ pragma solidity ^0.8.28;
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import { IReserveOptimisticGovernorDeployer } from "./interfaces/IDeployer.sol";
+import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 
-import { OptimisticSelectorRegistry } from "./governance/OptimisticSelectorRegistry.sol";
-import { ReserveOptimisticGovernor } from "./governance/ReserveOptimisticGovernor.sol";
-import { TimelockControllerOptimistic } from "./governance/TimelockControllerOptimistic.sol";
-import { StakingVault } from "./staking/StakingVault.sol";
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
+import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
+import { StakingVault } from "@staking/StakingVault.sol";
 import {
     CANCELLER_ROLE,
     EXECUTOR_ROLE,
     OPTIMISTIC_CANCELLER_ROLE,
     OPTIMISTIC_PROPOSER_ROLE,
     PROPOSER_ROLE
-} from "./utils/Constants.sol";
-import { Versioned } from "./utils/Versioned.sol";
+} from "@utils/Constants.sol";
+import { Versioned } from "@utils/Versioned.sol";
 
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
     error Deployer__InvalidStakingVault();

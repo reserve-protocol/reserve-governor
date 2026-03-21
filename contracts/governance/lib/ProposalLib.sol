@@ -8,11 +8,11 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 
-import { IReserveOptimisticGovernor } from "../../interfaces/IReserveOptimisticGovernor.sol";
+import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
-import { OPTIMISTIC_PROPOSER_ROLE } from "../../utils/Constants.sol";
-import { OptimisticSelectorRegistry } from "../OptimisticSelectorRegistry.sol";
-import { ReserveOptimisticGovernor } from "../ReserveOptimisticGovernor.sol";
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
+import { OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
 library ProposalLib {
     string constant CONFIRMATION_PREFIX = "Confirmation For: ";

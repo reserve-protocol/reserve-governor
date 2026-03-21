@@ -23,11 +23,12 @@ import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Non
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
-import { ReserveOptimisticGovernanceVersionRegistry } from "../VersionRegistry.sol";
-import { IReserveOptimisticGovernorDeployer } from "../interfaces/IDeployer.sol";
-import { IRewardTokenRegistry } from "../interfaces/IRewardTokenRegistry.sol";
-import { Versioned } from "../utils/Versioned.sol";
-import { UnstakingManager } from "./UnstakingManager.sol";
+import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
+import { IRewardTokenRegistry } from "@interfaces/IRewardTokenRegistry.sol";
+
+import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { UnstakingManager } from "@staking/UnstakingManager.sol";
+import { Versioned } from "@utils/Versioned.sol";
 
 import {
     MAX_REWARD_HALF_LIFE,
@@ -205,6 +206,7 @@ contract StakingVault is
     {
         totalDeposited -= _assets;
         nativeBalanceLastKnown -= _assets;
+        // nativeBalanceLastKnown update is redundant, final value set at bottom of function
 
         if (unstakingDelay == 0) {
             super._withdraw(_caller, _receiver, _owner, _assets, _shares);

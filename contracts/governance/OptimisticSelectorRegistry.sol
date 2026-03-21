@@ -5,9 +5,9 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
+import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 
-import { ReserveOptimisticGovernor } from "./ReserveOptimisticGovernor.sol";
+import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
 
 contract OptimisticSelectorRegistry is Initializable, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;

@@ -22,10 +22,10 @@ import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 
-import { MockERC20 } from "./mocks/MockERC20.sol";
-import { MockRoleRegistry } from "./mocks/MockRoleRegistry.sol";
-import { ReserveOptimisticGovernorDeployerV2Mock } from "./mocks/ReserveOptimisticGovernorDeployerV2Mock.sol";
-import { StakingVaultV2Mock } from "./mocks/StakingVaultV2Mock.sol";
+import { MockERC20 } from "@mocks/MockERC20.sol";
+import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
+import { ReserveOptimisticGovernorDeployerV2Mock } from "@mocks/ReserveOptimisticGovernorDeployerV2Mock.sol";
+import { StakingVaultV2Mock } from "@mocks/StakingVaultV2Mock.sol";
 
 contract StakingVaultTest is Test {
     MockRoleRegistry private roleRegistry;
