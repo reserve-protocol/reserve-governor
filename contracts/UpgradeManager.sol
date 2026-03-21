@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IReserveOptimisticGovernor } from "./interfaces/IReserveOptimisticGovernor.sol";
+import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
-import { ReserveOptimisticGovernanceVersionRegistry } from "./VersionRegistry.sol";
-import { Versioned } from "./utils/Versioned.sol";
+import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { Versioned } from "@utils/Versioned.sol";
 
 interface IUUPSProxy {
     function upgradeToAndCall(address newImplementation, bytes calldata data) external payable;

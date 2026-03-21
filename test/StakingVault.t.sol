@@ -20,7 +20,7 @@ import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
 
-import { MockERC20 } from "./mocks/MockERC20.sol";
+import { MockERC20 } from "@mocks/MockERC20.sol";
 
 contract StakingVaultTest is Test {
     MockERC20 private token;

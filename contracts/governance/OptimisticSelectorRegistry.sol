@@ -3,9 +3,9 @@ pragma solidity ^0.8.28;
 
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import { IOptimisticSelectorRegistry } from "../interfaces/IOptimisticSelectorRegistry.sol";
+import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 
-import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
+import { UpgradeControlled } from "@utils/UpgradeControlled.sol";
 
 contract OptimisticSelectorRegistry is UpgradeControlled, IOptimisticSelectorRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;

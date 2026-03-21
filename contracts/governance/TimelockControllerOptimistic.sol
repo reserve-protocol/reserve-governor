@@ -10,10 +10,10 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import { ITimelockControllerOptimistic } from "../interfaces/ITimelockControllerOptimistic.sol";
-import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "../utils/Constants.sol";
-import { UpgradeControlled } from "../utils/UpgradeControlled.sol";
-import { Versioned } from "../utils/Versioned.sol";
+import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
+import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { UpgradeControlled } from "@utils/UpgradeControlled.sol";
+import { Versioned } from "@utils/Versioned.sol";
 
 contract TimelockControllerOptimistic is
     TimelockControllerUpgradeable,

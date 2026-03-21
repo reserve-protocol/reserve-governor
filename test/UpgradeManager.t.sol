@@ -17,12 +17,12 @@ import { ReserveOptimisticGovernanceUpgradeManager } from "@src/UpgradeManager.s
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 
-import { MockERC20 } from "./mocks/MockERC20.sol";
-import { MockRoleRegistry } from "./mocks/MockRoleRegistry.sol";
-import { ReserveOptimisticGovernorDeployerV2Mock } from "./mocks/ReserveOptimisticGovernorDeployerV2Mock.sol";
-import { ReserveOptimisticGovernorV2Mock } from "./mocks/ReserveOptimisticGovernorV2Mock.sol";
-import { StakingVaultV2Mock } from "./mocks/StakingVaultV2Mock.sol";
-import { TimelockControllerOptimisticV2Mock } from "./mocks/TimelockControllerOptimisticV2Mock.sol";
+import { MockERC20 } from "@mocks/MockERC20.sol";
+import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
+import { ReserveOptimisticGovernorDeployerV2Mock } from "@mocks/ReserveOptimisticGovernorDeployerV2Mock.sol";
+import { ReserveOptimisticGovernorV2Mock } from "@mocks/ReserveOptimisticGovernorV2Mock.sol";
+import { StakingVaultV2Mock } from "@mocks/StakingVaultV2Mock.sol";
+import { TimelockControllerOptimisticV2Mock } from "@mocks/TimelockControllerOptimisticV2Mock.sol";
 
 abstract contract UpgradeManagerTestBase is Test {
     MockERC20 internal underlying;

@@ -17,7 +17,7 @@ import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
 import { CANCELLER_ROLE, OPTIMISTIC_CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
-import { MockERC20 } from "./mocks/MockERC20.sol";
+import { MockERC20 } from "@mocks/MockERC20.sol";
 
 contract DummyTarget {
     function ping() external pure returns (uint256) {

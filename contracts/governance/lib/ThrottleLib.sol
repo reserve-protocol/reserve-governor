@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IReserveOptimisticGovernor } from "../../interfaces/IReserveOptimisticGovernor.sol";
+import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
 library ThrottleLib {
     uint256 constant PROPOSAL_THROTTLE_PERIOD = 1 days;

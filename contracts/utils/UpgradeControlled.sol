@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-import { ReserveOptimisticGovernanceUpgradeManager } from "../UpgradeManager.sol";
+import { ReserveOptimisticGovernanceUpgradeManager } from "@src/UpgradeManager.sol";
 
 abstract contract UpgradeControlled is Initializable {
     error UpgradeControlled__InvalidUpgradeManager(address upgradeManager);
