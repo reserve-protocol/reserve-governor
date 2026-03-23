@@ -6,6 +6,11 @@ import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableS
 import { IRewardTokenRegistry } from "../interfaces/IRewardTokenRegistry.sol";
 import { IRoleRegistry } from "../interfaces/IRoleRegistry.sol";
 
+/**
+ * @title RewardTokenRegistry
+ * @author akshatmittal, julianmrodri, pmckelvy1, tbrent
+ * @notice Singleton registry of reward tokens for StakingVaults
+ */
 contract RewardTokenRegistry is IRewardTokenRegistry {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -35,6 +40,7 @@ contract RewardTokenRegistry is IRewardTokenRegistry {
         emit RewardTokenRegistered(rewardToken);
     }
 
+    /// @dev Assumption: RoleRegistry will not needlessly unregister + re-register to grief accounting in StakingVaults
     function unregisterRewardToken(address rewardToken) external {
         require(roleRegistry.isOwnerOrEmergencyCouncil(msg.sender), RewardTokenRegistry__InvalidCaller());
         require(_rewardTokens.remove(rewardToken), RewardTokenRegistry__RewardNotRegistered());
