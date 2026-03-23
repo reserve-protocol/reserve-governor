@@ -45,10 +45,6 @@ import {
     OPTIMISTIC_PROPOSER_ROLE
 } from "@utils/Constants.sol";
 import { Versioned } from "@utils/Versioned.sol";
-import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
-import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
-import { ProposalLib } from "@governance/lib/ProposalLib.sol";
-import { ThrottleLib } from "@governance/lib/ThrottleLib.sol";
 
 /**
  * @title Reserve Optimistic Governor
@@ -150,11 +146,6 @@ contract ReserveOptimisticGovernor is
         require(_proposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
 
         return _isOptimistic(proposalId);
-    }
-
-    /// @dev Timelock cannot be changed by default (OptimisticSelectorRegistry assumes static addresses)
-    function updateTimelock(TimelockControllerUpgradeable) external pure override {
-        revert OptimisticGovernor__TimelockCannotBeUpdated();
     }
 
     // === Proposal Creation ===

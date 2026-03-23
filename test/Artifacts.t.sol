@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
+import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { OptimisticSelectorRegistryDeployer } from "@src/artifacts/OptimisticSelectorRegistryDeployer.sol";
 import { ProposalLibDeployer } from "@src/artifacts/ProposalLibDeployer.sol";
@@ -13,7 +14,6 @@ import {
 import { StakingVaultDeployer } from "@src/artifacts/StakingVaultDeployer.sol";
 import { ThrottleLibDeployer } from "@src/artifacts/ThrottleLibDeployer.sol";
 import { TimelockControllerOptimisticDeployer } from "@src/artifacts/TimelockControllerOptimisticDeployer.sol";
-import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 
 import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
