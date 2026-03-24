@@ -341,7 +341,7 @@ ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to
 
 #### Valid Ranges
 
-StakingVault asset tokens and reward tokens are assumed to be maximum 1e36 supply and up to 27 decimals.
+StakingVault asset tokens and reward tokens are assumed to be maximum 1e36 supply and up to 21 decimals.
 
 #### Governance Guidelines
 
