@@ -10,7 +10,6 @@ interface IReserveOptimisticGovernorDeployer {
     // === Events ===
 
     event ReserveOptimisticGovernorSystemDeployed(
-        address upgradeManager,
         address indexed stakingVault,
         address indexed governor,
         address indexed timelock,
@@ -43,31 +42,17 @@ interface IReserveOptimisticGovernorDeployer {
         BaseDeploymentParams calldata baseParams,
         NewStakingVaultParams calldata newStakingVaultParams,
         bytes32 deploymentNonce
-    )
-        external
-        returns (
-            address upgradeManager,
-            address stakingVault,
-            address governor,
-            address timelock,
-            address selectorRegistry
-        );
+    ) external returns (address stakingVault, address governor, address timelock, address selectorRegistry);
 
     function deployWithExistingStakingVault(
         BaseDeploymentParams calldata baseParams,
         address existingStakingVault,
         bytes32 deploymentNonce
-    )
-        external
-        returns (
-            address upgradeManager,
-            address stakingVault,
-            address governor,
-            address timelock,
-            address selectorRegistry
-        );
+    ) external returns (address governor, address timelock, address selectorRegistry);
 
     function versionRegistry() external view returns (address);
+
+    function rewardTokenRegistry() external view returns (address);
 
     function stakingVaultImpl() external view returns (address);
 

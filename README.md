@@ -15,15 +15,13 @@ Fast proposals are protected by a proposer throttle that limits how many optimis
 
 ## Architecture
 
-The system has five runtime components and two upgrade-management components:
+The runtime system consists of five components:
 
 1. **StakingVault** -- ERC4626 vault with vote-locking, multi-token rewards, and unstaking delay
 2. **UnstakingManager** -- Time-locked withdrawal manager created by StakingVault during initialization
 3. **ReserveOptimisticGovernor** -- Hybrid governor unifying optimistic/standard proposal flows in shared OZ Governor storage
 4. **OptimisticSelectorRegistry** -- Whitelist of allowed `(target, selector)` pairs for optimistic proposals
 5. **TimelockControllerOptimistic** -- Single timelock for execution, with bypass for the optimistic path
-6. **ReserveOptimisticGovernanceUpgradeManager** -- The only contract authorized to execute UUPS upgrades for managed components
-7. **ReserveOptimisticGovernanceVersionRegistry** -- Maps versions to deployers and therefore to implementation sets
 
 ```
 ┌──────────────────────────────────┐
@@ -66,31 +64,13 @@ The system has five runtime components and two upgrade-management components:
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
 The allowlist is universal: selector permissions do not depend on which optimistic proposer submits the proposal.
 
+The runtime system above is complemented by a deployment and release control plane:
 
-Upgrade infrastructure sits alongside the governance runtime:
+- `ReserveOptimisticGovernorDeployer` deploys new systems from implementation addresses
+- `ReserveOptimisticGovernanceVersionRegistry` tracks versioned deployers
+- `RewardTokenRegistry` controls which ERC20s may be added as vault reward tokens
+- both registries are governed through an external `RoleRegistry` interface
 
-```
-RoleRegistry owner / emergency council
-                │
-                ▼
-┌──────────────────────────────────────┐
-│            VersionRegistry           │
-│   versionHash -> deployer -> impls   │
-└───────────────────┬──────────────────┘
-                    │
-                    ▼
-┌──────────────────────────────────────┐
-│            UpgradeManager            │◀──────── timelock executes upgradeToLatestVersion()
-│ upgrades vault? -> timelock -> gov   │
-└───────┬──────────────────┬───────────┘
-        │                  │
-        ▼                  ▼
-   StakingVault*     Timelock + Governor
-
-* Existing-vault deployments leave `UpgradeManager.stakingVault()` unset. The
-  shared vault is not hard-blocked in `OptimisticSelectorRegistry`, although
-  `UpgradeManager` still checks the governor's `token()` for version-match during upgrades.
-```
 
 ## Governance Flows
 
@@ -124,11 +104,11 @@ When AGAINST votes reach the veto threshold, the governor creates a **new** stan
 
 ### Fast Proposal Paths
 
-| Path | Name              | Flow                                                                                                 | Outcome                      |
-| ---- | ----------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------- |
-| F1   | Uncontested       | Pending -> Active -> Succeeded -> Executed                                                           | Executes via timelock bypass |
-| F2   | Vetoed, Confirmed | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Succeeded -> Queued -> Executed | Executes via timelock        |
-| F3   | Vetoed, Rejected  | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Defeated                        | Proposal blocked             |
+| Path | Name              | Flow                                                                                                 | Outcome                                            |
+| ---- | ----------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| F1   | Uncontested       | Pending -> Active -> Succeeded -> Executed                                                           | Executes via timelock bypass                       |
+| F2   | Vetoed, Confirmed | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Succeeded -> Queued -> Executed | Executes via timelock                              |
+| F3   | Vetoed, Rejected  | Pending -> Active -> Defeated -> (confirmation) Pending -> Active -> Defeated                        | Proposal blocked                                   |
 | F4   | Canceled          | Any non-final optimistic state -> Canceled                                                           | Proposer, optimistic guardian, or guardian cancels |
 
 ### Slow Proposal Lifecycle
@@ -155,11 +135,11 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting, timel
 
 ### Slow Proposal Paths
 
-| Path | Name            | Flow                                                            | Outcome                     |
-| ---- | --------------- | --------------------------------------------------------------- | --------------------------- |
-| S1   | Success         | Pending -> Active -> Succeeded -> Queued -> Executed            | Normal governance execution |
-| S2   | Voting Defeated | Pending -> Active -> Defeated                                   | Proposal rejected by voters |
-| S3   | Cancellation    | Anything -> Canceled | Canceled                    |
+| Path | Name            | Flow                                                 | Outcome                     |
+| ---- | --------------- | ---------------------------------------------------- | --------------------------- |
+| S1   | Success         | Pending -> Active -> Succeeded -> Queued -> Executed | Normal governance execution |
+| S2   | Voting Defeated | Pending -> Active -> Defeated                        | Proposal rejected by voters |
+| S3   | Cancellation    | Anything -> Canceled                                 | Canceled                    |
 
 ## Veto Mechanism
 
@@ -181,13 +161,13 @@ Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or stand
 
 ## Roles
 
-| Role                       | Held By                                | Permissions                                                             |
-| -------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
-| `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs               | Create fast proposals (`proposeOptimistic`)                             |
-| `OPTIMISTIC_CANCELLER_ROLE` | Designated optimistic guardian addresses | Cancel optimistic proposals in any non-defeated state |
-| `PROPOSER_ROLE`            | Governor contract                      | Schedule operations on the timelock (granted automatically by Deployer) |
-| `EXECUTOR_ROLE`            | Governor contract                      | Execute timelock operations for both slow and fast proposal paths       |
-| `CANCELLER_ROLE`           | Governor contract + Guardian addresses | Cancel proposals (fast or slow), revoke optimistic proposers            |
+| Role                        | Held By                                  | Permissions                                                             |
+| --------------------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
+| `OPTIMISTIC_PROPOSER_ROLE`  | Designated proposer EOAs                 | Create fast proposals (`proposeOptimistic`)                             |
+| `OPTIMISTIC_CANCELLER_ROLE` | Designated optimistic guardian addresses | Cancel optimistic proposals in any non-defeated state                   |
+| `PROPOSER_ROLE`             | Governor contract                        | Schedule operations on the timelock (granted automatically by Deployer) |
+| `EXECUTOR_ROLE`             | Governor contract                        | Execute timelock operations for both slow and fast proposal paths       |
+| `CANCELLER_ROLE`            | Governor contract + Guardian addresses   | Cancel proposals (fast or slow), revoke optimistic proposers            |
 
 **IMPORTANT**: Roles held exclusively by the Governor contract (`PROPOSER_ROLE`/`EXECUTOR_ROLE`) should NEVER be granted to other addresses. This could result in executing actions through the timelock without a delay.
 
@@ -276,9 +256,7 @@ Whitelist of allowed `(target, selector)` pairs for optimistic proposals. Contro
 **Constraints:**
 
 - Cannot register itself as a target
-- The `UpgradeManager` is additionally blocked as a target
-- The governor and timelock are additionally blocked as targets
-- For `deployWithNewStakingVault()` deployments, the managed `StakingVault` is also blocked as a target
+- The governor, timelock, and StakingVault (token) are additionally blocked as targets
 
 ### TimelockControllerOptimistic
 
@@ -287,18 +265,25 @@ Extended timelock supporting both flows.
 - Slow proposals use standard `scheduleBatch()` + `executeBatch()`
 - Fast proposals use `executeBatchBypass()` for immediate execution (governor must hold `PROPOSER_ROLE` and `EXECUTOR_ROLE`)
 - `revokeOptimisticProposer(account)` -- Revoke an optimistic proposer (requires `CANCELLER_ROLE`)
-- UUPS upgradeable via `UpgradeManager`
+- UUPS upgradeable; `_authorizeUpgrade()` only allows self-calls from the timelock proxy itself
 
-### ReserveOptimisticGovernanceUpgradeManager
+### ReserveOptimisticGovernorDeployer
 
-The upgrade coordinator for versioned system upgrades.
+Versioned factory for full system deployments.
 
-- `upgradeToLatestVersion()` -- Only callable by the timelock
-- Reads the latest registered version from `VersionRegistry`
-- Upgrades the managed `StakingVault` (if any), then the `TimelockControllerOptimistic`, then the `ReserveOptimisticGovernor`
-- For existing-vault deployments, only upgrades the governor/timelock after verifying the associated `StakingVault` is already on that latest version
-- Emits `SystemUpgraded(versionHash, stakingVaultImpl, governorImpl, timelockImpl)`
-- Rejects deprecated versions
+- Stores immutable pointers to `versionRegistry`, `rewardTokenRegistry`, `stakingVaultImpl`, `governorImpl`, `timelockImpl`, and `selectorRegistryImpl`
+- `deployWithNewStakingVault(baseParams, newStakingVaultParams, deploymentNonce)` -- Deploy a new `StakingVault` proxy and the timelock/governor/selector-registry stack
+- `deployWithExistingStakingVault(baseParams, existingStakingVault, deploymentNonce)` -- Deploy the timelock/governor/selector-registry stack around an already deployed vault
+
+### RewardTokenRegistry
+
+Governance-owned registry of tokens that may be used as `StakingVault` reward tokens. 
+
+- `registerRewardToken(rewardToken)` -- Register a reward token (owner only)
+- `unregisterRewardToken(rewardToken)` -- Unregister a reward token (owner or emergency council)
+- `getAllRewardTokens()` -- Return all reward tokens, even those not registered with the registry anymore
+- `getAllRegisteredRewardTokens()` -- Return all reward tokens registered with the registry
+- `isRegistered(rewardToken)` -- Check whether a token is currently in the registry
 
 ### ReserveOptimisticGovernanceVersionRegistry
 
@@ -312,8 +297,6 @@ Governance-owned registry of release versions.
 ### StakingVault
 
 ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to receive vault shares that carry voting power.
-
-IMPORTANT: StakingVault should only be deployed with an underlying token that has a STRONG value relationship to the system being governed. The token should not derive value from many sources. It is important that withdrawals that occur AFTER a malicious proposal executes do not recoup much value.
 
 **User Functions:**
 
@@ -331,12 +314,15 @@ IMPORTANT: StakingVault should only be deployed with an underlying token that ha
 **Other:**
 
 - `getAllRewardTokens()` -- Return all active reward tokens
+- `rewardTokenRegistry()` -- Reward token registry wired in during initialization
+- `versionRegistry()` -- Version registry wired in during initialization
 
 **Properties:**
 
-- UUPS upgradeable via `UpgradeManager`
+- UUPS upgradeable by `DEFAULT_ADMIN_ROLE`, but only to the exact latest non-deprecated staking-vault implementation registered in `ReserveOptimisticGovernanceVersionRegistry`
 - Clock: timestamp-based (ERC5805)
 - Creates an `UnstakingManager` during initialization
+- `addRewardToken()` only accepts tokens that are currently registered in `RewardTokenRegistry`
 
 #### Token Support
 
@@ -433,11 +419,10 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 
 Fast (optimistic) proposals can **only** call `(target, selector)` pairs registered in the `OptimisticSelectorRegistry`. In addition, the following targets are **always** blocked at registration time (hardcoded in `OptimisticSelectorRegistry`):
 
-- The `UpgradeManager`
+- The `StakingVault` contract (token)
 - The `ReserveOptimisticGovernor` contract
 - The `TimelockControllerOptimistic` contract
 - The `OptimisticSelectorRegistry` itself
-- For `deployWithNewStakingVault()` deployments, the managed `StakingVault`
 
 Any governance changes to the system itself must go through the slow proposal path with full community voting.
 
@@ -448,51 +433,43 @@ Additional optimistic validations:
 
 ## Upgradeability
 
-Three contracts are UUPS upgradeable, but the supported upgrade path is versioned system upgrades through `ReserveOptimisticGovernanceUpgradeManager`. The proxy `upgradeToAndCall()` entrypoints still exist, but each managed contract stores its `upgradeManager` during initialization and authorizes upgrades with `onlyUpgradeManager`, so direct calls from EOAs or governance payloads targeting the component proxies will revert. All upgrades must be performed through `UpgradeManager.upgradeToLatestVersion()`.
+Three contracts are UUPS upgradeable, but they do not share a central onchain upgrade manager.
 
-| Contract                       | Authorized Upgrader | Included in `UpgradeManager` |
-| ------------------------------ | ------------------- | ---------------------------- |
-| `StakingVault`                 | `UpgradeManager`    | Yes for `deployWithNewStakingVault()`, no for `deployWithExistingStakingVault()` |
-| `ReserveOptimisticGovernor`    | `UpgradeManager`    | Yes |
-| `TimelockControllerOptimistic` | `UpgradeManager`    | Yes |
+| Contract                       | Upgrade Authorization                                         | Additional Guardrail |
+| ------------------------------ | ------------------------------------------------------------- | -------------------- |
+| `StakingVault`                 | `DEFAULT_ADMIN_ROLE`                                | Upgrade must be executed through the timelock via standard governance path AND update StakingVault to latest release |
+| `ReserveOptimisticGovernor`    | `onlyGovernance`                                              | Upgrade must be executed through the timelock via standard governance path |
+| `TimelockControllerOptimistic` | `DEFAULT_ADMIN_ROLE`                                | Upgrade must be executed through the timelock via standard governance path            |
 
-`OptimisticSelectorRegistry` is not UUPS upgradeable. It stores the `UpgradeManager` reference so it can identify the timelock and block sensitive targets, but version upgrades do not swap its implementation.
+`OptimisticSelectorRegistry` is clone-initialized and is not upgradeable.
 
-### Version Registry
+### Version Registry (StakingVault)
 
-`ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple.
+`ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple. Only `StakingVault` upgrades are currently tied to the version registry. 
 
 - `registerVersion(deployer)` can only be called by a `RoleRegistry` owner
-- The registry reads `deployer.version()` and stores the deployer under `versionHash = keccak256(abi.encodePacked(version))`
 - `getLatestVersion()` returns the latest registered version metadata
 - `getImplementationsForVersion(versionHash)` resolves the staking vault, governor, and timelock implementations from the registered deployer
 - `deprecateVersion(versionHash)` can be called by a `RoleRegistry` owner or emergency council member
-- `UpgradeManager.upgradeToLatestVersion()` rejects a deprecated latest version
 
-### Upgrade Process
+### Upgrade Flows
 
-Upgrades are intended to be executed as a normal slow governance action. They cannot be routed through the optimistic path because `OptimisticSelectorRegistry` does not allow the `UpgradeManager` to be registered as an optimistic target.
+> New `StakingVault` implementations MUST remain backwards compatible with older `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` implementations. Functionality should NOT be removed.
 
-1. Deploy new implementations and a new `ReserveOptimisticGovernorDeployer` pointing at those implementation addresses and the shared `VersionRegistry`.
-2. Register that deployer in `VersionRegistry` from a `RoleRegistry` owner account.
-3. Submit a standard governance proposal that calls `UpgradeManager.upgradeToLatestVersion()`.
-4. After the proposal passes and the timelock executes it, `UpgradeManager` resolves the implementations for the current latest registered version and upgrades, in order:
-   1. `StakingVault` if the `UpgradeManager` controls one
-   2. `TimelockControllerOptimistic`
-   3. `ReserveOptimisticGovernor`
-5. `UpgradeManager` emits `SystemUpgraded(versionHash, stakingVaultImpl, governorImpl, timelockImpl)`.
 
-For deployments created with `deployWithExistingStakingVault()`, `UpgradeManager.stakingVault()` is intentionally left `address(0)`. In this 2-part case, the manager reads the reused vault from `governor.token()` during `upgradeToLatestVersion()` and verifies that it is already running the current latest registered version before upgrading the governor and timelock. 
+Upgrades are intended to be executed by the existing vault admin. They cannot be routed through the optimistic path. 
 
-### Compatibility Assumption
+1. Deploy new implementations and a new versioned `ReserveOptimisticGovernorDeployer` pointing at those implementation addresses plus the shared version and reward-token registries.
+2. Register that deployer in `ReserveOptimisticGovernanceVersionRegistry` from a `RoleRegistry` owner account.
+3. Apply upgrades per component:
+   1. `StakingVault`: call `upgradeToAndCall(newStakingVaultImpl, data)` from `DEFAULT_ADMIN_ROLE` (usually timelock). The `newStakingVaultImpl.version()` must be the latest registered (non-deprecated) version.
+   2. `ReserveOptimisticGovernor`: call `governor.upgradeToAndCall(newGovernorImpl, data)` from timelock.
+   3. `TimelockControllerOptimistic`: call `timelock.upgradeToAndCall(newTimelockImpl, data)` from timelock.
 
-The upgrade design narrows which version combinations can exist:
+Only the `StakingVault` upgrade path is constrained by the version registry. This guarantees that `StakingVault` governance cannot brick the other governors that also depend on the same `StakingVault`. However, each `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` depending on a StakingVault (or governing it) can be broken either via role changes or by upgrading to a malicious implementation. 
 
-- Governance upgrades are latest-only. A system cannot choose an arbitrary intermediate version or go backwards to an older version. 
-- For deployments created with `deployWithExistingStakingVault()`, the governor and timelock can only upgrade after their associated vault dependency is already on that same latest version.
+For deployments created with `deployWithExistingStakingVault()`, the new timelock does not automatically become the existing vault's admin. Any later `StakingVault` upgrade is still controlled by whichever address currently holds that vault's `DEFAULT_ADMIN_ROLE`.
 
-`StakingVault` upgrade requirements:
-- New `StakingVault` implementations must remain backwards compatible with older `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` implementations
 
 ## Flow Summary
 

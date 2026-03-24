@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
+import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { OptimisticSelectorRegistryDeployer } from "@src/artifacts/OptimisticSelectorRegistryDeployer.sol";
 import { ProposalLibDeployer } from "@src/artifacts/ProposalLibDeployer.sol";
@@ -13,6 +14,7 @@ import {
 import { StakingVaultDeployer } from "@src/artifacts/StakingVaultDeployer.sol";
 import { ThrottleLibDeployer } from "@src/artifacts/ThrottleLibDeployer.sol";
 import { TimelockControllerOptimisticDeployer } from "@src/artifacts/TimelockControllerOptimisticDeployer.sol";
+import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 
 import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
 
@@ -63,13 +65,14 @@ contract ArtifactsTest is Test {
         address governor = ReserveOptimisticGovernorDeployer.deploy(_salt("GovernorImpl"));
         address timelock = TimelockControllerOptimisticDeployer.deploy(_salt("TimelockImpl"));
         address selectorRegistry = OptimisticSelectorRegistryDeployer.deploy(_salt("SelectorRegistryImpl"));
-        MockRoleRegistry roleRegistry = new MockRoleRegistry(address(this));
         ReserveOptimisticGovernanceVersionRegistry versionRegistry =
-            new ReserveOptimisticGovernanceVersionRegistry(roleRegistry);
+            new ReserveOptimisticGovernanceVersionRegistry(IRoleRegistry(address(1)));
+        RewardTokenRegistry rewardTokenRegistry = new RewardTokenRegistry(IRoleRegistry(address(1)));
 
         // Deploy the factory
         address deployer = ReserveOptimisticGovernorDeployerDeployer.deploy(
             address(versionRegistry),
+            address(rewardTokenRegistry),
             stakingVault,
             governor,
             timelock,

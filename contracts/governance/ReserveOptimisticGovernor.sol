@@ -44,7 +44,6 @@ import {
     OPTIMISTIC_CANCELLER_ROLE,
     OPTIMISTIC_PROPOSER_ROLE
 } from "@utils/Constants.sol";
-import { UpgradeControlled } from "@utils/UpgradeControlled.sol";
 import { Versioned } from "@utils/Versioned.sol";
 
 /**
@@ -64,7 +63,6 @@ contract ReserveOptimisticGovernor is
     GovernorVotesUpgradeable,
     GovernorVotesQuorumFractionUpgradeable,
     GovernorTimelockControlUpgradeable,
-    UpgradeControlled,
     Versioned,
     UUPSUpgradeable,
     IReserveOptimisticGovernor
@@ -90,16 +88,19 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
     /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 24h
-    /// @param _upgradeManager Upgrade manager authorized for UUPS upgrades
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         uint256 _proposalThrottleCapacity,
         address _token,
         address _timelockController,
-        address _selectorRegistry,
-        address _upgradeManager
+        address _selectorRegistry
     ) public initializer {
+        require(
+            keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"),
+            OptimisticGovernor__InvalidToken()
+        );
+
         __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
             standardGovParams.votingDelay, standardGovParams.votingPeriod, standardGovParams.proposalThreshold
@@ -110,7 +111,6 @@ contract ReserveOptimisticGovernor is
         __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
         __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelockController)));
         __UUPSUpgradeable_init();
-        __UpgradeControlled_init(_upgradeManager);
 
         _setProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
@@ -146,14 +146,6 @@ contract ReserveOptimisticGovernor is
         require(_proposalCore(proposalId).voteStart != 0, GovernorNonexistentProposal(proposalId));
 
         return _isOptimistic(proposalId);
-    }
-
-    function token() public view override(GovernorVotesUpgradeable, IReserveOptimisticGovernor) returns (IERC5805) {
-        return super.token();
-    }
-
-    function updateTimelock(TimelockControllerUpgradeable) external pure override {
-        revert OptimisticGovernor__TimelockCannotBeUpdated();
     }
 
     // === Proposal Creation ===
@@ -408,7 +400,8 @@ contract ReserveOptimisticGovernor is
         return super._executor();
     }
 
-    function _authorizeUpgrade(address) internal view override onlyUpgradeManager { }
+    /// @dev Upgrades authorized only through timelock
+    function _authorizeUpgrade(address) internal override onlyGovernance { }
 
     // === Setters ===
 
@@ -451,6 +444,7 @@ contract ReserveOptimisticGovernor is
             OptimisticGovernor__InvalidOptimisticParameters()
         );
         optimisticParams = params;
+        emit OptimisticParamsUpdated(params);
     }
 
     // === Private ===

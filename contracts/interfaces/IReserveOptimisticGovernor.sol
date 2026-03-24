@@ -4,11 +4,11 @@ pragma solidity ^0.8.28;
 import {
     GovernorCountingSimpleUpgradeable
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
-import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
+    error OptimisticGovernor__InvalidToken();
     error OptimisticGovernor__InvalidProposalThreshold();
     error OptimisticGovernor__InvalidProposalThrottle();
     error OptimisticGovernor__InvalidOptimisticParameters();
@@ -19,13 +19,13 @@ interface IReserveOptimisticGovernor {
     error OptimisticGovernor__ProposalThrottleExceeded();
     error OptimisticGovernor__InvalidDelay();
     error OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
-    error OptimisticGovernor__TimelockCannotBeUpdated();
 
     // === Events ===
 
     /// @param vetoThreshold D18{1} Fraction of token supply required to start confirmation process
     event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
     event ProposalThrottleUpdated(uint256 throttleCapacity);
+    event OptimisticParamsUpdated(OptimisticGovernanceParams optimisticParams);
 
     // === Data ===
 
@@ -57,9 +57,6 @@ interface IReserveOptimisticGovernor {
         uint256 _proposalThrottleCapacity,
         address _token,
         address _timelock,
-        address _selectorRegistry,
-        address _upgradeManager
+        address _selectorRegistry
     ) external;
-
-    function token() external view returns (IERC5805);
 }

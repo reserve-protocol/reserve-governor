@@ -17,7 +17,7 @@ enum DeploymentMode {
 }
 
 contract DeployScript is Script {
-    error InvalidChainId();
+    error DeployScript__InvalidChainId();
 
     string seedPhrase = block.chainid != 31337 ? vm.readFile(".seed") : junkSeedPhrase;
     uint256 privateKey = vm.deriveKey(seedPhrase, 0);
@@ -43,8 +43,10 @@ contract DeployScript is Script {
         console2.log("Wallet Address:", walletAddress);
 
         address versionRegistry = _getVersionRegistry();
+        address rewardTokenRegistry = _getRewardTokenRegistry();
 
-        console2.log("ReserveOptimisticGovernorVersionRegistry:", versionRegistry);
+        console2.log("ReserveOptimisticGovernorStakingVaultVersionRegistry:", versionRegistry);
+        console2.log("RewardTokenRegistry:", rewardTokenRegistry);
         console2.log("");
 
         vm.startBroadcast(privateKey);
@@ -55,10 +57,10 @@ contract DeployScript is Script {
         timelockImpl = address(new TimelockControllerOptimistic());
         selectorRegistryImpl = address(new OptimisticSelectorRegistry());
 
-        // Deploy the implementation bundle/deployer for the current version and register it immediately.
+        // Deploy Deployer
         deployer = address(
             new ReserveOptimisticGovernorDeployer(
-                versionRegistry, stakingVaultImpl, governorImpl, timelockImpl, selectorRegistryImpl
+                versionRegistry, rewardTokenRegistry, stakingVaultImpl, governorImpl, timelockImpl, selectorRegistryImpl
             )
         );
 
@@ -73,18 +75,38 @@ contract DeployScript is Script {
     }
 
     function _getVersionRegistry() internal view returns (address) {
+        // TODO ReserveOptimisticGovernanceVersionRegistry deployments
+
         if (block.chainid == 1 || block.chainid == 31337) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
         if (block.chainid == 8453) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
         if (block.chainid == 56) {
-            return 0x0000000000000000000000000000000000000000; // TODO
+            return 0x0000000000000000000000000000000000000000;
         }
 
-        revert InvalidChainId();
+        revert DeployScript__InvalidChainId();
+    }
+
+    function _getRewardTokenRegistry() internal view returns (address) {
+        // TODO RewardTokenRegistry deployments
+
+        if (block.chainid == 1 || block.chainid == 31337) {
+            return 0x0000000000000000000000000000000000000000;
+        }
+
+        if (block.chainid == 8453) {
+            return 0x0000000000000000000000000000000000000000;
+        }
+
+        if (block.chainid == 56) {
+            return 0x0000000000000000000000000000000000000000;
+        }
+
+        revert DeployScript__InvalidChainId();
     }
 }
