@@ -155,7 +155,6 @@ contract StakingVault is
         rewardTokenRegistry = IRewardTokenRegistry(_rewardTokenRegistry);
 
         address _versionRegistry = deployer.versionRegistry();
-        ReserveOptimisticGovernanceVersionRegistry(_versionRegistry).getLatestVersion();
         emit VersionRegistrySet(_versionRegistry);
         versionRegistry = ReserveOptimisticGovernanceVersionRegistry(_versionRegistry);
 
