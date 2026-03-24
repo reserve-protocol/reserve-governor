@@ -9,7 +9,7 @@ library ReserveOptimisticGovernanceVersionRegistryDeployer {
      *
      * @notice Source Contract: contracts/VersionRegistry.sol
      * - solc: 0.8.33+commit.64118f21
-     * - optimizer_runs: 159
+     * - optimizer_runs: 141
      * - viaIR: false
      * - evm_version: cancun
      * - bytecodeHash: none

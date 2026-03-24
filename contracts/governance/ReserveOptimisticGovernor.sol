@@ -444,6 +444,7 @@ contract ReserveOptimisticGovernor is
             OptimisticGovernor__InvalidOptimisticParameters()
         );
         optimisticParams = params;
+        emit OptimisticParamsUpdated(params);
     }
 
     // === Private ===

@@ -25,6 +25,7 @@ interface IReserveOptimisticGovernor {
     /// @param vetoThreshold D18{1} Fraction of token supply required to start confirmation process
     event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
     event ProposalThrottleUpdated(uint256 throttleCapacity);
+    event OptimisticParamsUpdated(OptimisticGovernanceParams optimisticParams);
 
     // === Data ===
 
