@@ -365,6 +365,7 @@ contract StakingVault is
             address rewardToken = _rewardTokens[i];
 
             if (!rewardTokenRegistry.isRegistered(rewardToken)) {
+                rewardTrackers[rewardToken].payoutLastPaid = block.timestamp;
                 continue;
             }
 
