@@ -15,10 +15,11 @@ import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegi
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
+import { EmergencyCouncil } from "@src/EmergencyCouncil.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
-import { CANCELLER_ROLE, OPTIMISTIC_CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
 import { MockERC20 } from "@mocks/MockERC20.sol";
 import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
@@ -88,10 +89,12 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         ReserveOptimisticGovernor governorImpl = new ReserveOptimisticGovernor();
         TimelockControllerOptimistic timelockImpl = new TimelockControllerOptimistic();
         OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
+        EmergencyCouncil emergencyCouncil = new EmergencyCouncil(address(this), new address[](0));
 
         deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
             address(rewardTokenRegistry),
+            address(emergencyCouncil),
             address(stakingVaultImpl),
             address(governorImpl),
             address(timelockImpl),
@@ -102,12 +105,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         address[] memory optimisticProposers = new address[](2);
         optimisticProposers[0] = optimisticProposer;
         optimisticProposers[1] = optimisticProposer2;
-
-        address[] memory guardians = new address[](1);
-        guardians[0] = guardian;
-
-        address[] memory optimisticGuardians = new address[](1);
-        optimisticGuardians[0] = optimisticGuardian;
 
         bytes4[] memory transferSelectors = new bytes4[](1);
         transferSelectors[0] = IERC20.transfer.selector;
@@ -130,8 +127,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                 }),
                 selectorData: selectorData,
                 optimisticProposers: optimisticProposers,
-                optimisticGuardians: optimisticGuardians,
-                guardians: guardians,
                 timelockDelay: TIMELOCK_DELAY,
                 proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
             });
@@ -198,7 +193,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer));
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
         assertTrue(timelock.hasRole(CANCELLER_ROLE, guardian));
-        assertTrue(timelock.hasRole(OPTIMISTIC_CANCELLER_ROLE, optimisticGuardian));
 
         assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
 

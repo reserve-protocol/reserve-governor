@@ -17,6 +17,7 @@ import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegist
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
+import { EmergencyCouncil } from "@src/EmergencyCouncil.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
@@ -64,10 +65,17 @@ contract StakingVaultTest is Test {
         address governorImpl = address(new ReserveOptimisticGovernor());
         address timelockImpl = address(new TimelockControllerOptimistic());
         address registryImpl = address(new OptimisticSelectorRegistry());
+        EmergencyCouncil emergencyCouncil = new EmergencyCouncil(address(this), new address[](0));
 
         // Deploy Deployer
         ReserveOptimisticGovernorDeployer deployer = new ReserveOptimisticGovernorDeployer(
-            address(versionRegistry), address(rewardTokenRegistry), vaultImpl, governorImpl, timelockImpl, registryImpl
+            address(versionRegistry),
+            address(rewardTokenRegistry),
+            address(emergencyCouncil),
+            vaultImpl,
+            governorImpl,
+            timelockImpl,
+            registryImpl
         );
 
         rewardTokenRegistry.registerRewardToken(address(reward));
@@ -90,8 +98,6 @@ contract StakingVaultTest is Test {
                 }),
                 selectorData: new IOptimisticSelectorRegistry.SelectorData[](0),
                 optimisticProposers: new address[](0),
-                optimisticGuardians: new address[](0),
-                guardians: new address[](0),
                 timelockDelay: 2 days,
                 proposalThrottleCapacity: 10
             });
@@ -149,6 +155,7 @@ contract StakingVaultTest is Test {
         deployer = new ReserveOptimisticGovernorDeployerV2Mock(
             address(versionRegistry),
             address(rewardTokenRegistry),
+            address(new EmergencyCouncil(address(this), new address[](0))),
             stakingVaultImplementation,
             address(new ReserveOptimisticGovernor()),
             address(new TimelockControllerOptimistic()),

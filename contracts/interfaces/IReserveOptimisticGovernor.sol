@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {
-    GovernorCountingSimpleUpgradeable
-} from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
-
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
@@ -59,4 +55,15 @@ interface IReserveOptimisticGovernor {
         address _timelock,
         address _selectorRegistry
     ) external;
+
+    function isOptimistic(uint256 proposalId) external view returns (bool);
+
+    function timelock() external view returns (address);
+
+    function cancel(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] calldata calldatas,
+        bytes32 descriptionHash
+    ) external returns (uint256);
 }
