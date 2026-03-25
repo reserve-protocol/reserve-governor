@@ -9,6 +9,13 @@ import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOp
 
 import { OPTIMISTIC_GUARDIAN_ROLE as OPTIMISTIC_GUARDIAN } from "@utils/Constants.sol";
 
+/**
+ * @title EmergencyCouncil
+ * @author akshatmittal, julianmrodri, pmckelvy1, tbrent
+ * @notice Singleton contract to serve as CANCELLER_ROLE for all timelocks.
+ *         - DEFAULT_ADMIN_ROLE can cancel any type of proposal
+ *         - OPTIMISTIC_GUARDIAN_ROLE can only cancel non-Defeated optimistic proposals
+ */
 contract EmergencyCouncil is AccessControlEnumerable {
     bytes32 public constant OPTIMISTIC_GUARDIAN_ROLE = OPTIMISTIC_GUARDIAN;
 
