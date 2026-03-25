@@ -256,6 +256,35 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(underlying.balanceOf(alice), aliceBalanceBefore + transferAmount);
     }
 
+    function test_standardProposal_usesStandardDelegationWeights() public {
+        vm.prank(alice);
+        stakingVault.delegate(bob);
+        vm.prank(alice);
+        stakingVault.delegateOptimistic(carol);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Standard delegation split";
+
+        vm.prank(bob);
+        uint256 proposalId = governor.propose(targets, values, calldatas, description);
+
+        _warpToActive(proposalId);
+        uint256 snapshot = governor.proposalSnapshot(proposalId);
+
+        assertEq(governor.getVotes(bob, snapshot), ALICE_STAKE + BOB_STAKE);
+        assertEq(governor.getVotes(carol, snapshot), CAROL_STAKE);
+        assertEq(governor.getOptimisticVotes(carol, snapshot), ALICE_STAKE + CAROL_STAKE);
+
+        vm.prank(bob);
+        governor.castVote(proposalId, 1);
+
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
+        assertEq(againstVotes, 0);
+        assertEq(forVotes, ALICE_STAKE + BOB_STAKE);
+        assertEq(abstainVotes, 0);
+    }
+
     function test_standardProposal_defeatedWhenAgainstWins() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
@@ -623,6 +652,35 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Executed));
         assertEq(underlying.balanceOf(alice), aliceBalanceBefore + transferAmount);
+    }
+
+    function test_optimisticProposal_usesOptimisticDelegationWeights() public {
+        vm.prank(alice);
+        stakingVault.delegate(bob);
+        vm.prank(alice);
+        stakingVault.delegateOptimistic(carol);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Optimistic delegation split";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+
+        _warpToActive(proposalId);
+        uint256 snapshot = governor.proposalSnapshot(proposalId);
+
+        assertEq(governor.getOptimisticVotes(carol, snapshot), ALICE_STAKE + CAROL_STAKE);
+        assertEq(governor.getOptimisticVotes(bob, snapshot), BOB_STAKE);
+        assertEq(governor.getVotes(bob, snapshot), ALICE_STAKE + BOB_STAKE);
+
+        vm.prank(carol);
+        governor.castVote(proposalId, 0);
+
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
+        assertEq(againstVotes, ALICE_STAKE + CAROL_STAKE);
+        assertEq(forVotes, 0);
+        assertEq(abstainVotes, 0);
     }
 
     function test_optimisticProposal_executeCanBeCalledByNonProposer() public {

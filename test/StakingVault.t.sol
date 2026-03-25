@@ -525,6 +525,71 @@ contract StakingVaultTest is Test {
         assertEq(vault.balanceOf(address(this)), 1000e18); // has full balance
     }
 
+    function test_standardAndOptimisticDelegationWeightsCanDiverge() public {
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+        vault.depositAndDelegate(1000e18);
+
+        vault.delegate(ACTOR_ALICE);
+        vault.delegateOptimistic(ACTOR_BOB);
+
+        assertEq(vault.delegates(address(this)), ACTOR_ALICE);
+        assertEq(vault.optimisticDelegates(address(this)), ACTOR_BOB);
+
+        assertEq(vault.getVotes(ACTOR_ALICE), 1000e18);
+        assertEq(vault.getVotes(ACTOR_BOB), 0);
+        assertEq(vault.getOptimisticVotes(ACTOR_ALICE), 0);
+        assertEq(vault.getOptimisticVotes(ACTOR_BOB), 1000e18);
+
+        uint256 snapshot = block.timestamp;
+        vm.warp(snapshot + 1);
+
+        assertEq(vault.getPastVotes(ACTOR_ALICE, snapshot), 1000e18);
+        assertEq(vault.getPastVotes(ACTOR_BOB, snapshot), 0);
+        assertEq(vault.getPastOptimisticVotes(ACTOR_ALICE, snapshot), 0);
+        assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, snapshot), 1000e18);
+    }
+
+    function test_transferMovesStandardAndOptimisticDelegateWeights() public {
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+        vault.depositAndDelegate(1000e18);
+
+        vault.delegate(ACTOR_ALICE);
+        vault.delegateOptimistic(ACTOR_BOB);
+
+        vm.startPrank(ACTOR_ALICE);
+        vault.delegate(ACTOR_BOB);
+        vault.delegateOptimistic(address(this));
+        vm.stopPrank();
+
+        uint256 preTransferSnapshot = block.timestamp;
+        vm.warp(preTransferSnapshot + 1);
+
+        vault.transfer(ACTOR_ALICE, 400e18);
+
+        assertEq(vault.balanceOf(address(this)), 600e18);
+        assertEq(vault.balanceOf(ACTOR_ALICE), 400e18);
+
+        assertEq(vault.getVotes(ACTOR_ALICE), 600e18);
+        assertEq(vault.getVotes(ACTOR_BOB), 400e18);
+        assertEq(vault.getOptimisticVotes(ACTOR_BOB), 600e18);
+        assertEq(vault.getOptimisticVotes(address(this)), 400e18);
+
+        uint256 postTransferSnapshot = block.timestamp;
+        vm.warp(postTransferSnapshot + 1);
+
+        assertEq(vault.getPastVotes(ACTOR_ALICE, preTransferSnapshot), 1000e18);
+        assertEq(vault.getPastVotes(ACTOR_BOB, preTransferSnapshot), 0);
+        assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, preTransferSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticVotes(address(this), preTransferSnapshot), 0);
+
+        assertEq(vault.getPastVotes(ACTOR_ALICE, postTransferSnapshot), 600e18);
+        assertEq(vault.getPastVotes(ACTOR_BOB, postTransferSnapshot), 400e18);
+        assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, postTransferSnapshot), 600e18);
+        assertEq(vault.getPastOptimisticVotes(address(this), postTransferSnapshot), 400e18);
+    }
+
     function test_unstake_noDelay() public {
         vm.prank(address(timelock));
         vault.setUnstakingDelay(0);
