@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { AccessControlEnumerable } from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
@@ -16,6 +17,7 @@ contract EmergencyCouncil is AccessControlEnumerable {
     error EmergencyCouncil__InvalidGovernor(address governor);
     error EmergencyCouncil__InvalidTimelock(address timelock);
     error EmergencyCouncil__NotOptimisticProposal(uint256 proposalId);
+    error EmergencyCouncil__DefeatedProposal(uint256 proposalId);
 
     constructor(address initialAdmin, address[] memory initialOptimisticGuardians) {
         _grantRole(DEFAULT_ADMIN_ROLE, _requireNonZero(initialAdmin));
@@ -31,6 +33,8 @@ contract EmergencyCouncil is AccessControlEnumerable {
         ITimelockControllerOptimistic(_timelock(governor)).revokeOptimisticProposer(account);
     }
 
+    /// @dev Only callable by OPTIMISTIC_GUARDIAN_ROLE for optimistic proposals, or by DEFAULT_ADMIN_ROLE
+    /// @return proposalId The ID of the proposal that was cancelled
     function cancel(
         address governor,
         address[] calldata targets,
@@ -45,9 +49,14 @@ contract EmergencyCouncil is AccessControlEnumerable {
         }
 
         IReserveOptimisticGovernor managedGovernor = _governor(governor);
+        proposalId = IGovernor(governor).getProposalId(targets, values, calldatas, descriptionHash);
 
         if (!isAdmin) {
             require(managedGovernor.isOptimistic(proposalId), EmergencyCouncil__NotOptimisticProposal(proposalId));
+            require(
+                IGovernor(governor).state(proposalId) != IGovernor.ProposalState.Defeated,
+                EmergencyCouncil__DefeatedProposal(proposalId)
+            );
         }
 
         return managedGovernor.cancel(targets, values, calldatas, descriptionHash);

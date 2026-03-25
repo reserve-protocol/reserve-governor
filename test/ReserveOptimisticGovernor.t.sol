@@ -37,6 +37,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     MockERC20 public underlying;
     StakingVault public stakingVault;
     OptimisticSelectorRegistry public registry;
+    EmergencyCouncil public emergencyCouncil;
     ReserveOptimisticGovernorDeployer public deployer;
     ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
@@ -89,7 +90,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         ReserveOptimisticGovernor governorImpl = new ReserveOptimisticGovernor();
         TimelockControllerOptimistic timelockImpl = new TimelockControllerOptimistic();
         OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
-        EmergencyCouncil emergencyCouncil = new EmergencyCouncil(address(this), new address[](0));
+        address[] memory optimisticGuardians = new address[](1);
+        optimisticGuardians[0] = optimisticGuardian;
+
+        emergencyCouncil = new EmergencyCouncil(guardian, optimisticGuardians);
 
         deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
@@ -192,7 +196,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer));
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
-        assertTrue(timelock.hasRole(CANCELLER_ROLE, guardian));
+        assertTrue(timelock.hasRole(CANCELLER_ROLE, address(emergencyCouncil)));
+        assertFalse(timelock.hasRole(CANCELLER_ROLE, guardian));
+        assertTrue(emergencyCouncil.hasRole(emergencyCouncil.DEFAULT_ADMIN_ROLE(), guardian));
+        assertTrue(emergencyCouncil.hasRole(emergencyCouncil.OPTIMISTIC_GUARDIAN_ROLE(), optimisticGuardian));
 
         assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
 
@@ -206,6 +213,16 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         } else {
             assertTrue(stakingVault.hasRole(stakingVault.DEFAULT_ADMIN_ROLE(), address(timelock)));
         }
+    }
+
+    function test_emergencyCouncil_roleAdminsConfigured() public view {
+        assertEq(
+            emergencyCouncil.getRoleAdmin(emergencyCouncil.DEFAULT_ADMIN_ROLE()), emergencyCouncil.DEFAULT_ADMIN_ROLE()
+        );
+        assertEq(
+            emergencyCouncil.getRoleAdmin(emergencyCouncil.OPTIMISTIC_GUARDIAN_ROLE()),
+            emergencyCouncil.DEFAULT_ADMIN_ROLE()
+        );
     }
 
     function test_isOptimistic_revertsForNonexistentProposal() public {
@@ -379,7 +396,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.propose(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        emergencyCouncil.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
 
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
@@ -687,7 +704,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        emergencyCouncil.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
@@ -700,7 +717,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         vm.prank(optimisticGuardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        emergencyCouncil.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
@@ -1026,7 +1043,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
+        emergencyCouncil.cancel(
+            address(governor), targets, values, calldatas, keccak256(bytes(_confirmationDescription(description)))
+        );
 
         assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
@@ -1349,7 +1368,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 
         vm.prank(guardian);
-        timelock.revokeOptimisticProposer(optimisticProposer2);
+        emergencyCouncil.revokeOptimisticProposer(address(governor), optimisticProposer2);
 
         assertFalse(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 
