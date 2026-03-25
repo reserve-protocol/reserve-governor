@@ -185,7 +185,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(vetoDelay, VETO_DELAY);
         assertEq(vetoPeriod, VETO_PERIOD);
         assertEq(vetoThreshold, VETO_THRESHOLD);
-        assertEq(governor.proposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
+        assertEq(governor.proposalThrottleCharges(optimisticProposer), PROPOSAL_THROTTLE_CAPACITY);
 
         assertEq(governor.votingDelay(), VOTING_DELAY);
         assertEq(governor.votingPeriod(), VOTING_PERIOD);
@@ -214,10 +214,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         }
     }
 
-    function test_isOptimistic_revertsForNonexistentProposal() public {
+    function test_vetoThreshold_isZeroForNonexistentProposal() public view {
         uint256 proposalId = 123456;
-        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorNonexistentProposal.selector, proposalId));
-        governor.isOptimistic(proposalId);
+        assertEq(governor.vetoThreshold(proposalId), 0);
     }
 
     // ===== Standard (Slow) Flow =====
@@ -606,7 +605,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
-        assertTrue(governor.isOptimistic(proposalId));
+        assertTrue(governor.vetoThreshold(proposalId) != 0);
         assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
 
@@ -615,7 +614,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         _warpPastDeadline(proposalId);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
-        assertTrue(governor.isOptimistic(proposalId));
+        assertTrue(governor.vetoThreshold(proposalId) != 0);
 
         uint256 aliceBalanceBefore = underlying.balanceOf(alice);
         bytes32 descriptionHash = keccak256(bytes(description));
@@ -745,11 +744,11 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
         assertNotEq(proposalId, confirmationProposalId);
 
-        assertTrue(governor.isOptimistic(proposalId));
+        assertTrue(governor.vetoThreshold(proposalId) != 0);
         assertEq(governor.vetoThreshold(proposalId), type(uint256).max);
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
 
-        assertFalse(governor.isOptimistic(confirmationProposalId));
+        assertEq(governor.vetoThreshold(confirmationProposalId), 0);
         assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Pending));
         assertEq(governor.proposalSnapshot(confirmationProposalId), expectedConfirmationVoteStart);
         assertEq(governor.proposalDeadline(confirmationProposalId), expectedConfirmationVoteEnd);
@@ -881,7 +880,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(forVotes, 0);
         assertEq(abstainVotes, 0);
 
-        assertTrue(governor.isOptimistic(proposalId));
+        assertTrue(governor.vetoThreshold(proposalId) != 0);
         assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);
 
         _warpPastDeadline(proposalId);
@@ -1403,7 +1402,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(vetoDelay, 2 hours);
         assertEq(vetoPeriod, 3 hours);
         assertEq(vetoThreshold, 0.25e18);
-        assertEq(governor.proposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
+        assertEq(governor.proposalThrottleCharges(optimisticProposer), PROPOSAL_THROTTLE_CAPACITY);
     }
 
     function test_setOptimisticParams_revertsWhenInvalid() public {

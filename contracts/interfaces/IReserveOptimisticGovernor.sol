@@ -8,7 +8,6 @@ import {
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error OptimisticGovernor__InvalidToken();
     error OptimisticGovernor__InvalidProposalThreshold();
     error OptimisticGovernor__InvalidProposalThrottle();
     error OptimisticGovernor__InvalidOptimisticParameters();
@@ -61,9 +60,4 @@ interface IReserveOptimisticGovernor {
     ) external;
 
     function getOptimisticVotes(address account, uint256 timepoint) external view returns (uint256);
-
-    function getOptimisticVotesWithParams(address account, uint256 timepoint, bytes memory params)
-        external
-        view
-        returns (uint256);
 }

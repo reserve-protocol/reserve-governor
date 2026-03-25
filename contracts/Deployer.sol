@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -21,7 +22,6 @@ import { Versioned } from "@utils/Versioned.sol";
 
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
     error Deployer__InvalidStakingVault();
-
     error Deployer__InvalidVersionRegistry();
     error Deployer__InvalidRewardTokenRegistry();
     error Deployer__InvalidStakingVaultImpl();
@@ -166,6 +166,12 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         address stakingVault,
         bytes32 deploymentSalt
     ) internal returns (address timelock, address governor, address selectorRegistry) {
+        // Sanity check staking vault
+        require(
+            keccak256(bytes(IERC5805(stakingVault).CLOCK_MODE())) == keccak256("mode=timestamp"),
+            Deployer__InvalidStakingVault()
+        );
+
         // Step 2.1: Deploy Timelock proxy with Deployer as temporary admin
         bytes memory timelockInitData = abi.encodeCall(
             TimelockControllerOptimistic.initialize,
