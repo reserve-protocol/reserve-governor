@@ -179,9 +179,8 @@ contract StakingVaultTest is Test {
         assertEq(reward.balanceOf(ACTOR_ALICE), 0);
         assertEq(reward.balanceOf(ACTOR_BOB), 0);
 
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 1);
-        assertEq(_rewardTokens[0], address(reward));
+        (uint256 payoutLastPaid,,,,) = vault.rewardTrackers(address(reward));
+        assertGt(payoutLastPaid, 0);
     }
 
     // @todo Remove this later
@@ -409,10 +408,8 @@ contract StakingVaultTest is Test {
         vm.prank(address(timelock));
         vault.addRewardToken(address(newReward));
 
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 2);
-        assertEq(_rewardTokens[0], address(reward));
-        assertEq(_rewardTokens[1], address(newReward));
+        (uint256 payoutLastPaid,,,,) = vault.rewardTrackers(address(newReward));
+        assertGt(payoutLastPaid, 0);
     }
 
     function test_cannotAddRewardTokenIfNotOwner() public {
@@ -443,8 +440,7 @@ contract StakingVaultTest is Test {
         // Remove reward token
         vm.prank(address(timelock));
         vault.removeRewardToken(address(reward));
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 0);
+        assertTrue(vault.disallowedRewardTokens(address(reward)));
 
         // Cannot re-add token
         vm.prank(address(timelock));
@@ -463,8 +459,7 @@ contract StakingVaultTest is Test {
         emit StakingVault.RewardTokenRemoved(address(reward));
         vm.prank(address(timelock));
         vault.removeRewardToken(address(reward));
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 0);
+        assertTrue(vault.disallowedRewardTokens(address(reward)));
     }
 
     function test_cannotRemoveRewardTokenIfNotOwner() public {

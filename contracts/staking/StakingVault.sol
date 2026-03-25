@@ -192,7 +192,7 @@ contract StakingVault is
     }
 
     function delegateOptimisticBySig(address delegatee, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s)
-        public
+        external
     {
         if (block.timestamp > expiry) {
             revert IVotes.VotesExpiredSignature(expiry);
@@ -205,15 +205,15 @@ contract StakingVault is
         _delegateOptimistic(signer, delegatee);
     }
 
-    function optimisticDelegates(address account) public view returns (address) {
+    function optimisticDelegates(address account) external view returns (address) {
         return optimisticDelegatees[account];
     }
 
-    function getOptimisticVotes(address account) public view returns (uint256) {
+    function getOptimisticVotes(address account) external view returns (uint256) {
         return optimisticDelegateCheckpoints[account].latest();
     }
 
-    function getPastOptimisticVotes(address account, uint256 timepoint) public view returns (uint256) {
+    function getPastOptimisticVotes(address account, uint256 timepoint) external view returns (uint256) {
         return optimisticDelegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
     }
 
@@ -348,29 +348,6 @@ contract StakingVault is
     /// @return All reward tokens, including ones not registered with the registry anymore
     function getAllRewardTokens() external view returns (address[] memory) {
         return rewardTokens.values();
-    }
-
-    /// @return registeredRewardTokens All reward tokens still registered with the registry
-    function getAllRegisteredRewardTokens() external view returns (address[] memory registeredRewardTokens) {
-        uint256 registeredRewardTokensLength = 0;
-        for (uint256 i; i < rewardTokens.length(); i++) {
-            if (rewardTokenRegistry.isRegistered(rewardTokens.at(i))) {
-                registeredRewardTokensLength++;
-            }
-        }
-
-        registeredRewardTokens = new address[](registeredRewardTokensLength);
-        uint256 index = 0;
-
-        for (uint256 i; i < rewardTokens.length(); i++) {
-            address rewardToken = rewardTokens.at(i);
-            if (rewardTokenRegistry.isRegistered(rewardToken)) {
-                registeredRewardTokens[index] = rewardToken;
-                index++;
-            }
-        }
-
-        return registeredRewardTokens;
     }
 
     /**
@@ -544,7 +521,7 @@ contract StakingVault is
     }
 
     function _delegateOptimistic(address account, address delegatee) internal {
-        address oldDelegate = optimisticDelegates(account);
+        address oldDelegate = optimisticDelegatees[account];
         optimisticDelegatees[account] = delegatee;
 
         emit OptimisticDelegateChanged(account, oldDelegate, delegatee);
@@ -552,7 +529,7 @@ contract StakingVault is
     }
 
     function _transferOptimisticVotingUnits(address from, address to, uint256 amount) internal {
-        _moveOptimisticDelegateVotes(optimisticDelegates(from), optimisticDelegates(to), amount);
+        _moveOptimisticDelegateVotes(optimisticDelegatees[from], optimisticDelegatees[to], amount);
     }
 
     function _moveOptimisticDelegateVotes(address from, address to, uint256 amount) internal {
