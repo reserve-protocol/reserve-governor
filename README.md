@@ -1,4 +1,3 @@
-# Reserve Governor
 
 A hybrid optimistic/pessimistic governance system for the Reserve protocol.
 

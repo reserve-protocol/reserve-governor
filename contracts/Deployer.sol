@@ -22,15 +22,6 @@ import { Versioned } from "@utils/Versioned.sol";
 
 contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGovernorDeployer {
     error Deployer__InvalidStakingVault();
-    error Deployer__InvalidVersionRegistry();
-    error Deployer__InvalidRewardTokenRegistry();
-    error Deployer__InvalidStakingVaultImpl();
-    error Deployer__InvalidGovernorImpl();
-    error Deployer__InvalidTimelockImpl();
-    error Deployer__InvalidSelectorRegistryImpl();
-
-    address public immutable versionRegistry;
-    address public immutable rewardTokenRegistry;
 
     address public immutable stakingVaultImpl;
     address public immutable governorImpl;
