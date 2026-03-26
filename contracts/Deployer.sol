@@ -18,7 +18,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
 
     error Deployer__InvalidVersionRegistry();
     error Deployer__InvalidRewardTokenRegistry();
-    error Deployer__InvalidEmergencyCouncil();
+    error Deployer__InvalidGuardian();
     error Deployer__InvalidStakingVaultImpl();
     error Deployer__InvalidGovernorImpl();
     error Deployer__InvalidTimelockImpl();
@@ -26,7 +26,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
 
     address public immutable versionRegistry;
     address public immutable rewardTokenRegistry;
-    address public immutable emergencyCouncil;
+    address public immutable guardian;
 
     address public immutable stakingVaultImpl;
     address public immutable governorImpl;
@@ -36,7 +36,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     constructor(
         address _versionRegistry,
         address _rewardTokenRegistry,
-        address _emergencyCouncil,
+        address _guardian,
         address _stakingVaultImpl,
         address _governorImpl,
         address _timelockImpl,
@@ -44,7 +44,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     ) {
         require(address(_versionRegistry) != address(0), Deployer__InvalidVersionRegistry());
         require(address(_rewardTokenRegistry) != address(0), Deployer__InvalidRewardTokenRegistry());
-        require(address(_emergencyCouncil) != address(0), Deployer__InvalidEmergencyCouncil());
+        require(address(_guardian) != address(0), Deployer__InvalidGuardian());
 
         require(address(_stakingVaultImpl) != address(0), Deployer__InvalidStakingVaultImpl());
         require(address(_governorImpl) != address(0), Deployer__InvalidGovernorImpl());
@@ -53,7 +53,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
 
         versionRegistry = _versionRegistry;
         rewardTokenRegistry = _rewardTokenRegistry;
-        emergencyCouncil = _emergencyCouncil;
+        guardian = _guardian;
 
         stakingVaultImpl = _stakingVaultImpl;
         governorImpl = _governorImpl;
@@ -201,8 +201,8 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Grant Governor the CANCELLER_ROLE
         _timelock.grantRole(CANCELLER_ROLE, governor);
 
-        // Grant the shared emergency council the sole external CANCELLER_ROLE
-        _timelock.grantRole(CANCELLER_ROLE, emergencyCouncil);
+        // Grant the shared Guardian the sole external CANCELLER_ROLE
+        _timelock.grantRole(CANCELLER_ROLE, guardian);
 
         // Grant OPTIMISTIC_PROPOSER_ROLE to all optimistic proposers
         for (uint256 i = 0; i < baseParams.optimisticProposers.length; ++i) {

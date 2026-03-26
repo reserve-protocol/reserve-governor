@@ -15,7 +15,7 @@ import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegi
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { EmergencyCouncil } from "@src/EmergencyCouncil.sol";
+import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
@@ -37,7 +37,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     MockERC20 public underlying;
     StakingVault public stakingVault;
     OptimisticSelectorRegistry public registry;
-    EmergencyCouncil public emergencyCouncil;
+    Guardian public guardianContract;
     ReserveOptimisticGovernorDeployer public deployer;
     ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
@@ -93,12 +93,12 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         address[] memory optimisticGuardians = new address[](1);
         optimisticGuardians[0] = optimisticGuardian;
 
-        emergencyCouncil = new EmergencyCouncil(guardian, optimisticGuardians);
+        guardianContract = new Guardian(guardian, optimisticGuardians);
 
         deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
             address(rewardTokenRegistry),
-            address(emergencyCouncil),
+            address(guardianContract),
             address(stakingVaultImpl),
             address(governorImpl),
             address(timelockImpl),
@@ -196,10 +196,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer));
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
-        assertTrue(timelock.hasRole(CANCELLER_ROLE, address(emergencyCouncil)));
+        assertTrue(timelock.hasRole(CANCELLER_ROLE, address(guardianContract)));
         assertFalse(timelock.hasRole(CANCELLER_ROLE, guardian));
-        assertTrue(emergencyCouncil.hasRole(emergencyCouncil.DEFAULT_ADMIN_ROLE(), guardian));
-        assertTrue(emergencyCouncil.hasRole(emergencyCouncil.OPTIMISTIC_GUARDIAN_ROLE(), optimisticGuardian));
+        assertTrue(guardianContract.hasRole(guardianContract.DEFAULT_ADMIN_ROLE(), guardian));
+        assertTrue(guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_ROLE(), optimisticGuardian));
 
         assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
 
@@ -215,13 +215,13 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         }
     }
 
-    function test_emergencyCouncil_roleAdminsConfigured() public view {
+    function test_guardian_roleAdminsConfigured() public view {
         assertEq(
-            emergencyCouncil.getRoleAdmin(emergencyCouncil.DEFAULT_ADMIN_ROLE()), emergencyCouncil.DEFAULT_ADMIN_ROLE()
+            guardianContract.getRoleAdmin(guardianContract.DEFAULT_ADMIN_ROLE()), guardianContract.DEFAULT_ADMIN_ROLE()
         );
         assertEq(
-            emergencyCouncil.getRoleAdmin(emergencyCouncil.OPTIMISTIC_GUARDIAN_ROLE()),
-            emergencyCouncil.DEFAULT_ADMIN_ROLE()
+            guardianContract.getRoleAdmin(guardianContract.OPTIMISTIC_GUARDIAN_ROLE()),
+            guardianContract.DEFAULT_ADMIN_ROLE()
         );
     }
 
@@ -396,7 +396,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.propose(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        emergencyCouncil.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
+        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
 
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
@@ -704,7 +704,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        emergencyCouncil.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
+        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
@@ -717,7 +717,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         vm.prank(optimisticGuardian);
-        emergencyCouncil.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
+        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
@@ -1043,7 +1043,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        emergencyCouncil.cancel(
+        guardianContract.cancel(
             address(governor), targets, values, calldatas, keccak256(bytes(_confirmationDescription(description)))
         );
 
@@ -1368,7 +1368,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 
         vm.prank(guardian);
-        emergencyCouncil.revokeOptimisticProposer(address(governor), optimisticProposer2);
+        guardianContract.revokeOptimisticProposer(address(governor), optimisticProposer2);
 
         assertFalse(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 

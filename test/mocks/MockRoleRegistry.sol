@@ -5,7 +5,7 @@ import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
 
 contract MockRoleRegistry is IRoleRegistry {
     mapping(address account => bool isConfiguredOwner) private owners;
-    mapping(address account => bool isConfiguredEmergencyCouncil) private emergencyCouncil;
+    mapping(address account => bool isConfiguredGuardian) private guardians;
 
     constructor(address initialOwner) {
         owners[initialOwner] = true;
@@ -15,15 +15,15 @@ contract MockRoleRegistry is IRoleRegistry {
         owners[account] = isOwner_;
     }
 
-    function setEmergencyCouncil(address account, bool isEmergencyCouncil) external {
-        emergencyCouncil[account] = isEmergencyCouncil;
+    function setGuardian(address account, bool isGuardian) external {
+        guardians[account] = isGuardian;
     }
 
     function isOwner(address account) external view returns (bool) {
         return owners[account];
     }
 
-    function isOwnerOrEmergencyCouncil(address account) external view returns (bool) {
-        return owners[account] || emergencyCouncil[account];
+    function isOwnerOrGuardian(address account) external view returns (bool) {
+        return owners[account] || guardians[account];
     }
 }

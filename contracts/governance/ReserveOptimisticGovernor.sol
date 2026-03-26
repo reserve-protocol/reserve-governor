@@ -198,7 +198,14 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) public override(GovernorUpgradeable, IReserveOptimisticGovernor) returns (uint256 proposalId) {
-        return super.cancel(targets, values, calldatas, descriptionHash);
+        proposalId = getProposalId(targets, values, calldatas, descriptionHash);
+
+        address caller = _msgSender();
+        if (!_validateCancel(proposalId, caller)) {
+            revert GovernorUnableToCancel(proposalId, caller);
+        }
+
+        return _cancel(targets, values, calldatas, descriptionHash);
     }
 
     // === View Overrides ===
@@ -360,7 +367,9 @@ contract ReserveOptimisticGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        if (_timelock().hasRole(CANCELLER_ROLE, caller)) {
+        TimelockControllerOptimistic t = _timelock();
+
+        if (t.hasRole(CANCELLER_ROLE, caller)) {
             return true;
         }
 
