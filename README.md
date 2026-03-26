@@ -298,7 +298,6 @@ Governance-owned registry of tokens that may be used as `StakingVault` reward to
 - `registerRewardToken(rewardToken)` -- Register a reward token (owner only)
 - `unregisterRewardToken(rewardToken)` -- Unregister a reward token (owner or emergency council)
 - `getAllRewardTokens()` -- Return all reward tokens, even those not registered with the registry anymore
-- `getAllRegisteredRewardTokens()` -- Return all reward tokens registered with the registry
 - `isRegistered(rewardToken)` -- Check whether a token is currently in the registry
 
 ### ReserveOptimisticGovernanceVersionRegistry

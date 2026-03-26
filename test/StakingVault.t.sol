@@ -462,6 +462,25 @@ contract StakingVaultTest is Test {
         assertTrue(vault.disallowedRewardTokens(address(reward)));
     }
 
+    function test_getAllRewardTokens_keepsUnregisteredTokens() public {
+        MockERC20 newReward = new MockERC20("New Reward Token", "NREWARD");
+        _registerRewardToken(address(newReward));
+        vm.prank(address(timelock));
+        vault.addRewardToken(address(newReward));
+
+        address[] memory allRewardTokens = vault.getAllRewardTokens();
+        assertEq(allRewardTokens.length, 2);
+        assertEq(allRewardTokens[0], address(reward));
+        assertEq(allRewardTokens[1], address(newReward));
+
+        rewardTokenRegistry.unregisterRewardToken(address(reward));
+
+        allRewardTokens = vault.getAllRewardTokens();
+        assertEq(allRewardTokens.length, 2);
+        assertEq(allRewardTokens[0], address(reward));
+        assertEq(allRewardTokens[1], address(newReward));
+    }
+
     function test_cannotRemoveRewardTokenIfNotOwner() public {
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
         vm.prank(ACTOR_ALICE);
