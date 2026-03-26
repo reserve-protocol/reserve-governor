@@ -28,8 +28,12 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import { IReserveOptimisticGovernor } from "../interfaces/IReserveOptimisticGovernor.sol";
+import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
+import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
+import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
+import { ProposalLib } from "@governance/lib/ProposalLib.sol";
+import { ThrottleLib } from "@governance/lib/ThrottleLib.sol";
 import {
     CANCELLER_ROLE,
     MAX_OPTIMISTIC_DELAY,
@@ -37,13 +41,10 @@ import {
     MAX_VOTE_EXTENSION,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
+    OPTIMISTIC_CANCELLER_ROLE,
     OPTIMISTIC_PROPOSER_ROLE
-} from "../utils/Constants.sol";
-import { Versioned } from "../utils/Versioned.sol";
-import { OptimisticSelectorRegistry } from "./OptimisticSelectorRegistry.sol";
-import { TimelockControllerOptimistic } from "./TimelockControllerOptimistic.sol";
-import { ProposalLib } from "./lib/ProposalLib.sol";
-import { ThrottleLib } from "./lib/ThrottleLib.sol";
+} from "@utils/Constants.sol";
+import { Versioned } from "@utils/Versioned.sol";
 
 /**
  * @title Reserve Optimistic Governor
@@ -95,7 +96,10 @@ contract ReserveOptimisticGovernor is
         address _timelockController,
         address _selectorRegistry
     ) public initializer {
-        require(keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"), InvalidToken());
+        require(
+            keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"),
+            OptimisticGovernor__InvalidToken()
+        );
 
         __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
@@ -232,7 +236,7 @@ contract ReserveOptimisticGovernor is
             }
 
             // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (_vetoThreshold * token().getPastTotalSupply(snapshot) + (1e18 - 1)) / 1e18;
+            uint256 vetoThresholdTok = (_vetoThreshold * token().getPastTotalSupply(snapshot)) / 1e18;
 
             if (vetoThresholdTok == 0) {
                 return ProposalState.Canceled;
@@ -304,7 +308,7 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint48) {
-        require(!_isOptimistic(proposalId), OptimisticProposalCannotBeQueued(proposalId));
+        require(!_isOptimistic(proposalId), OptimisticGovernor__OptimisticProposalCannotBeQueued(proposalId));
 
         return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
@@ -339,17 +343,20 @@ contract ReserveOptimisticGovernor is
     }
 
     function _validateCancel(uint256 proposalId, address caller) internal view override returns (bool) {
-        if (_timelock().hasRole(CANCELLER_ROLE, caller)) {
-            return true;
-        }
+        TimelockControllerOptimistic t = _timelock();
 
-        if (caller != proposalProposer(proposalId)) {
-            return false;
+        if (t.hasRole(CANCELLER_ROLE, caller)) {
+            return true;
         }
 
         ProposalState s = state(proposalId);
 
-        return (_isOptimistic(proposalId) && s != ProposalState.Defeated) || s == ProposalState.Pending;
+        if (_isOptimistic(proposalId)) {
+            return (caller == proposalProposer(proposalId) || t.hasRole(OPTIMISTIC_CANCELLER_ROLE, caller))
+                && s != ProposalState.Defeated;
+        }
+
+        return caller == proposalProposer(proposalId) && s == ProposalState.Pending;
     }
 
     function _countVote(uint256 proposalId, address account, uint8 support, uint256 totalWeight, bytes memory params)
@@ -359,7 +366,7 @@ contract ReserveOptimisticGovernor is
     {
         require(
             !_isOptimistic(proposalId) || support == uint8(VoteType.Against),
-            OptimisticProposalCanOnlyBeVetoed(proposalId)
+            OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(proposalId)
         );
 
         return super._countVote(proposalId, account, support, totalWeight, params);
@@ -399,26 +406,32 @@ contract ReserveOptimisticGovernor is
     // === Setters ===
 
     function _setProposalThreshold(uint256 newProposalThreshold) internal override {
-        require(newProposalThreshold != 0 && newProposalThreshold <= 1e18, InvalidProposalThreshold());
+        require(
+            newProposalThreshold != 0 && newProposalThreshold <= 1e18, OptimisticGovernor__InvalidProposalThreshold()
+        );
 
         super._setProposalThreshold(newProposalThreshold);
     }
 
+    /// @dev Back-propagates `newCapacity` to all accounts, acceptable simplification
     function _setProposalThrottle(uint256 newCapacity) internal {
-        require(newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY, InvalidProposalThrottle());
+        require(
+            newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY,
+            OptimisticGovernor__InvalidProposalThrottle()
+        );
 
         proposalThrottle.capacity = newCapacity;
         emit ProposalThrottleUpdated(newCapacity);
     }
 
     function _setVotingDelay(uint48 newVotingDelay) internal override {
-        require(newVotingDelay < MAX_OPTIMISTIC_DELAY, InvalidDelay());
+        require(newVotingDelay < MAX_OPTIMISTIC_DELAY, OptimisticGovernor__InvalidDelay());
 
         super._setVotingDelay(newVotingDelay);
     }
 
     function _setLateQuorumVoteExtension(uint48 newVoteExtension) internal override {
-        require(newVoteExtension < MAX_VOTE_EXTENSION, InvalidDelay());
+        require(newVoteExtension < MAX_VOTE_EXTENSION, OptimisticGovernor__InvalidDelay());
 
         super._setLateQuorumVoteExtension(newVoteExtension);
     }
@@ -428,9 +441,10 @@ contract ReserveOptimisticGovernor is
             params.vetoDelay >= MIN_OPTIMISTIC_VETO_DELAY && params.vetoDelay < MAX_OPTIMISTIC_DELAY
                 && params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
                 && params.vetoThreshold <= 1e18,
-            InvalidOptimisticParameters()
+            OptimisticGovernor__InvalidOptimisticParameters()
         );
         optimisticParams = params;
+        emit OptimisticParamsUpdated(params);
     }
 
     // === Private ===

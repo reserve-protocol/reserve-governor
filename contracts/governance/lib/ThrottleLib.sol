@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IReserveOptimisticGovernor } from "../../interfaces/IReserveOptimisticGovernor.sol";
+import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
 library ThrottleLib {
     uint256 constant PROPOSAL_THROTTLE_PERIOD = 1 days;
@@ -18,10 +18,11 @@ library ThrottleLib {
 
     function consumeProposalCharge(ProposalThrottleStorage storage proposalThrottle, address account) external {
         (uint256 proposalsAvailable, uint256 charge) = _getProposalsAvailable(proposalThrottle, account);
-        require(proposalsAvailable >= 1, IReserveOptimisticGovernor.ProposalThrottleExceeded());
+        require(proposalsAvailable >= 1, IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded());
 
         ProposalThrottle storage throttle = proposalThrottle.throttles[account];
 
+        // Acceptable simplifiction to use latest `capacity`
         throttle.currentCharge = charge - (1e18 / proposalThrottle.capacity);
         throttle.lastUpdated = block.timestamp;
     }

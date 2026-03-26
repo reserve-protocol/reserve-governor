@@ -3,15 +3,20 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
-import { OptimisticSelectorRegistryDeployer } from "../contracts/artifacts/OptimisticSelectorRegistryDeployer.sol";
-import { ProposalLibDeployer } from "../contracts/artifacts/ProposalLibDeployer.sol";
-import { ReserveOptimisticGovernorDeployer } from "../contracts/artifacts/ReserveOptimisticGovernorDeployer.sol";
+import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
+import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { OptimisticSelectorRegistryDeployer } from "@src/artifacts/OptimisticSelectorRegistryDeployer.sol";
+import { ProposalLibDeployer } from "@src/artifacts/ProposalLibDeployer.sol";
+import { ReserveOptimisticGovernorDeployer } from "@src/artifacts/ReserveOptimisticGovernorDeployer.sol";
 import {
     ReserveOptimisticGovernorDeployerDeployer
-} from "../contracts/artifacts/ReserveOptimisticGovernorDeployerDeployer.sol";
-import { StakingVaultDeployer } from "../contracts/artifacts/StakingVaultDeployer.sol";
-import { ThrottleLibDeployer } from "../contracts/artifacts/ThrottleLibDeployer.sol";
-import { TimelockControllerOptimisticDeployer } from "../contracts/artifacts/TimelockControllerOptimisticDeployer.sol";
+} from "@src/artifacts/ReserveOptimisticGovernorDeployerDeployer.sol";
+import { StakingVaultDeployer } from "@src/artifacts/StakingVaultDeployer.sol";
+import { ThrottleLibDeployer } from "@src/artifacts/ThrottleLibDeployer.sol";
+import { TimelockControllerOptimisticDeployer } from "@src/artifacts/TimelockControllerOptimisticDeployer.sol";
+import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
+
+import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
 
 contract ArtifactsTest is Test {
     function _salt(string memory label) internal pure returns (bytes32) {
@@ -60,10 +65,19 @@ contract ArtifactsTest is Test {
         address governor = ReserveOptimisticGovernorDeployer.deploy(_salt("GovernorImpl"));
         address timelock = TimelockControllerOptimisticDeployer.deploy(_salt("TimelockImpl"));
         address selectorRegistry = OptimisticSelectorRegistryDeployer.deploy(_salt("SelectorRegistryImpl"));
+        ReserveOptimisticGovernanceVersionRegistry versionRegistry =
+            new ReserveOptimisticGovernanceVersionRegistry(IRoleRegistry(address(1)));
+        RewardTokenRegistry rewardTokenRegistry = new RewardTokenRegistry(IRoleRegistry(address(1)));
 
         // Deploy the factory
         address deployer = ReserveOptimisticGovernorDeployerDeployer.deploy(
-            stakingVault, governor, timelock, selectorRegistry, _salt("ReserveOptimisticGovernorDeployer")
+            address(versionRegistry),
+            address(rewardTokenRegistry),
+            stakingVault,
+            governor,
+            timelock,
+            selectorRegistry,
+            _salt("ReserveOptimisticGovernorDeployer")
         );
 
         assertNotEq(deployer, address(0), "ReserveOptimisticGovernorDeployer deployment failed");

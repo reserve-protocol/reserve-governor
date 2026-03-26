@@ -23,13 +23,14 @@ interface IReserveOptimisticGovernorDeployer {
         IReserveOptimisticGovernor.StandardGovernanceParams standardParams;
         IOptimisticSelectorRegistry.SelectorData[] selectorData;
         address[] optimisticProposers;
+        address[] optimisticGuardians;
         address[] guardians;
         uint256 timelockDelay; // {s}
         uint256 proposalThrottleCapacity; // optimistic proposals-per-account per 24h
     }
 
     struct NewStakingVaultParams {
-        IERC20Metadata underlying; // MUST have strong value relationship to the system being governed
+        IERC20Metadata underlying;
         address[] rewardTokens;
         uint256 rewardHalfLife; // {s}
         uint256 unstakingDelay; // {s}
@@ -47,5 +48,15 @@ interface IReserveOptimisticGovernorDeployer {
         BaseDeploymentParams calldata baseParams,
         address existingStakingVault,
         bytes32 deploymentNonce
-    ) external returns (address stakingVault, address governor, address timelock, address selectorRegistry);
+    ) external returns (address governor, address timelock, address selectorRegistry);
+
+    function versionRegistry() external view returns (address);
+
+    function rewardTokenRegistry() external view returns (address);
+
+    function stakingVaultImpl() external view returns (address);
+
+    function governorImpl() external view returns (address);
+
+    function timelockImpl() external view returns (address);
 }

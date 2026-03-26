@@ -15,6 +15,8 @@ CONTRACTS=(
     "TimelockControllerOptimistic"
     "OptimisticSelectorRegistry"
     "ReserveOptimisticGovernorDeployer"
+    "ReserveOptimisticGovernanceVersionRegistry"
+    "RewardTokenRegistry"
 )
 
 cd "$ROOT_DIR"

@@ -8,23 +8,24 @@ import {
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error InvalidToken();
-    error InvalidProposalThreshold();
-    error InvalidProposalThrottle();
-    error InvalidOptimisticParameters();
-    error OptimisticProposalCannotBeQueued(uint256 proposalId);
-    error NotOptimisticProposer(address account);
-    error ConfirmationPrefixNotAllowed();
-    error InvalidCall(address target, bytes call);
-    error ProposalThrottleExceeded();
-    error InvalidDelay();
-    error OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
+    error OptimisticGovernor__InvalidToken();
+    error OptimisticGovernor__InvalidProposalThreshold();
+    error OptimisticGovernor__InvalidProposalThrottle();
+    error OptimisticGovernor__InvalidOptimisticParameters();
+    error OptimisticGovernor__OptimisticProposalCannotBeQueued(uint256 proposalId);
+    error OptimisticGovernor__NotOptimisticProposer(address account);
+    error OptimisticGovernor__ConfirmationPrefixNotAllowed();
+    error OptimisticGovernor__InvalidCall(address target, bytes call);
+    error OptimisticGovernor__ProposalThrottleExceeded();
+    error OptimisticGovernor__InvalidDelay();
+    error OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
 
     // === Events ===
 
     /// @param vetoThreshold D18{1} Fraction of token supply required to start confirmation process
     event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
     event ProposalThrottleUpdated(uint256 throttleCapacity);
+    event OptimisticParamsUpdated(OptimisticGovernanceParams optimisticParams);
 
     // === Data ===
 

@@ -23,12 +23,19 @@ import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Non
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
-import { Versioned } from "../utils/Versioned.sol";
-import { UnstakingManager } from "./UnstakingManager.sol";
+import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
+import { IRewardTokenRegistry } from "@interfaces/IRewardTokenRegistry.sol";
 
-uint256 constant MAX_UNSTAKING_DELAY = 4 weeks; // {s}
-uint256 constant MAX_REWARD_HALF_LIFE = 2 weeks; // {s}
-uint256 constant MIN_REWARD_HALF_LIFE = 1 days; // {s}
+import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { UnstakingManager } from "@staking/UnstakingManager.sol";
+import { Versioned } from "@utils/Versioned.sol";
+
+import {
+    MAX_REWARD_HALF_LIFE,
+    MAX_REWARD_TOKENS,
+    MAX_UNSTAKING_DELAY,
+    MIN_REWARD_HALF_LIFE
+} from "../utils/Constants.sol";
 
 uint256 constant LN_2 = 0.693147180559945309e18; // D18{1} ln(2e18)
 
@@ -42,6 +49,10 @@ uint256 constant SCALAR = 1e18; // D18
  *         Unstaking is gated by a delay, implemented by an UnstakingManager.
  *
  * @dev StakingVault also supports native asset() rewards alongside other reward tokens, but are handled independently.
+ *      All reward tokens must be registered in the RewardTokenRegistry. Reward tokens must remain registered in the
+ *      RewardTokenRegistry in order to continue accruing rewards. Users can claim any ERC20 where rewards have accrued.
+ *
+ * @dev New versions MUST always be backwards-compatible for the sake of all ReserveOptimisticGovernors using it.
  */
 contract StakingVault is
     ERC4626Upgradeable,
@@ -52,6 +63,8 @@ contract StakingVault is
     UUPSUpgradeable
 {
     using EnumerableSet for EnumerableSet.AddressSet;
+
+    ReserveOptimisticGovernanceVersionRegistry public versionRegistry;
 
     EnumerableSet.AddressSet private rewardTokens;
     uint256 public rewardRatio; // D18{1}
@@ -73,6 +86,8 @@ contract StakingVault is
         uint256 accruedRewards; // {reward}
     }
 
+    IRewardTokenRegistry public rewardTokenRegistry;
+
     mapping(address token => RewardInfo rewardInfo) public rewardTrackers;
     mapping(address token => bool isDisallowed) public disallowedRewardTokens;
     mapping(address token => mapping(address user => UserRewardInfo userReward)) public userRewardTrackers;
@@ -85,13 +100,18 @@ contract StakingVault is
     error Vault__DisallowedRewardToken(address rewardToken);
     error Vault__RewardAlreadyRegistered();
     error Vault__RewardNotRegistered();
+    error Vault__MaxRewardTokensReached();
     error Vault__InvalidUnstakingDelay();
     error Vault__InvalidRewardsHalfLife();
     error Vault__InvalidAdmin(address admin);
+    error Vault__VersionDeprecated(bytes32 versionHash);
+    error Vault__NotLatestStakingVault(address stakingVaultImpl);
 
+    event VersionRegistrySet(address versionRegistry);
     event UnstakingDelaySet(uint256 delay);
     event RewardTokenAdded(address rewardToken);
     event RewardTokenRemoved(address rewardToken);
+    event RewardTokenRegistrySet(address rewardTokenRegistry);
     event RewardsClaimed(address user, address rewardToken, uint256 amount);
     event RewardRatioSet(uint256 rewardRatio, uint256 halfLife);
 
@@ -120,23 +140,28 @@ contract StakingVault is
         __ERC20Permit_init(_name);
         __ERC20Votes_init();
         __AccessControlEnumerable_init();
+        __AccessControl_init();
         __UUPSUpgradeable_init();
-
         _grantRole(DEFAULT_ADMIN_ROLE, _initialAdmin);
 
         _setRewardRatio(_rewardPeriod);
         _setUnstakingDelay(_unstakingDelay);
 
+        IReserveOptimisticGovernorDeployer deployer = IReserveOptimisticGovernorDeployer(msg.sender);
+
+        address _rewardTokenRegistry = deployer.rewardTokenRegistry();
+        IRewardTokenRegistry(_rewardTokenRegistry).isRegistered(address(1));
+        emit RewardTokenRegistrySet(_rewardTokenRegistry);
+        rewardTokenRegistry = IRewardTokenRegistry(_rewardTokenRegistry);
+
+        address _versionRegistry = deployer.versionRegistry();
+        emit VersionRegistrySet(_versionRegistry);
+        versionRegistry = ReserveOptimisticGovernanceVersionRegistry(_versionRegistry);
+
         unstakingManager = new UnstakingManager(_underlying);
 
         nativeRewardsLastPaid = block.timestamp;
     }
-
-    /**
-     * @dev Authorize upgrade to a new implementation.
-     * @param newImplementation Address of the new implementation contract
-     */
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) { }
 
     /**
      * Deposit & Delegate
@@ -180,6 +205,7 @@ contract StakingVault is
     {
         totalDeposited -= _assets;
         nativeBalanceLastKnown -= _assets;
+        // nativeBalanceLastKnown update is redundant, final value set at bottom of function
 
         if (unstakingDelay == 0) {
             super._withdraw(_caller, _receiver, _owner, _assets, _shares);
@@ -221,6 +247,8 @@ contract StakingVault is
     function addRewardToken(address _rewardToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(_rewardToken != address(this) && _rewardToken != asset(), Vault__InvalidRewardToken(_rewardToken));
         require(!disallowedRewardTokens[_rewardToken], Vault__DisallowedRewardToken(_rewardToken));
+        require(rewardTokenRegistry.isRegistered(_rewardToken), Vault__RewardNotRegistered());
+        require(rewardTokens.length() < MAX_REWARD_TOKENS, Vault__MaxRewardTokensReached());
         require(rewardTokens.add(_rewardToken), Vault__RewardAlreadyRegistered());
 
         RewardInfo storage rewardInfo = rewardTrackers[_rewardToken];
@@ -231,7 +259,7 @@ contract StakingVault is
         emit RewardTokenAdded(_rewardToken);
     }
 
-    /// @dev To be called in event of bad ERC20; all rewards will be lost forever
+    /// @dev To be called in event of bad ERC20; all unaccrued rewards will be lost forever
     /// @param _rewardToken Reward token to remove
     function removeRewardToken(address _rewardToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
         disallowedRewardTokens[_rewardToken] = true;
@@ -242,7 +270,7 @@ contract StakingVault is
     }
 
     /// Allows to claim rewards
-    /// Supports claiming accrued rewards for disallowed/removed tokens
+    /// Supports claiming accrued rewards for disallowed/removed/unregistered tokens
     /// @param _rewardTokens Array of reward tokens to claim
     /// @return claimableRewards Amount claimed for each rewardToken
     function claimRewards(address[] calldata _rewardTokens)
@@ -272,8 +300,32 @@ contract StakingVault is
         }
     }
 
+    /// @return All reward tokens, including ones not registered with the registry anymore
     function getAllRewardTokens() external view returns (address[] memory) {
         return rewardTokens.values();
+    }
+
+    /// @return registeredRewardTokens All reward tokens still registered with the registry
+    function getAllRegisteredRewardTokens() external view returns (address[] memory registeredRewardTokens) {
+        uint256 registeredRewardTokensLength = 0;
+        for (uint256 i; i < rewardTokens.length(); i++) {
+            if (rewardTokenRegistry.isRegistered(rewardTokens.at(i))) {
+                registeredRewardTokensLength++;
+            }
+        }
+
+        registeredRewardTokens = new address[](registeredRewardTokensLength);
+        uint256 index = 0;
+
+        for (uint256 i; i < rewardTokens.length(); i++) {
+            address rewardToken = rewardTokens.at(i);
+            if (rewardTokenRegistry.isRegistered(rewardToken)) {
+                registeredRewardTokens[index] = rewardToken;
+                index++;
+            }
+        }
+
+        return registeredRewardTokens;
     }
 
     /**
@@ -310,6 +362,11 @@ contract StakingVault is
 
         for (uint256 i; i < _rewardTokensLength; i++) {
             address rewardToken = _rewardTokens[i];
+
+            if (!rewardTokenRegistry.isRegistered(rewardToken)) {
+                rewardTrackers[rewardToken].payoutLastPaid = block.timestamp;
+                continue;
+            }
 
             _accrueRewards(rewardToken);
             _accrueUser(_receiver, rewardToken);
@@ -422,5 +479,21 @@ contract StakingVault is
 
     function CLOCK_MODE() public pure override returns (string memory) {
         return "mode=timestamp";
+    }
+
+    /**
+     * @dev Upgrade to latest non-deprecated version only
+     */
+    function _authorizeUpgrade(address stakingVaultImpl) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
+        bytes32 versionHash = keccak256(abi.encodePacked(Versioned(stakingVaultImpl).version()));
+
+        // RoleRegistry SHOULD maintain fresh latest versions
+
+        (bytes32 latestVersionHash,,, bool deprecated) = versionRegistry.getLatestVersion();
+        require(!deprecated, Vault__VersionDeprecated(versionHash));
+        require(versionHash == latestVersionHash, Vault__NotLatestStakingVault(stakingVaultImpl));
+
+        (address latestStakingVaultImpl,,) = versionRegistry.getImplementationsForVersion(versionHash);
+        require(latestStakingVaultImpl == stakingVaultImpl, Vault__NotLatestStakingVault(stakingVaultImpl));
     }
 }
