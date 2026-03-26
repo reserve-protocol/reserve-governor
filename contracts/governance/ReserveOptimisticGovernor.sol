@@ -198,14 +198,7 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) public override(GovernorUpgradeable, IReserveOptimisticGovernor) returns (uint256 proposalId) {
-        proposalId = getProposalId(targets, values, calldatas, descriptionHash);
-
-        address caller = _msgSender();
-        if (!_validateCancel(proposalId, caller)) {
-            revert GovernorUnableToCancel(proposalId, caller);
-        }
-
-        return _cancel(targets, values, calldatas, descriptionHash);
+        return super.cancel(targets, values, calldatas, descriptionHash);
     }
 
     // === View Overrides ===

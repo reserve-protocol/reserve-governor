@@ -173,7 +173,7 @@ Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or stand
 
 > **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself -- it allows the governor to schedule operations, not individual users to create proposals.
 
-> **Guardian Architecture:** Each governance timelock grants its only external `CANCELLER_ROLE` to a shared `Guardian` singleton. That `Guardian` uses `DEFAULT_ADMIN_ROLE` for full guardian authority and `OPTIMISTIC_GUARDIAN_ROLE` for optimistic-only bot keys. Rotating optimistic guardian keys therefore only requires updating the shared `Guardian`, not each governance instance.
+> **Guardian Architecture:** Each governance timelock grants its only external `CANCELLER_ROLE` to a shared `Guardian` singleton. That `Guardian` uses `DEFAULT_ADMIN_ROLE` for full guardian authority and `OPTIMISTIC_GUARDIAN_ROLE` for optimistic-only bot keys. Rotating optimistic guardian keys therefore only requires updating the shared `Guardian`, not each governance instance. Separately, `RoleRegistry` may still model an `EmergencyCouncil` that serves as an admin/controller for the shared `Guardian`.
 
 #### OPTIMISTIC_PROPOSER_ROLE
 
@@ -299,7 +299,7 @@ Versioned factory for full system deployments.
 Governance-owned registry of tokens that may be used as `StakingVault` reward tokens. 
 
 - `registerRewardToken(rewardToken)` -- Register a reward token (owner only)
-- `unregisterRewardToken(rewardToken)` -- Unregister a reward token (owner or `Guardian`)
+- `unregisterRewardToken(rewardToken)` -- Unregister a reward token (owner or `EmergencyCouncil` via `RoleRegistry`)
 - `getAllRewardTokens()` -- Return all reward tokens, even those not registered with the registry anymore
 - `getAllRegisteredRewardTokens()` -- Return all reward tokens registered with the registry
 - `isRegistered(rewardToken)` -- Check whether a token is currently in the registry
@@ -309,7 +309,7 @@ Governance-owned registry of tokens that may be used as `StakingVault` reward to
 Governance-owned registry of release versions.
 
 - `registerVersion(deployer)` -- Register a new deployer version (owner only)
-- `deprecateVersion(versionHash)` -- Mark a version as deprecated (owner or `Guardian`)
+- `deprecateVersion(versionHash)` -- Mark a version as deprecated (owner or `EmergencyCouncil` via `RoleRegistry`)
 - `getLatestVersion()` -- Return the latest registered version metadata
 - `getImplementationsForVersion(versionHash)` -- Resolve the upgradeable implementation set for a version
 
@@ -469,7 +469,7 @@ Three contracts are UUPS upgradeable, but they do not share a central onchain up
 - `registerVersion(deployer)` can only be called by a `RoleRegistry` owner
 - `getLatestVersion()` returns the latest registered version metadata
 - `getImplementationsForVersion(versionHash)` resolves the staking vault, governor, and timelock implementations from the registered deployer
-- `deprecateVersion(versionHash)` can be called by a `RoleRegistry` owner or `Guardian`
+- `deprecateVersion(versionHash)` can be called by a `RoleRegistry` owner or `EmergencyCouncil`
 
 ### Upgrade Flows
 

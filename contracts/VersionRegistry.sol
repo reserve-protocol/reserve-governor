@@ -51,7 +51,7 @@ contract ReserveOptimisticGovernanceVersionRegistry {
     }
 
     function deprecateVersion(bytes32 versionHash) external {
-        require(roleRegistry.isOwnerOrGuardian(msg.sender), VersionRegistry__InvalidCaller());
+        require(roleRegistry.isOwnerOrEmergencyCouncil(msg.sender), VersionRegistry__InvalidCaller());
 
         require(!isDeprecated[versionHash], VersionRegistry__AlreadyDeprecated());
 

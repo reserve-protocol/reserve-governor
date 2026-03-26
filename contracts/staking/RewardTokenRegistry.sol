@@ -42,7 +42,7 @@ contract RewardTokenRegistry is IRewardTokenRegistry {
 
     /// @dev Assumption: RoleRegistry will not needlessly unregister + re-register to grief accounting in StakingVaults
     function unregisterRewardToken(address rewardToken) external {
-        require(roleRegistry.isOwnerOrGuardian(msg.sender), RewardTokenRegistry__InvalidCaller());
+        require(roleRegistry.isOwnerOrEmergencyCouncil(msg.sender), RewardTokenRegistry__InvalidCaller());
         require(_rewardTokens.remove(rewardToken), RewardTokenRegistry__RewardNotRegistered());
 
         emit RewardTokenUnregistered(rewardToken);
