@@ -16,7 +16,7 @@ Fast proposals are protected by a proposer throttle that limits how many optimis
 
 The runtime system consists of five components:
 
-1. **StakingVault** -- ERC4626 vault with vote-locking, multi-token rewards, and unstaking delay
+1. **StakingVault** -- ERC4626 vault with vote-locking, dual delegation (standard + optimistic), multi-token rewards, and unstaking delay
 2. **UnstakingManager** -- Time-locked withdrawal manager created by StakingVault during initialization
 3. **ReserveOptimisticGovernor** -- Hybrid governor unifying optimistic/standard proposal flows in shared OZ Governor storage
 4. **OptimisticSelectorRegistry** -- Whitelist of allowed `(target, selector)` pairs for optimistic proposals
@@ -27,7 +27,8 @@ The runtime system consists of five components:
 │          StakingVault            │
 │  ERC4626 + ERC20Votes           │
 │                                  │
-│  deposit / withdraw / delegate   │
+│  deposit / withdraw              │
+│  delegate / delegateOptimistic   │
 │  claimRewards                    │
 │  ┌────────────────────────────┐  │
 │  │     UnstakingManager      │  │
@@ -62,6 +63,21 @@ The runtime system consists of five components:
 
 The governor checks each call in an optimistic proposal against the `OptimisticSelectorRegistry` before creating it. Only whitelisted `(target, selector)` pairs are permitted.
 The allowlist is universal: selector permissions do not depend on which optimistic proposer submits the proposal.
+
+## Dual Delegation Model
+
+`StakingVault` tracks two independent delegation ledgers against the same vault share balance:
+
+- **Standard delegation** uses the inherited OZ `ERC20Votes` checkpoints and powers slow proposals, quorum, and ordinary `getVotes()` lookups
+- **Optimistic delegation** uses dedicated optimistic checkpoints and powers fast proposal veto voting through `getOptimisticVotes()`
+
+This means a holder can route standard governance and optimistic veto authority to different delegatees:
+
+- `deposit()` mints shares without assigning either delegation stream
+- `depositAndDelegate()` mints shares and self-delegates both streams
+- `delegate()` and `delegateOptimistic()` can point at different addresses
+- Share transfers move both standard and optimistic voting weight according to each account's current delegatees
+- `delegateOptimisticBySig()` provides signature-based optimistic delegation
 
 The runtime system above is complemented by a deployment and release control plane:
 
@@ -142,7 +158,7 @@ Slow proposals follow the standard OpenZeppelin Governor flow with voting, timel
 
 ## Veto Mechanism
 
-During a fast proposal's veto period, any token holder can vote using the standard `castVote()` interface, but only `Against` votes are allowed for optimistic proposals.
+During a fast proposal's veto period, any token holder can vote using the standard `castVote()` interface, but only `Against` votes are allowed for optimistic proposals. Fast proposals count weight from the vault's optimistic delegation checkpoints (`getPastOptimisticVotes()`), while slow proposals continue to use the standard `ERC20Votes` checkpoints.
 
 **Veto threshold calculation:**
 
@@ -228,6 +244,7 @@ The main hybrid governor contract.
 - `isOptimistic(proposalId)` -- Returns whether proposal is optimistic metadata
 - `state(proposalId)` -- Returns `ProposalState` (unified for both types)
 - `vetoThreshold(proposalId)` -- Returns the veto threshold for an optimistic proposal (0 if standard)
+- `getOptimisticVotes(account, timepoint)` -- Read the optimistic voting weight used for fast-proposal veto voting
 - `selectorRegistry()` -- The OptimisticSelectorRegistry contract address
 - `proposalNeedsQueuing(proposalId)` -- Always `false` for optimistic proposals
 
@@ -295,11 +312,14 @@ Governance-owned registry of release versions.
 
 ### StakingVault
 
-ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to receive vault shares that carry voting power.
+ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users deposit tokens to receive vault shares that can carry separate standard and optimistic voting power.
 
 **User Functions:**
 
-- `depositAndDelegate(assets)` -- Deposit tokens and self-delegate voting power
+- `depositAndDelegate(assets)` -- Deposit tokens and self-delegate both standard and optimistic voting power
+- `delegate(delegatee)` -- Delegate standard voting power for slow proposals and quorum (inherited from `ERC20Votes`)
+- `delegateOptimistic(delegatee)` -- Delegate optimistic voting power for fast-proposal veto voting
+- `delegateOptimisticBySig(delegatee, nonce, expiry, v, r, s)` -- Signature-based optimistic delegation
 - `claimRewards(rewardTokens[])` -- Claim accumulated rewards for specified reward tokens
 - `poke()` -- Trigger reward accrual without performing an action
 
@@ -313,6 +333,9 @@ ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to
 **Other:**
 
 - `getAllRewardTokens()` -- Return all active reward tokens
+- `optimisticDelegates(account)` -- Return the current optimistic delegate for an account
+- `getOptimisticVotes(account)` -- Return the latest optimistic delegated voting weight
+- `getPastOptimisticVotes(account, timepoint)` -- Return optimistic voting weight at a past timestamp snapshot
 - `rewardTokenRegistry()` -- Reward token registry wired in during initialization
 - `versionRegistry()` -- Version registry wired in during initialization
 
@@ -321,6 +344,7 @@ ERC4626 vault with vote-locking and multi-token rewards. Users deposit tokens to
 - UUPS upgradeable by `DEFAULT_ADMIN_ROLE`, but only to the exact latest non-deprecated staking-vault implementation registered in `ReserveOptimisticGovernanceVersionRegistry`
 - Clock: timestamp-based (ERC5805)
 - Creates an `UnstakingManager` during initialization
+- Standard and optimistic delegatees are tracked independently on the same share balance
 - `addRewardToken()` only accepts tokens that are currently registered in `RewardTokenRegistry`
 
 #### Token Support
