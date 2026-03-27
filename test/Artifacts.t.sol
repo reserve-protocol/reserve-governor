@@ -67,7 +67,7 @@ contract ArtifactsTest is Test {
         ReserveOptimisticGovernanceVersionRegistry versionRegistry =
             new ReserveOptimisticGovernanceVersionRegistry(IRoleRegistry(address(1)));
         RewardTokenRegistry rewardTokenRegistry = new RewardTokenRegistry(IRoleRegistry(address(1)));
-        Guardian guardian = new Guardian(address(1), new address[](0));
+        Guardian guardian = new Guardian(address(1), address(0), new address[](0));
 
         // Deploy the factory
         address deployer = ReserveOptimisticGovernorDeployerDeployer.deploy(

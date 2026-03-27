@@ -7,17 +7,26 @@ import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 
-import { OPTIMISTIC_GUARDIAN_ROLE as OPTIMISTIC_GUARDIAN } from "@utils/Constants.sol";
+import {
+    OPTIMISTIC_GUARDIAN_MANAGER_ROLE as OPTIMISTIC_GUARDIAN_MANAGER,
+    OPTIMISTIC_GUARDIAN_ROLE as OPTIMISTIC_GUARDIAN
+} from "@utils/Constants.sol";
 
 /**
  * @title Guardian
  * @author akshatmittal, julianmrodri, pmckelvy1, tbrent
  * @notice Singleton contract to serve as CANCELLER_ROLE for all timelocks.
- *         - DEFAULT_ADMIN_ROLE can cancel any type of proposal
- *         - OPTIMISTIC_GUARDIAN_ROLE can only cancel non-Defeated optimistic proposals
+ *
+ * Permissions:
+ *     - DEFAULT_ADMIN_ROLE can admin other roles AND cancel any type of proposal
+ *     - OPTIMISTIC_GUARDIAN_ROLE can ONLY cancel non-Defeated optimistic proposals
+ *     - OPTIMISTIC_GUARDIAN_MANAGER_ROLE can ONLY grant new OPTIMISTIC_GUARDIAN_ROLEs
+ *
+ * DEFAULT_ADMIN_ROLE is reserved for break-glass scenarios.
  */
 contract Guardian is AccessControlEnumerable {
     bytes32 public constant OPTIMISTIC_GUARDIAN_ROLE = OPTIMISTIC_GUARDIAN;
+    bytes32 public constant OPTIMISTIC_GUARDIAN_MANAGER_ROLE = OPTIMISTIC_GUARDIAN_MANAGER;
 
     error Guardian__UnauthorizedCaller();
     error Guardian__ZeroAddress();
@@ -26,9 +35,21 @@ contract Guardian is AccessControlEnumerable {
     error Guardian__NotOptimisticProposal(uint256 proposalId);
     error Guardian__DefeatedProposal(uint256 proposalId);
 
-    constructor(address initialAdmin, address[] memory initialOptimisticGuardians) {
+    constructor(
+        address initialAdmin,
+        address initialOptimisticGuardianManager,
+        address[] memory initialOptimisticGuardians
+    ) {
+        // DEFAULT_ADMIN_ROLE
         _grantRole(DEFAULT_ADMIN_ROLE, _requireNonZero(initialAdmin));
 
+        // OPTIMISTIC_GUARDIAN_MANAGER_ROLE
+        _grantRole(OPTIMISTIC_GUARDIAN_MANAGER_ROLE, _requireNonZero(initialAdmin));
+        if (initialOptimisticGuardianManager != address(0)) {
+            _grantRole(OPTIMISTIC_GUARDIAN_MANAGER_ROLE, initialOptimisticGuardianManager);
+        }
+
+        // OPTIMISTIC_GUARDIAN_ROLE
         for (uint256 i = 0; i < initialOptimisticGuardians.length; ++i) {
             _grantRole(OPTIMISTIC_GUARDIAN_ROLE, _requireNonZero(initialOptimisticGuardians[i]));
         }
@@ -36,6 +57,12 @@ contract Guardian is AccessControlEnumerable {
 
     // === External ===
 
+    /// @dev Only callable by OPTIMISTIC_GUARDIAN_MANAGER_ROLE
+    function grantOptimisticGuardian(address account) external onlyRole(OPTIMISTIC_GUARDIAN_MANAGER_ROLE) {
+        _grantRole(OPTIMISTIC_GUARDIAN_ROLE, _requireNonZero(account));
+    }
+
+    /// @dev Only callable by DEFAULT_ADMIN_ROLE
     function revokeOptimisticProposer(address governor, address account) external onlyRole(DEFAULT_ADMIN_ROLE) {
         ITimelockControllerOptimistic(_timelock(governor)).revokeOptimisticProposer(account);
     }

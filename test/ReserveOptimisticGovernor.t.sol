@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
+import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -48,6 +49,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     address public bob = makeAddr("bob");
     address public carol = makeAddr("carol");
     address public guardian = makeAddr("guardian");
+    address public optimisticGuardianManager = makeAddr("optimisticGuardianManager");
     address public optimisticGuardian = makeAddr("optimisticGuardian");
     address public optimisticProposer = makeAddr("optimisticProposer");
     address public optimisticProposer2 = makeAddr("optimisticProposer2");
@@ -93,7 +95,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         address[] memory optimisticGuardians = new address[](1);
         optimisticGuardians[0] = optimisticGuardian;
 
-        guardianContract = new Guardian(guardian, optimisticGuardians);
+        guardianContract = new Guardian(guardian, optimisticGuardianManager, optimisticGuardians);
 
         deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
@@ -199,6 +201,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(timelock.hasRole(CANCELLER_ROLE, address(guardianContract)));
         assertFalse(timelock.hasRole(CANCELLER_ROLE, guardian));
         assertTrue(guardianContract.hasRole(guardianContract.DEFAULT_ADMIN_ROLE(), guardian));
+        assertTrue(guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE(), guardian));
+        assertTrue(
+            guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE(), optimisticGuardianManager)
+        );
         assertTrue(guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_ROLE(), optimisticGuardian));
 
         assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
@@ -220,9 +226,71 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             guardianContract.getRoleAdmin(guardianContract.DEFAULT_ADMIN_ROLE()), guardianContract.DEFAULT_ADMIN_ROLE()
         );
         assertEq(
+            guardianContract.getRoleAdmin(guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE()),
+            guardianContract.DEFAULT_ADMIN_ROLE()
+        );
+        assertEq(
             guardianContract.getRoleAdmin(guardianContract.OPTIMISTIC_GUARDIAN_ROLE()),
             guardianContract.DEFAULT_ADMIN_ROLE()
         );
+    }
+
+    function test_optimisticGuardianManagerCanGrantOptimisticGuardianRole() public {
+        address newOptimisticGuardian = makeAddr("newOptimisticGuardian");
+        bytes32 optimisticGuardianRole = guardianContract.OPTIMISTIC_GUARDIAN_ROLE();
+
+        assertFalse(guardianContract.hasRole(optimisticGuardianRole, newOptimisticGuardian));
+
+        vm.prank(optimisticGuardianManager);
+        guardianContract.grantOptimisticGuardian(newOptimisticGuardian);
+
+        assertTrue(guardianContract.hasRole(optimisticGuardianRole, newOptimisticGuardian));
+    }
+
+    function test_nonManagerCannotGrantOptimisticGuardianRole() public {
+        address newOptimisticGuardian = makeAddr("newOptimisticGuardian");
+        bytes32 optimisticGuardianManagerRole = guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE();
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, alice, optimisticGuardianManagerRole
+            )
+        );
+        guardianContract.grantOptimisticGuardian(newOptimisticGuardian);
+    }
+
+    function test_optimisticGuardianManagerCannotRevokeOptimisticGuardianRole() public {
+        bytes32 optimisticGuardianRole = guardianContract.OPTIMISTIC_GUARDIAN_ROLE();
+        bytes32 defaultAdminRole = guardianContract.DEFAULT_ADMIN_ROLE();
+
+        assertTrue(guardianContract.hasRole(optimisticGuardianRole, optimisticGuardian));
+
+        vm.prank(optimisticGuardianManager);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, optimisticGuardianManager, defaultAdminRole
+            )
+        );
+        guardianContract.revokeRole(optimisticGuardianRole, optimisticGuardian);
+
+        assertTrue(guardianContract.hasRole(optimisticGuardianRole, optimisticGuardian));
+    }
+
+    function test_optimisticGuardianManagerCannotCancelOptimisticProposal() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Manager cannot cancel optimistic proposal";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        uint256 proposalStateBeforeCancelAttempt = uint256(governor.state(proposalId));
+
+        vm.prank(optimisticGuardianManager);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.Guardian__UnauthorizedCaller.selector));
+        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
+
+        assertEq(uint256(governor.state(proposalId)), proposalStateBeforeCancelAttempt);
     }
 
     function test_isOptimistic_revertsForNonexistentProposal() public {

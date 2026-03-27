@@ -65,7 +65,7 @@ contract StakingVaultTest is Test {
         address governorImpl = address(new ReserveOptimisticGovernor());
         address timelockImpl = address(new TimelockControllerOptimistic());
         address registryImpl = address(new OptimisticSelectorRegistry());
-        Guardian guardian = new Guardian(address(this), new address[](0));
+        Guardian guardian = new Guardian(address(this), address(0), new address[](0));
 
         // Deploy Deployer
         ReserveOptimisticGovernorDeployer deployer = new ReserveOptimisticGovernorDeployer(
@@ -155,7 +155,7 @@ contract StakingVaultTest is Test {
         deployer = new ReserveOptimisticGovernorDeployerV2Mock(
             address(versionRegistry),
             address(rewardTokenRegistry),
-            address(new Guardian(address(this), new address[](0))),
+            address(new Guardian(address(this), address(0), new address[](0))),
             stakingVaultImplementation,
             address(new ReserveOptimisticGovernor()),
             address(new TimelockControllerOptimistic()),
