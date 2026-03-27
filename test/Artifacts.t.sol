@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import { Test } from "forge-std/Test.sol";
 
 import { IRoleRegistry } from "@interfaces/IRoleRegistry.sol";
+import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { OptimisticSelectorRegistryDeployer } from "@src/artifacts/OptimisticSelectorRegistryDeployer.sol";
 import { ProposalLibDeployer } from "@src/artifacts/ProposalLibDeployer.sol";
@@ -15,8 +16,6 @@ import { StakingVaultDeployer } from "@src/artifacts/StakingVaultDeployer.sol";
 import { ThrottleLibDeployer } from "@src/artifacts/ThrottleLibDeployer.sol";
 import { TimelockControllerOptimisticDeployer } from "@src/artifacts/TimelockControllerOptimisticDeployer.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
-
-import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
 
 contract ArtifactsTest is Test {
     function _salt(string memory label) internal pure returns (bytes32) {
@@ -68,11 +67,13 @@ contract ArtifactsTest is Test {
         ReserveOptimisticGovernanceVersionRegistry versionRegistry =
             new ReserveOptimisticGovernanceVersionRegistry(IRoleRegistry(address(1)));
         RewardTokenRegistry rewardTokenRegistry = new RewardTokenRegistry(IRoleRegistry(address(1)));
+        Guardian guardian = new Guardian(address(1), address(0), new address[](0));
 
         // Deploy the factory
         address deployer = ReserveOptimisticGovernorDeployerDeployer.deploy(
             address(versionRegistry),
             address(rewardTokenRegistry),
+            address(guardian),
             stakingVault,
             governor,
             timelock,
