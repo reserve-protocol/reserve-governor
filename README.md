@@ -164,6 +164,7 @@ Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or stand
 | Role                       | Held By                                                   | Permissions                                                             |
 | -------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `OPTIMISTIC_PROPOSER_ROLE` | Designated proposer EOAs                                  | Create fast proposals (`proposeOptimistic`)                             |
+| `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` | Designated guardian manager addresses on `Guardian` | Grant new optimistic guardian addresses through `Guardian`              |
 | `OPTIMISTIC_GUARDIAN_ROLE` | Designated optimistic guardian addresses on `Guardian` | Cancel non-defeated optimistic proposals through `Guardian`             |
 | `PROPOSER_ROLE`            | Governor contract                                         | Schedule operations on the timelock (granted automatically by Deployer) |
 | `EXECUTOR_ROLE`            | Governor contract                                         | Execute timelock operations for both slow and fast proposal paths       |
@@ -173,7 +174,7 @@ Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or stand
 
 > **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself -- it allows the governor to schedule operations, not individual users to create proposals.
 
-> **Guardian Architecture:** Each governance timelock grants its only external `CANCELLER_ROLE` to a shared `Guardian` singleton. That `Guardian` uses `DEFAULT_ADMIN_ROLE` for full guardian authority and `OPTIMISTIC_GUARDIAN_ROLE` for optimistic-only bot keys. Rotating optimistic guardian keys therefore only requires updating the shared `Guardian`, not each governance instance. Separately, `RoleRegistry` may still model an `EmergencyCouncil` that serves as an admin/controller for the shared `Guardian`.
+> **Guardian Architecture:** Each governance timelock grants its only external `CANCELLER_ROLE` to a shared `Guardian` singleton. That `Guardian` uses `DEFAULT_ADMIN_ROLE` for break-glass authority, `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` for routine optimistic guardian additions, and `OPTIMISTIC_GUARDIAN_ROLE` for optimistic-only bot keys. Rotating optimistic guardian keys therefore only requires updating the shared `Guardian`, not each governance instance. Separately, `RoleRegistry` may still model an emergency council that serves as an admin/controller for the shared `Guardian`.
 
 #### OPTIMISTIC_PROPOSER_ROLE
 
@@ -185,12 +186,22 @@ The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessCon
 - Revocation blocks new `proposeOptimistic()` calls by that account
 - Execution of a succeeded optimistic proposal is done via `execute(...)` and is not restricted to the original optimistic proposer
 
+#### OPTIMISTIC_GUARDIAN_MANAGER_ROLE
+
+The `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` is managed on the shared `Guardian` via standard `AccessControlEnumerable`:
+
+- Granted via standard role management on `Guardian`
+- Checked via `guardian.hasRole(OPTIMISTIC_GUARDIAN_MANAGER_ROLE, address)`
+- Allows calling `guardian.grantOptimisticGuardian(address)` to add a new `OPTIMISTIC_GUARDIAN_ROLE`
+- Does NOT allow `revokeRole(OPTIMISTIC_GUARDIAN_ROLE, address)`; that remains restricted to `DEFAULT_ADMIN_ROLE` on `Guardian`
+- Does NOT allow `cancel(...)` or `revokeOptimisticProposer(...)`
+
 #### OPTIMISTIC_GUARDIAN_ROLE
 
-The `OPTIMISTIC_GUARDIAN_ROLE` is managed on the shared `Guardian` via standard `AccessControlEnumerable`:
+The `OPTIMISTIC_GUARDIAN_ROLE` is managed on the shared `Guardian` via `AccessControlEnumerable` plus a dedicated manager-only grant helper:
 
-- Granted via `guardian.grantRole(OPTIMISTIC_GUARDIAN_ROLE, address)`
-- Revoked via `guardian.revokeRole(OPTIMISTIC_GUARDIAN_ROLE, address)`
+- Granted via `guardian.grantOptimisticGuardian(address)` (callable by `OPTIMISTIC_GUARDIAN_MANAGER_ROLE`)
+- Revoked via `guardian.revokeRole(OPTIMISTIC_GUARDIAN_ROLE, address)` (callable by `DEFAULT_ADMIN_ROLE`)
 - Checked via `guardian.hasRole(OPTIMISTIC_GUARDIAN_ROLE, address)`
 - Allows calling `guardian.cancel(...)` for optimistic proposals in any non-defeated state
 - Does NOT allow canceling ordinary standard proposals or pending confirmation proposals
@@ -275,13 +286,16 @@ Extended timelock supporting both flows.
 Shared guardian contract intended to be the sole external `CANCELLER_ROLE` holder across all timelocks.
 
 - Uses `DEFAULT_ADMIN_ROLE` for full guardian authority
+- Uses `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` to grant new optimistic guardian keys
 - Uses `OPTIMISTIC_GUARDIAN_ROLE` for optimistic-only guardian bot keys
+- `grantOptimisticGuardian(account)` -- Grant `OPTIMISTIC_GUARDIAN_ROLE` to `account` (`OPTIMISTIC_GUARDIAN_MANAGER_ROLE` only)
 - `cancel(governor, targets, values, calldatas, descriptionHash)` -- Forward a cancellation to a governor:
   - `DEFAULT_ADMIN_ROLE` may cancel any proposal that the timelock guardian can cancel
   - `OPTIMISTIC_GUARDIAN_ROLE` may only cancel optimistic proposals, and not once they are `Defeated`
 - `revokeOptimisticProposer(governor, account)` -- Revoke an optimistic proposer through the target governor's timelock (`DEFAULT_ADMIN_ROLE` only)
-- Role management is standard `AccessControlEnumerable`:
+- Role storage uses `AccessControlEnumerable`, with a dedicated grant helper for optimistic guardians:
   - `DEFAULT_ADMIN_ROLE` is self-admin
+  - `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` is administered by `DEFAULT_ADMIN_ROLE`
   - `OPTIMISTIC_GUARDIAN_ROLE` is administered by `DEFAULT_ADMIN_ROLE`
 
 ### ReserveOptimisticGovernorDeployer
@@ -299,7 +313,7 @@ Versioned factory for full system deployments.
 Governance-owned registry of tokens that may be used as `StakingVault` reward tokens. 
 
 - `registerRewardToken(rewardToken)` -- Register a reward token (owner only)
-- `unregisterRewardToken(rewardToken)` -- Unregister a reward token (owner or `EmergencyCouncil` via `RoleRegistry`)
+- `unregisterRewardToken(rewardToken)` -- Unregister a reward token (owner or emergency council via `RoleRegistry`)
 - `getAllRewardTokens()` -- Return all reward tokens, even those not registered with the registry anymore
 - `getAllRegisteredRewardTokens()` -- Return all reward tokens registered with the registry
 - `isRegistered(rewardToken)` -- Check whether a token is currently in the registry
@@ -309,7 +323,7 @@ Governance-owned registry of tokens that may be used as `StakingVault` reward to
 Governance-owned registry of release versions.
 
 - `registerVersion(deployer)` -- Register a new deployer version (owner only)
-- `deprecateVersion(versionHash)` -- Mark a version as deprecated (owner or `EmergencyCouncil` via `RoleRegistry`)
+- `deprecateVersion(versionHash)` -- Mark a version as deprecated (owner or emergency council via `RoleRegistry`)
 - `getLatestVersion()` -- Return the latest registered version metadata
 - `getImplementationsForVersion(versionHash)` -- Resolve the upgradeable implementation set for a version
 
@@ -469,7 +483,7 @@ Three contracts are UUPS upgradeable, but they do not share a central onchain up
 - `registerVersion(deployer)` can only be called by a `RoleRegistry` owner
 - `getLatestVersion()` returns the latest registered version metadata
 - `getImplementationsForVersion(versionHash)` resolves the staking vault, governor, and timelock implementations from the registered deployer
-- `deprecateVersion(versionHash)` can be called by a `RoleRegistry` owner or `EmergencyCouncil`
+- `deprecateVersion(versionHash)` can be called by a `RoleRegistry` owner or emergency council
 
 ### Upgrade Flows
 
