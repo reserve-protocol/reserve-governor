@@ -8,7 +8,7 @@ contract ReserveOptimisticGovernorDeployerV2Mock is ReserveOptimisticGovernorDep
     constructor(
         address _versionRegistry,
         address _rewardTokenRegistry,
-        address _guardian,
+        address _emergencyGuardian,
         address _stakingVaultImpl,
         address _governorImpl,
         address _timelockImpl,
@@ -17,7 +17,7 @@ contract ReserveOptimisticGovernorDeployerV2Mock is ReserveOptimisticGovernorDep
         ReserveOptimisticGovernorDeployer(
             _versionRegistry,
             _rewardTokenRegistry,
-            _guardian,
+            _emergencyGuardian,
             _stakingVaultImpl,
             _governorImpl,
             _timelockImpl,

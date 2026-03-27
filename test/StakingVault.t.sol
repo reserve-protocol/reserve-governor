@@ -17,7 +17,7 @@ import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegist
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { Guardian } from "@src/Guardian.sol";
+import { EmergencyGuardian } from "@src/EmergencyGuardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
@@ -65,13 +65,13 @@ contract StakingVaultTest is Test {
         address governorImpl = address(new ReserveOptimisticGovernor());
         address timelockImpl = address(new TimelockControllerOptimistic());
         address registryImpl = address(new OptimisticSelectorRegistry());
-        Guardian guardian = new Guardian(address(this), new address[](0));
+        EmergencyGuardian emergencyGuardian = new EmergencyGuardian(address(this), new address[](0));
 
         // Deploy Deployer
         ReserveOptimisticGovernorDeployer deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
             address(rewardTokenRegistry),
-            address(guardian),
+            address(emergencyGuardian),
             vaultImpl,
             governorImpl,
             timelockImpl,
@@ -155,7 +155,7 @@ contract StakingVaultTest is Test {
         deployer = new ReserveOptimisticGovernorDeployerV2Mock(
             address(versionRegistry),
             address(rewardTokenRegistry),
-            address(new Guardian(address(this), new address[](0))),
+            address(new EmergencyGuardian(address(this), new address[](0))),
             stakingVaultImplementation,
             address(new ReserveOptimisticGovernor()),
             address(new TimelockControllerOptimistic()),

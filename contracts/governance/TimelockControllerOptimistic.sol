@@ -64,7 +64,7 @@ contract TimelockControllerOptimistic is
         return super._revokeRole(role, account);
     }
 
-    /// @dev Guardian can revoke OPTIMISTIC_PROPOSER_ROLE
+    /// @dev EmergencyGuardian can revoke OPTIMISTIC_PROPOSER_ROLE
     function revokeOptimisticProposer(address account) external onlyRole(CANCELLER_ROLE) {
         _revokeRole(OPTIMISTIC_PROPOSER_ROLE, account);
     }

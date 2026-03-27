@@ -15,7 +15,7 @@ import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegi
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { Guardian } from "@src/Guardian.sol";
+import { EmergencyGuardian } from "@src/EmergencyGuardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
@@ -37,7 +37,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     MockERC20 public underlying;
     StakingVault public stakingVault;
     OptimisticSelectorRegistry public registry;
-    Guardian public guardianContract;
+    EmergencyGuardian public emergencyGuardian;
     ReserveOptimisticGovernorDeployer public deployer;
     ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
@@ -47,8 +47,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public carol = makeAddr("carol");
-    address public guardian = makeAddr("guardian");
-    address public optimisticGuardian = makeAddr("optimisticGuardian");
+    address public emergencyGuardianAdmin = makeAddr("emergencyGuardianAdmin");
+    address public optimisticEmergencyGuardian = makeAddr("optimisticEmergencyGuardian");
     address public optimisticProposer = makeAddr("optimisticProposer");
     address public optimisticProposer2 = makeAddr("optimisticProposer2");
 
@@ -90,15 +90,15 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         ReserveOptimisticGovernor governorImpl = new ReserveOptimisticGovernor();
         TimelockControllerOptimistic timelockImpl = new TimelockControllerOptimistic();
         OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
-        address[] memory optimisticGuardians = new address[](1);
-        optimisticGuardians[0] = optimisticGuardian;
+        address[] memory optimisticEmergencyGuardians = new address[](1);
+        optimisticEmergencyGuardians[0] = optimisticEmergencyGuardian;
 
-        guardianContract = new Guardian(guardian, optimisticGuardians);
+        emergencyGuardian = new EmergencyGuardian(emergencyGuardianAdmin, optimisticEmergencyGuardians);
 
         deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
             address(rewardTokenRegistry),
-            address(guardianContract),
+            address(emergencyGuardian),
             address(stakingVaultImpl),
             address(governorImpl),
             address(timelockImpl),
@@ -196,10 +196,14 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer));
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
-        assertTrue(timelock.hasRole(CANCELLER_ROLE, address(guardianContract)));
-        assertFalse(timelock.hasRole(CANCELLER_ROLE, guardian));
-        assertTrue(guardianContract.hasRole(guardianContract.DEFAULT_ADMIN_ROLE(), guardian));
-        assertTrue(guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_ROLE(), optimisticGuardian));
+        assertTrue(timelock.hasRole(CANCELLER_ROLE, address(emergencyGuardian)));
+        assertFalse(timelock.hasRole(CANCELLER_ROLE, emergencyGuardianAdmin));
+        assertTrue(emergencyGuardian.hasRole(emergencyGuardian.DEFAULT_ADMIN_ROLE(), emergencyGuardianAdmin));
+        assertTrue(
+            emergencyGuardian.hasRole(
+                emergencyGuardian.OPTIMISTIC_GUARDIAN_ROLE(), optimisticEmergencyGuardian
+            )
+        );
 
         assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
 
@@ -215,13 +219,14 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         }
     }
 
-    function test_guardian_roleAdminsConfigured() public view {
+    function test_emergencyGuardian_roleAdminsConfigured() public view {
         assertEq(
-            guardianContract.getRoleAdmin(guardianContract.DEFAULT_ADMIN_ROLE()), guardianContract.DEFAULT_ADMIN_ROLE()
+            emergencyGuardian.getRoleAdmin(emergencyGuardian.DEFAULT_ADMIN_ROLE()),
+            emergencyGuardian.DEFAULT_ADMIN_ROLE()
         );
         assertEq(
-            guardianContract.getRoleAdmin(guardianContract.OPTIMISTIC_GUARDIAN_ROLE()),
-            guardianContract.DEFAULT_ADMIN_ROLE()
+            emergencyGuardian.getRoleAdmin(emergencyGuardian.OPTIMISTIC_GUARDIAN_ROLE()),
+            emergencyGuardian.DEFAULT_ADMIN_ROLE()
         );
     }
 
@@ -387,7 +392,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(eoaTarget.balance, beforeBalance + 0.1 ether);
     }
 
-    function test_standardProposal_guardianCanCancel() public {
+    function test_standardProposal_emergencyGuardianCanCancel() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
         string memory description = "Cancel me";
@@ -395,8 +400,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(alice);
         uint256 proposalId = governor.propose(targets, values, calldatas, description);
 
-        vm.prank(guardian);
-        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
+        vm.prank(emergencyGuardianAdmin);
+        emergencyGuardian.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
 
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
@@ -415,7 +420,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
     }
 
-    function test_standardProposal_optimisticGuardianCannotCancelWhilePending() public {
+    function test_standardProposal_optimisticEmergencyGuardianCannotCancelWhilePending() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
         string memory description = "Optimistic guardian cannot cancel pending standard";
@@ -423,9 +428,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(alice);
         uint256 proposalId = governor.propose(targets, values, calldatas, description);
 
-        vm.prank(optimisticGuardian);
+        vm.prank(optimisticEmergencyGuardian);
         vm.expectRevert(
-            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticGuardian)
+            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticEmergencyGuardian)
         );
         governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
     }
@@ -695,20 +700,20 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
-    function test_optimisticProposal_guardianCanCancelDuringVeto() public {
+    function test_optimisticProposal_emergencyGuardianCanCancelDuringVeto() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-        string memory description = "Guardian-cancelable optimistic proposal";
+        string memory description = "EmergencyGuardian-cancelable optimistic proposal";
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
-        vm.prank(guardian);
-        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
+        vm.prank(emergencyGuardianAdmin);
+        emergencyGuardian.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
-    function test_optimisticProposal_optimisticGuardianCanCancelDuringVeto() public {
+    function test_optimisticProposal_optimisticEmergencyGuardianCanCancelDuringVeto() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
         string memory description = "Optimistic guardian-cancelable optimistic proposal";
@@ -716,8 +721,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
-        vm.prank(optimisticGuardian);
-        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
+        vm.prank(optimisticEmergencyGuardian);
+        emergencyGuardian.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
@@ -792,7 +797,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
     }
 
-    function test_optimisticProposal_optimisticGuardianCannotCancelWhenDefeated() public {
+    function test_optimisticProposal_optimisticEmergencyGuardianCannotCancelWhenDefeated() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
         string memory description = "Defeated optimistic proposal cannot be canceled by optimistic guardian";
@@ -806,9 +811,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
 
-        vm.prank(optimisticGuardian);
+        vm.prank(optimisticEmergencyGuardian);
         vm.expectRevert(
-            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticGuardian)
+            abi.encodeWithSelector(IGovernor.GovernorUnableToCancel.selector, proposalId, optimisticEmergencyGuardian)
         );
         governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
     }
@@ -1028,10 +1033,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
-    function test_confirmationVote_guardianCanCancel() public {
+    function test_confirmationVote_emergencyGuardianCanCancel() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-        string memory description = "Guardian cancels confirmation";
+        string memory description = "EmergencyGuardian cancels confirmation";
 
         vm.prank(optimisticProposer);
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
@@ -1042,15 +1047,15 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
 
-        vm.prank(guardian);
-        guardianContract.cancel(
+        vm.prank(emergencyGuardianAdmin);
+        emergencyGuardian.cancel(
             address(governor), targets, values, calldatas, keccak256(bytes(_confirmationDescription(description)))
         );
 
         assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
-    function test_confirmationVote_optimisticGuardianCannotCancelWhilePending() public {
+    function test_confirmationVote_optimisticEmergencyGuardianCannotCancelWhilePending() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
         string memory description = "Optimistic guardian cannot cancel confirmation";
@@ -1064,10 +1069,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
 
-        vm.prank(optimisticGuardian);
+        vm.prank(optimisticEmergencyGuardian);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IGovernor.GovernorUnableToCancel.selector, confirmationProposalId, optimisticGuardian
+                IGovernor.GovernorUnableToCancel.selector, confirmationProposalId, optimisticEmergencyGuardian
             )
         );
         governor.cancel(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
@@ -1364,11 +1369,11 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     // ===== Timelock / Role Management =====
 
-    function test_guardianCanRevokeOptimisticProposer() public {
+    function test_emergencyGuardianCanRevokeOptimisticProposer() public {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 
-        vm.prank(guardian);
-        guardianContract.revokeOptimisticProposer(address(governor), optimisticProposer2);
+        vm.prank(emergencyGuardianAdmin);
+        emergencyGuardian.revokeOptimisticProposer(address(governor), optimisticProposer2);
 
         assertFalse(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 
@@ -1384,14 +1389,14 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.proposeOptimistic(targets, values, calldatas, "revoked proposer cannot propose");
     }
 
-    function test_nonGuardianCannotRevokeOptimisticProposer() public {
+    function test_nonEmergencyGuardianCannotRevokeOptimisticProposer() public {
         vm.prank(alice);
         vm.expectRevert();
         timelock.revokeOptimisticProposer(optimisticProposer2);
     }
 
-    function test_optimisticGuardianCannotRevokeOptimisticProposer() public {
-        vm.prank(optimisticGuardian);
+    function test_optimisticEmergencyGuardianCannotRevokeOptimisticProposer() public {
+        vm.prank(optimisticEmergencyGuardian);
         vm.expectRevert();
         timelock.revokeOptimisticProposer(optimisticProposer2);
     }

@@ -7,7 +7,7 @@ import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegist
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
-import { Guardian } from "@src/Guardian.sol";
+import { EmergencyGuardian } from "@src/EmergencyGuardian.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 
 string constant junkSeedPhrase = "test test test test test test test test test test test junk";
@@ -43,11 +43,11 @@ contract DeployScript is Script {
         console2.log("Chain ID:", block.chainid);
         console2.log("Wallet Address:", walletAddress);
 
-        address guardian = _getGuardian();
+        address emergencyGuardian = _getEmergencyGuardian();
         address versionRegistry = _getVersionRegistry();
         address rewardTokenRegistry = _getRewardTokenRegistry();
 
-        console2.log("Guardian:", guardian);
+        console2.log("EmergencyGuardian:", emergencyGuardian);
         console2.log("ReserveOptimisticGovernorStakingVaultVersionRegistry:", versionRegistry);
         console2.log("RewardTokenRegistry:", rewardTokenRegistry);
         console2.log("");
@@ -65,7 +65,7 @@ contract DeployScript is Script {
             new ReserveOptimisticGovernorDeployer(
                 versionRegistry,
                 rewardTokenRegistry,
-                guardian,
+                emergencyGuardian,
                 stakingVaultImpl,
                 governorImpl,
                 timelockImpl,
@@ -83,7 +83,7 @@ contract DeployScript is Script {
         console2.log("----- DONE -----");
     }
 
-    function _getGuardian() internal view returns (address) {
+    function _getEmergencyGuardian() internal view returns (address) {
         if (block.chainid == 1 || block.chainid == 31337) {
             return 0x0000000000000000000000000000000000000000;
         }
