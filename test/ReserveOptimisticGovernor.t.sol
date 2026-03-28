@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
+import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -15,10 +16,11 @@ import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegi
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
+import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
-import { CANCELLER_ROLE, OPTIMISTIC_CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
 import { MockERC20 } from "@mocks/MockERC20.sol";
 import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
@@ -36,6 +38,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     MockERC20 public underlying;
     StakingVault public stakingVault;
     OptimisticSelectorRegistry public registry;
+    Guardian public guardianContract;
     ReserveOptimisticGovernorDeployer public deployer;
     ReserveOptimisticGovernor public governor;
     TimelockControllerOptimistic public timelock;
@@ -46,6 +49,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     address public bob = makeAddr("bob");
     address public carol = makeAddr("carol");
     address public guardian = makeAddr("guardian");
+    address public optimisticGuardianManager = makeAddr("optimisticGuardianManager");
     address public optimisticGuardian = makeAddr("optimisticGuardian");
     address public optimisticProposer = makeAddr("optimisticProposer");
     address public optimisticProposer2 = makeAddr("optimisticProposer2");
@@ -88,10 +92,15 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         ReserveOptimisticGovernor governorImpl = new ReserveOptimisticGovernor();
         TimelockControllerOptimistic timelockImpl = new TimelockControllerOptimistic();
         OptimisticSelectorRegistry registryImpl = new OptimisticSelectorRegistry();
+        address[] memory optimisticGuardians = new address[](1);
+        optimisticGuardians[0] = optimisticGuardian;
+
+        guardianContract = new Guardian(guardian, optimisticGuardianManager, optimisticGuardians);
 
         deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
             address(rewardTokenRegistry),
+            address(guardianContract),
             address(stakingVaultImpl),
             address(governorImpl),
             address(timelockImpl),
@@ -102,12 +111,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         address[] memory optimisticProposers = new address[](2);
         optimisticProposers[0] = optimisticProposer;
         optimisticProposers[1] = optimisticProposer2;
-
-        address[] memory guardians = new address[](1);
-        guardians[0] = guardian;
-
-        address[] memory optimisticGuardians = new address[](1);
-        optimisticGuardians[0] = optimisticGuardian;
 
         bytes4[] memory transferSelectors = new bytes4[](1);
         transferSelectors[0] = IERC20.transfer.selector;
@@ -130,8 +133,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                 }),
                 selectorData: selectorData,
                 optimisticProposers: optimisticProposers,
-                optimisticGuardians: optimisticGuardians,
-                guardians: guardians,
                 timelockDelay: TIMELOCK_DELAY,
                 proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
             });
@@ -197,8 +198,14 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer));
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
-        assertTrue(timelock.hasRole(CANCELLER_ROLE, guardian));
-        assertTrue(timelock.hasRole(OPTIMISTIC_CANCELLER_ROLE, optimisticGuardian));
+        assertTrue(timelock.hasRole(CANCELLER_ROLE, address(guardianContract)));
+        assertFalse(timelock.hasRole(CANCELLER_ROLE, guardian));
+        assertTrue(guardianContract.hasRole(guardianContract.DEFAULT_ADMIN_ROLE(), guardian));
+        assertTrue(guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE(), guardian));
+        assertTrue(
+            guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE(), optimisticGuardianManager)
+        );
+        assertTrue(guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_ROLE(), optimisticGuardian));
 
         assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
 
@@ -212,6 +219,78 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         } else {
             assertTrue(stakingVault.hasRole(stakingVault.DEFAULT_ADMIN_ROLE(), address(timelock)));
         }
+    }
+
+    function test_guardian_roleAdminsConfigured() public view {
+        assertEq(
+            guardianContract.getRoleAdmin(guardianContract.DEFAULT_ADMIN_ROLE()), guardianContract.DEFAULT_ADMIN_ROLE()
+        );
+        assertEq(
+            guardianContract.getRoleAdmin(guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE()),
+            guardianContract.DEFAULT_ADMIN_ROLE()
+        );
+        assertEq(
+            guardianContract.getRoleAdmin(guardianContract.OPTIMISTIC_GUARDIAN_ROLE()),
+            guardianContract.DEFAULT_ADMIN_ROLE()
+        );
+    }
+
+    function test_optimisticGuardianManagerCanGrantOptimisticGuardianRole() public {
+        address newOptimisticGuardian = makeAddr("newOptimisticGuardian");
+        bytes32 optimisticGuardianRole = guardianContract.OPTIMISTIC_GUARDIAN_ROLE();
+
+        assertFalse(guardianContract.hasRole(optimisticGuardianRole, newOptimisticGuardian));
+
+        vm.prank(optimisticGuardianManager);
+        guardianContract.grantOptimisticGuardian(newOptimisticGuardian);
+
+        assertTrue(guardianContract.hasRole(optimisticGuardianRole, newOptimisticGuardian));
+    }
+
+    function test_nonManagerCannotGrantOptimisticGuardianRole() public {
+        address newOptimisticGuardian = makeAddr("newOptimisticGuardian");
+        bytes32 optimisticGuardianManagerRole = guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE();
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, alice, optimisticGuardianManagerRole
+            )
+        );
+        guardianContract.grantOptimisticGuardian(newOptimisticGuardian);
+    }
+
+    function test_optimisticGuardianManagerCannotRevokeOptimisticGuardianRole() public {
+        bytes32 optimisticGuardianRole = guardianContract.OPTIMISTIC_GUARDIAN_ROLE();
+        bytes32 defaultAdminRole = guardianContract.DEFAULT_ADMIN_ROLE();
+
+        assertTrue(guardianContract.hasRole(optimisticGuardianRole, optimisticGuardian));
+
+        vm.prank(optimisticGuardianManager);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, optimisticGuardianManager, defaultAdminRole
+            )
+        );
+        guardianContract.revokeRole(optimisticGuardianRole, optimisticGuardian);
+
+        assertTrue(guardianContract.hasRole(optimisticGuardianRole, optimisticGuardian));
+    }
+
+    function test_optimisticGuardianManagerCannotCancelOptimisticProposal() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Manager cannot cancel optimistic proposal";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        uint256 proposalStateBeforeCancelAttempt = uint256(governor.state(proposalId));
+
+        vm.prank(optimisticGuardianManager);
+        vm.expectRevert(abi.encodeWithSelector(Guardian.Guardian__UnauthorizedCaller.selector));
+        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
+
+        assertEq(uint256(governor.state(proposalId)), proposalStateBeforeCancelAttempt);
     }
 
     function test_vetoThreshold_isZeroForNonexistentProposal() public view {
@@ -413,7 +492,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.propose(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
 
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
@@ -750,7 +829,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
@@ -763,7 +842,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
 
         vm.prank(optimisticGuardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(description)));
+        guardianContract.cancel(address(governor), targets, values, calldatas, keccak256(bytes(description)));
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
 
@@ -1089,7 +1168,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
 
         vm.prank(guardian);
-        governor.cancel(targets, values, calldatas, keccak256(bytes(_confirmationDescription(description))));
+        guardianContract.cancel(
+            address(governor), targets, values, calldatas, keccak256(bytes(_confirmationDescription(description)))
+        );
 
         assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Canceled));
     }
@@ -1412,7 +1493,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 
         vm.prank(guardian);
-        timelock.revokeOptimisticProposer(optimisticProposer2);
+        guardianContract.revokeOptimisticProposer(address(governor), optimisticProposer2);
 
         assertFalse(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
 

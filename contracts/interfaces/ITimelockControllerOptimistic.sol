@@ -17,4 +17,6 @@ interface ITimelockControllerOptimistic {
         bytes32 predecessor,
         bytes32 salt
     ) external payable;
+
+    function revokeOptimisticProposer(address account) external;
 }

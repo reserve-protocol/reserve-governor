@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {DeployHelper} from "./utils/DeployHelper.sol";
+import { DeployHelper } from "./utils/DeployHelper.sol";
 
 library ReserveOptimisticGovernorDeployerDeployer {
     /**
@@ -14,9 +14,25 @@ library ReserveOptimisticGovernorDeployerDeployer {
      * - evm_version: cancun
      * - bytecodeHash: none
      */
-
-    function deploy(address _versionRegistry, address _rewardTokenRegistry, address _stakingVaultImpl, address _governorImpl, address _timelockImpl, address _selectorRegistryImpl, bytes32 salt) internal returns (address deployed) {
-        bytes memory args = abi.encode(_versionRegistry, _rewardTokenRegistry, _stakingVaultImpl, _governorImpl, _timelockImpl, _selectorRegistryImpl);
+    function deploy(
+        address _versionRegistry,
+        address _rewardTokenRegistry,
+        address _guardian,
+        address _stakingVaultImpl,
+        address _governorImpl,
+        address _timelockImpl,
+        address _selectorRegistryImpl,
+        bytes32 salt
+    ) internal returns (address deployed) {
+        bytes memory args = abi.encode(
+            _versionRegistry,
+            _rewardTokenRegistry,
+            _guardian,
+            _stakingVaultImpl,
+            _governorImpl,
+            _timelockImpl,
+            _selectorRegistryImpl
+        );
         bytes memory initcode_ = abi.encodePacked(initcode(), args);
         deployed = DeployHelper.deploy(initcode_, salt);
     }

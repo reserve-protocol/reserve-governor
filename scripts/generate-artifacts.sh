@@ -17,6 +17,7 @@ CONTRACTS=(
     "ReserveOptimisticGovernorDeployer"
     "ReserveOptimisticGovernanceVersionRegistry"
     "RewardTokenRegistry"
+    "Guardian"
 )
 
 cd "$ROOT_DIR"

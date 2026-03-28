@@ -23,8 +23,6 @@ interface IReserveOptimisticGovernorDeployer {
         IReserveOptimisticGovernor.StandardGovernanceParams standardParams;
         IOptimisticSelectorRegistry.SelectorData[] selectorData;
         address[] optimisticProposers;
-        address[] optimisticGuardians;
-        address[] guardians;
         uint256 timelockDelay; // {s}
         uint256 proposalThrottleCapacity; // optimistic proposals-per-account per 24h
     }
@@ -53,6 +51,8 @@ interface IReserveOptimisticGovernorDeployer {
     function versionRegistry() external view returns (address);
 
     function rewardTokenRegistry() external view returns (address);
+
+    function guardian() external view returns (address);
 
     function stakingVaultImpl() external view returns (address);
 

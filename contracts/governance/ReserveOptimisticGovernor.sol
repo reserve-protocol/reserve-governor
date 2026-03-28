@@ -42,7 +42,6 @@ import {
     MAX_VOTE_EXTENSION,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_CANCELLER_ROLE,
     OPTIMISTIC_PROPOSER_ROLE
 } from "@utils/Constants.sol";
 import { Versioned } from "@utils/Versioned.sol";
@@ -185,6 +184,15 @@ contract ReserveOptimisticGovernor is
         );
     }
 
+    function cancel(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) public override(GovernorUpgradeable, IReserveOptimisticGovernor) returns (uint256 proposalId) {
+        return super.cancel(targets, values, calldatas, descriptionHash);
+    }
+
     // === View Overrides ===
 
     function quorum(uint256 timepoint)
@@ -295,6 +303,15 @@ contract ReserveOptimisticGovernor is
         return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
     }
 
+    function timelock()
+        public
+        view
+        override(GovernorTimelockControlUpgradeable, IReserveOptimisticGovernor)
+        returns (address)
+    {
+        return super.timelock();
+    }
+
     // === Internal Overrides ===
 
     function _queueOperations(
@@ -345,14 +362,13 @@ contract ReserveOptimisticGovernor is
             return true;
         }
 
-        ProposalState s = state(proposalId);
-
-        if (_isOptimistic(proposalId)) {
-            return (caller == proposalProposer(proposalId) || t.hasRole(OPTIMISTIC_CANCELLER_ROLE, caller))
-                && s != ProposalState.Defeated;
+        if (caller != proposalProposer(proposalId)) {
+            return false;
         }
 
-        return caller == proposalProposer(proposalId) && s == ProposalState.Pending;
+        ProposalState s = state(proposalId);
+
+        return _isOptimistic(proposalId) ? s != ProposalState.Defeated : s == ProposalState.Pending;
     }
 
     function _countVote(uint256 proposalId, address account, uint8 support, uint256 totalWeight, bytes memory params)
