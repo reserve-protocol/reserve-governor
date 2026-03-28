@@ -121,6 +121,10 @@ contract ReserveOptimisticGovernor is
         _setOptimisticParams(params);
     }
 
+    function proposalThrottleCapacity() external view returns (uint256) {
+        return proposalThrottle.capacity;
+    }
+
     function proposalThrottleCharges(address account) external view returns (uint256) {
         return ThrottleLib.getProposalsAvailable(proposalThrottle, account);
     }
