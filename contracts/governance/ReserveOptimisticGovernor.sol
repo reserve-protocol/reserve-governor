@@ -244,7 +244,10 @@ contract ReserveOptimisticGovernor is
             }
 
             // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (_vetoThreshold * token().getPastTotalSupply(snapshot)) / 1e18;
+            // Use ceiling division so a nonzero _vetoThreshold always produces
+            // a nonzero token threshold (minimum 1 wei).
+            uint256 product = _vetoThreshold * token().getPastTotalSupply(snapshot);
+            uint256 vetoThresholdTok = (product + 1e18 - 1) / 1e18;
 
             if (vetoThresholdTok == 0) {
                 return ProposalState.Canceled;
