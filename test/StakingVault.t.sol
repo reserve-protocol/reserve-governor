@@ -551,6 +551,28 @@ contract StakingVaultTest is Test {
         assertEq(vault.balanceOf(address(this)), 1000e18); // has full balance
     }
 
+    function test_depositAndDelegate_withDistinctDelegatees() public {
+        token.mint(address(this), 500e18);
+        token.approve(address(vault), 500e18);
+
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626.Deposit(address(this), address(this), 500e18, 500e18);
+        vm.expectEmit(true, true, true, true);
+        emit IVotes.DelegateChanged(address(this), address(0), ACTOR_ALICE);
+        vm.expectEmit(true, true, true, true);
+        emit StakingVault.OptimisticDelegateChanged(address(this), address(0), ACTOR_BOB);
+        vault.depositAndDelegate(500e18, ACTOR_ALICE, ACTOR_BOB);
+
+        assertEq(vault.balanceOf(address(this)), 500e18);
+        assertEq(vault.delegates(address(this)), ACTOR_ALICE);
+        assertEq(vault.optimisticDelegates(address(this)), ACTOR_BOB);
+
+        assertEq(vault.getVotes(address(this)), 0);
+        assertEq(vault.getVotes(ACTOR_ALICE), 500e18);
+        assertEq(vault.getOptimisticVotes(address(this)), 0);
+        assertEq(vault.getOptimisticVotes(ACTOR_BOB), 500e18);
+    }
+
     function test_standardAndOptimisticDelegationWeightsCanDiverge() public {
         token.mint(address(this), 1000e18);
         token.approve(address(vault), 1000e18);

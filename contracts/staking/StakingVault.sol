@@ -181,10 +181,14 @@ contract StakingVault is
      * Deposit & Delegate
      */
     function depositAndDelegate(uint256 assets) external returns (uint256 shares) {
-        shares = deposit(assets, msg.sender);
+        shares = _depositAndDelegate(assets, msg.sender, msg.sender);
+    }
 
-        _delegate(msg.sender, msg.sender);
-        _delegateOptimistic(msg.sender, msg.sender);
+    function depositAndDelegate(uint256 assets, address delegatee, address optimisticDelegatee)
+        external
+        returns (uint256 shares)
+    {
+        shares = _depositAndDelegate(assets, delegatee, optimisticDelegatee);
     }
 
     function delegateOptimistic(address delegatee) external {
@@ -238,6 +242,16 @@ contract StakingVault is
         nativeBalanceLastKnown += assets;
 
         super._deposit(caller, receiver, assets, shares);
+    }
+
+    function _depositAndDelegate(uint256 assets, address delegatee, address optimisticDelegatee)
+        internal
+        returns (uint256 shares)
+    {
+        shares = deposit(assets, msg.sender);
+
+        _delegate(msg.sender, delegatee);
+        _delegateOptimistic(msg.sender, optimisticDelegatee);
     }
 
     /**

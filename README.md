@@ -1,4 +1,5 @@
 
+
 A hybrid optimistic/pessimistic governance system for the Reserve protocol.
 
 ## Overview
@@ -74,7 +75,7 @@ The allowlist is universal: selector permissions do not depend on which optimist
 This means a holder can route standard governance and optimistic veto authority to different delegatees:
 
 - `deposit()` mints shares without assigning either delegation stream
-- `depositAndDelegate()` mints shares and self-delegates both streams
+- `depositAndDelegate()` mints shares and delegates both streams
 - `delegate()` and `delegateOptimistic()` can point at different addresses
 - Share transfers move both standard and optimistic voting weight according to each account's current delegatees
 - `delegateOptimisticBySig()` provides signature-based optimistic delegation
