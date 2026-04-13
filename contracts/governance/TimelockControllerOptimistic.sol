@@ -65,6 +65,7 @@ contract TimelockControllerOptimistic is
     }
 
     /// @dev Guardian can revoke OPTIMISTIC_PROPOSER_ROLE
+    ///      Any malicious proposals should be cancelled if their execution needs to also be prevented
     function revokeOptimisticProposer(address account) external onlyRole(CANCELLER_ROLE) {
         _revokeRole(OPTIMISTIC_PROPOSER_ROLE, account);
     }

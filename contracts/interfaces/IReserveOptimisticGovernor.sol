@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 interface IReserveOptimisticGovernor {
     // === Errors ===
 
-    error OptimisticGovernor__InvalidToken();
     error OptimisticGovernor__InvalidProposalThreshold();
     error OptimisticGovernor__InvalidProposalThrottle();
     error OptimisticGovernor__InvalidOptimisticParameters();
@@ -55,6 +54,8 @@ interface IReserveOptimisticGovernor {
         address _timelock,
         address _selectorRegistry
     ) external;
+
+    function getOptimisticVotes(address account, uint256 timepoint) external view returns (uint256);
 
     function isOptimistic(uint256 proposalId) external view returns (bool);
 

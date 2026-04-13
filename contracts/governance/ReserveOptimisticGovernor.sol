@@ -28,6 +28,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
@@ -95,11 +96,6 @@ contract ReserveOptimisticGovernor is
         address _timelockController,
         address _selectorRegistry
     ) public initializer {
-        require(
-            keccak256(bytes(IERC5805(_token).CLOCK_MODE())) == keccak256("mode=timestamp"),
-            OptimisticGovernor__InvalidToken()
-        );
-
         __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
             standardGovParams.votingDelay, standardGovParams.votingPeriod, standardGovParams.proposalThreshold
@@ -210,6 +206,10 @@ contract ReserveOptimisticGovernor is
         returns (uint256)
     {
         return Math.max(1, super.quorum(timepoint));
+    }
+
+    function getOptimisticVotes(address account, uint256 timepoint) public view returns (uint256) {
+        return _getOptimisticVotes(account, timepoint);
     }
 
     /// @dev Call proposalType() to determine whether to call `state()` or `optimisticProposal.state()`
@@ -388,6 +388,30 @@ contract ReserveOptimisticGovernor is
         return super._countVote(proposalId, account, support, totalWeight, params);
     }
 
+    /// @dev Ignores `params` for optimistic proposals
+    function _castVote(uint256 proposalId, address account, uint8 support, string memory reason, bytes memory params)
+        internal
+        override
+        returns (uint256)
+    {
+        _validateStateBitmap(proposalId, _encodeStateBitmap(ProposalState.Active));
+
+        uint256 snapshot = proposalSnapshot(proposalId);
+        uint256 totalWeight =
+            _isOptimistic(proposalId) ? _getOptimisticVotes(account, snapshot) : _getVotes(account, snapshot, params);
+        uint256 votedWeight = _countVote(proposalId, account, support, totalWeight, params);
+
+        if (params.length == 0) {
+            emit VoteCast(account, proposalId, support, votedWeight, reason);
+        } else {
+            emit VoteCastWithParams(account, proposalId, support, votedWeight, reason, params);
+        }
+
+        _tallyUpdated(proposalId);
+
+        return votedWeight;
+    }
+
     function _tallyUpdated(uint256 proposalId)
         internal
         override(GovernorUpgradeable, GovernorPreventLateQuorumUpgradeable)
@@ -467,6 +491,10 @@ contract ReserveOptimisticGovernor is
 
     function _isOptimistic(uint256 proposalId) private view returns (bool) {
         return vetoThreshold(proposalId) != 0;
+    }
+
+    function _getOptimisticVotes(address account, uint256 timepoint) private view returns (uint256) {
+        return IOptimisticVotes(address(token())).getPastOptimisticVotes(account, timepoint);
     }
 
     function _proposalCore(uint256 proposalId) private view returns (ProposalCore storage) {

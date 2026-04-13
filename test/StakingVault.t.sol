@@ -186,9 +186,8 @@ contract StakingVaultTest is Test {
         assertEq(reward.balanceOf(ACTOR_ALICE), 0);
         assertEq(reward.balanceOf(ACTOR_BOB), 0);
 
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 1);
-        assertEq(_rewardTokens[0], address(reward));
+        (uint256 payoutLastPaid,,,,) = vault.rewardTrackers(address(reward));
+        assertGt(payoutLastPaid, 0);
     }
 
     // @todo Remove this later
@@ -416,10 +415,8 @@ contract StakingVaultTest is Test {
         vm.prank(address(timelock));
         vault.addRewardToken(address(newReward));
 
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 2);
-        assertEq(_rewardTokens[0], address(reward));
-        assertEq(_rewardTokens[1], address(newReward));
+        (uint256 payoutLastPaid,,,,) = vault.rewardTrackers(address(newReward));
+        assertGt(payoutLastPaid, 0);
     }
 
     function test_cannotAddRewardTokenIfNotOwner() public {
@@ -450,8 +447,7 @@ contract StakingVaultTest is Test {
         // Remove reward token
         vm.prank(address(timelock));
         vault.removeRewardToken(address(reward));
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 0);
+        assertTrue(vault.disallowedRewardTokens(address(reward)));
 
         // Cannot re-add token
         vm.prank(address(timelock));
@@ -470,8 +466,26 @@ contract StakingVaultTest is Test {
         emit StakingVault.RewardTokenRemoved(address(reward));
         vm.prank(address(timelock));
         vault.removeRewardToken(address(reward));
-        address[] memory _rewardTokens = vault.getAllRewardTokens();
-        assertEq(_rewardTokens.length, 0);
+        assertTrue(vault.disallowedRewardTokens(address(reward)));
+    }
+
+    function test_getAllRewardTokens_keepsUnregisteredTokens() public {
+        MockERC20 newReward = new MockERC20("New Reward Token", "NREWARD");
+        _registerRewardToken(address(newReward));
+        vm.prank(address(timelock));
+        vault.addRewardToken(address(newReward));
+
+        address[] memory allRewardTokens = vault.getAllRewardTokens();
+        assertEq(allRewardTokens.length, 2);
+        assertEq(allRewardTokens[0], address(reward));
+        assertEq(allRewardTokens[1], address(newReward));
+
+        rewardTokenRegistry.unregisterRewardToken(address(reward));
+
+        allRewardTokens = vault.getAllRewardTokens();
+        assertEq(allRewardTokens.length, 2);
+        assertEq(allRewardTokens[0], address(reward));
+        assertEq(allRewardTokens[1], address(newReward));
     }
 
     function test_cannotRemoveRewardTokenIfNotOwner() public {
@@ -535,6 +549,93 @@ contract StakingVaultTest is Test {
 
         assertEq(vault.delegates(address(this)), address(this)); // delegated
         assertEq(vault.balanceOf(address(this)), 1000e18); // has full balance
+    }
+
+    function test_depositAndDelegate_withDistinctDelegatees() public {
+        token.mint(address(this), 500e18);
+        token.approve(address(vault), 500e18);
+
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626.Deposit(address(this), address(this), 500e18, 500e18);
+        vm.expectEmit(true, true, true, true);
+        emit IVotes.DelegateChanged(address(this), address(0), ACTOR_ALICE);
+        vm.expectEmit(true, true, true, true);
+        emit StakingVault.OptimisticDelegateChanged(address(this), address(0), ACTOR_BOB);
+        vault.depositAndDelegate(500e18, ACTOR_ALICE, ACTOR_BOB);
+
+        assertEq(vault.balanceOf(address(this)), 500e18);
+        assertEq(vault.delegates(address(this)), ACTOR_ALICE);
+        assertEq(vault.optimisticDelegates(address(this)), ACTOR_BOB);
+
+        assertEq(vault.getVotes(address(this)), 0);
+        assertEq(vault.getVotes(ACTOR_ALICE), 500e18);
+        assertEq(vault.getOptimisticVotes(address(this)), 0);
+        assertEq(vault.getOptimisticVotes(ACTOR_BOB), 500e18);
+    }
+
+    function test_standardAndOptimisticDelegationWeightsCanDiverge() public {
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+        vault.depositAndDelegate(1000e18);
+
+        vault.delegate(ACTOR_ALICE);
+        vault.delegateOptimistic(ACTOR_BOB);
+
+        assertEq(vault.delegates(address(this)), ACTOR_ALICE);
+        assertEq(vault.optimisticDelegates(address(this)), ACTOR_BOB);
+
+        assertEq(vault.getVotes(ACTOR_ALICE), 1000e18);
+        assertEq(vault.getVotes(ACTOR_BOB), 0);
+        assertEq(vault.getOptimisticVotes(ACTOR_ALICE), 0);
+        assertEq(vault.getOptimisticVotes(ACTOR_BOB), 1000e18);
+
+        uint256 snapshot = block.timestamp;
+        vm.warp(snapshot + 1);
+
+        assertEq(vault.getPastVotes(ACTOR_ALICE, snapshot), 1000e18);
+        assertEq(vault.getPastVotes(ACTOR_BOB, snapshot), 0);
+        assertEq(vault.getPastOptimisticVotes(ACTOR_ALICE, snapshot), 0);
+        assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, snapshot), 1000e18);
+    }
+
+    function test_transferMovesStandardAndOptimisticDelegateWeights() public {
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+        vault.depositAndDelegate(1000e18);
+
+        vault.delegate(ACTOR_ALICE);
+        vault.delegateOptimistic(ACTOR_BOB);
+
+        vm.startPrank(ACTOR_ALICE);
+        vault.delegate(ACTOR_BOB);
+        vault.delegateOptimistic(address(this));
+        vm.stopPrank();
+
+        uint256 preTransferSnapshot = block.timestamp;
+        vm.warp(preTransferSnapshot + 1);
+
+        vault.transfer(ACTOR_ALICE, 400e18);
+
+        assertEq(vault.balanceOf(address(this)), 600e18);
+        assertEq(vault.balanceOf(ACTOR_ALICE), 400e18);
+
+        assertEq(vault.getVotes(ACTOR_ALICE), 600e18);
+        assertEq(vault.getVotes(ACTOR_BOB), 400e18);
+        assertEq(vault.getOptimisticVotes(ACTOR_BOB), 600e18);
+        assertEq(vault.getOptimisticVotes(address(this)), 400e18);
+
+        uint256 postTransferSnapshot = block.timestamp;
+        vm.warp(postTransferSnapshot + 1);
+
+        assertEq(vault.getPastVotes(ACTOR_ALICE, preTransferSnapshot), 1000e18);
+        assertEq(vault.getPastVotes(ACTOR_BOB, preTransferSnapshot), 0);
+        assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, preTransferSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticVotes(address(this), preTransferSnapshot), 0);
+
+        assertEq(vault.getPastVotes(ACTOR_ALICE, postTransferSnapshot), 600e18);
+        assertEq(vault.getPastVotes(ACTOR_BOB, postTransferSnapshot), 400e18);
+        assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, postTransferSnapshot), 600e18);
+        assertEq(vault.getPastOptimisticVotes(address(this), postTransferSnapshot), 400e18);
     }
 
     function test_unstake_noDelay() public {
