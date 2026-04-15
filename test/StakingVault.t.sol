@@ -8,6 +8,7 @@ import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.so
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { IERC20, IERC4626 } from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
@@ -636,6 +637,41 @@ contract StakingVaultTest is Test {
         assertEq(vault.getPastVotes(ACTOR_BOB, postTransferSnapshot), 400e18);
         assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, postTransferSnapshot), 600e18);
         assertEq(vault.getPastOptimisticVotes(address(this), postTransferSnapshot), 400e18);
+    }
+
+    function test_optimisticCheckpointAccessors() public {
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+        vault.depositAndDelegate(1000e18);
+
+        uint48 initialTimepoint = uint48(block.timestamp);
+        assertEq(vault.numOptimisticCheckpoints(address(this)), 1);
+
+        Checkpoints.Checkpoint208 memory initialCheckpoint = vault.optimisticCheckpoints(address(this), 0);
+        assertEq(initialCheckpoint._key, initialTimepoint);
+        assertEq(initialCheckpoint._value, 1000e18);
+
+        vm.warp(initialTimepoint + 1);
+        vault.delegateOptimistic(ACTOR_BOB);
+
+        assertEq(vault.numOptimisticCheckpoints(address(this)), 2);
+        assertEq(vault.numOptimisticCheckpoints(ACTOR_BOB), 1);
+
+        Checkpoints.Checkpoint208 memory selfCheckpoint = vault.optimisticCheckpoints(address(this), 1);
+        Checkpoints.Checkpoint208 memory bobCheckpoint = vault.optimisticCheckpoints(ACTOR_BOB, 0);
+        assertEq(selfCheckpoint._key, block.timestamp);
+        assertEq(selfCheckpoint._value, 0);
+        assertEq(bobCheckpoint._key, block.timestamp);
+        assertEq(bobCheckpoint._value, 1000e18);
+
+        vm.warp(block.timestamp + 1);
+        vault.transfer(ACTOR_ALICE, 400e18);
+
+        assertEq(vault.numOptimisticCheckpoints(ACTOR_BOB), 2);
+
+        Checkpoints.Checkpoint208 memory bobUpdatedCheckpoint = vault.optimisticCheckpoints(ACTOR_BOB, 1);
+        assertEq(bobUpdatedCheckpoint._key, block.timestamp);
+        assertEq(bobUpdatedCheckpoint._value, 600e18);
     }
 
     function test_unstake_noDelay() public {

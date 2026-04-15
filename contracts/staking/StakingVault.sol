@@ -166,7 +166,6 @@ contract StakingVault is
         IReserveOptimisticGovernorDeployer deployer = IReserveOptimisticGovernorDeployer(msg.sender);
 
         address _rewardTokenRegistry = deployer.rewardTokenRegistry();
-        IRewardTokenRegistry(_rewardTokenRegistry).isRegistered(address(1));
         emit RewardTokenRegistrySet(_rewardTokenRegistry);
         rewardTokenRegistry = IRewardTokenRegistry(_rewardTokenRegistry);
 
@@ -183,14 +182,17 @@ contract StakingVault is
      * Deposit & Delegate
      */
     function depositAndDelegate(uint256 assets) external returns (uint256 shares) {
-        shares = _depositAndDelegate(assets, msg.sender, msg.sender);
+        shares = depositAndDelegate(assets, msg.sender, msg.sender);
     }
 
     function depositAndDelegate(uint256 assets, address delegatee, address optimisticDelegatee)
-        external
+        public
         returns (uint256 shares)
     {
-        shares = _depositAndDelegate(assets, delegatee, optimisticDelegatee);
+        shares = deposit(assets, msg.sender);
+
+        _delegate(msg.sender, delegatee);
+        _delegateOptimistic(msg.sender, optimisticDelegatee);
     }
 
     function delegateOptimistic(address delegatee) external {
@@ -219,6 +221,18 @@ contract StakingVault is
         return optimisticDelegateCheckpoints[account].latest();
     }
 
+    function numOptimisticCheckpoints(address account) external view returns (uint32) {
+        return SafeCast.toUint32(optimisticDelegateCheckpoints[account].length());
+    }
+
+    function optimisticCheckpoints(address account, uint32 pos)
+        external
+        view
+        returns (Checkpoints.Checkpoint208 memory)
+    {
+        return optimisticDelegateCheckpoints[account].at(pos);
+    }
+
     function getPastOptimisticVotes(address account, uint256 timepoint) external view returns (uint256) {
         return optimisticDelegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
     }
@@ -244,16 +258,6 @@ contract StakingVault is
         nativeBalanceLastKnown += assets;
 
         super._deposit(caller, receiver, assets, shares);
-    }
-
-    function _depositAndDelegate(uint256 assets, address delegatee, address optimisticDelegatee)
-        internal
-        returns (uint256 shares)
-    {
-        shares = deposit(assets, msg.sender);
-
-        _delegate(msg.sender, delegatee);
-        _delegateOptimistic(msg.sender, optimisticDelegatee);
     }
 
     /**
@@ -498,7 +502,7 @@ contract StakingVault is
         accrueRewards(from, to)
     {
         super._update(from, to, value);
-        _transferOptimisticVotingUnits(from, to, value);
+        _moveOptimisticDelegateVotes(optimisticDelegatees[from], optimisticDelegatees[to], value);
     }
 
     function nonces(address _owner) public view override(ERC20PermitUpgradeable, NoncesUpgradeable) returns (uint256) {
@@ -542,10 +546,6 @@ contract StakingVault is
 
         emit OptimisticDelegateChanged(account, oldDelegate, delegatee);
         _moveOptimisticDelegateVotes(oldDelegate, delegatee, balanceOf(account));
-    }
-
-    function _transferOptimisticVotingUnits(address from, address to, uint256 amount) internal {
-        _moveOptimisticDelegateVotes(optimisticDelegatees[from], optimisticDelegatees[to], amount);
     }
 
     function _moveOptimisticDelegateVotes(address from, address to, uint256 amount) internal {
