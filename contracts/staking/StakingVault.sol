@@ -28,6 +28,7 @@ import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/Non
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
+import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IRewardTokenRegistry } from "@interfaces/IRewardTokenRegistry.sol";
 
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
@@ -66,7 +67,8 @@ contract StakingVault is
     ERC20VotesUpgradeable,
     AccessControlEnumerableUpgradeable,
     Versioned,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    IOptimisticVotes
 {
     using EnumerableSet for EnumerableSet.AddressSet;
     using Checkpoints for Checkpoints.Trace208;
