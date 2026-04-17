@@ -99,6 +99,7 @@ contract StakingVaultTest is Test {
                 }),
                 selectorData: new IOptimisticSelectorRegistry.SelectorData[](0),
                 optimisticProposers: new address[](0),
+                additionalGuardians: new address[](0),
                 timelockDelay: 2 days,
                 proposalThrottleCapacity: 10
             });
