@@ -49,6 +49,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     address public bob = makeAddr("bob");
     address public carol = makeAddr("carol");
     address public guardian = makeAddr("guardian");
+    address public additionalGuardian = makeAddr("additionalGuardian");
     address public optimisticGuardianManager = makeAddr("optimisticGuardianManager");
     address public optimisticGuardian = makeAddr("optimisticGuardian");
     address public optimisticProposer = makeAddr("optimisticProposer");
@@ -133,6 +134,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                 }),
                 selectorData: selectorData,
                 optimisticProposers: optimisticProposers,
+                additionalGuardians: _additionalGuardians(),
                 timelockDelay: TIMELOCK_DELAY,
                 proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
             });
@@ -199,6 +201,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer));
         assertTrue(timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, optimisticProposer2));
         assertTrue(timelock.hasRole(CANCELLER_ROLE, address(guardianContract)));
+        assertTrue(timelock.hasRole(CANCELLER_ROLE, additionalGuardian));
         assertFalse(timelock.hasRole(CANCELLER_ROLE, guardian));
         assertTrue(guardianContract.hasRole(guardianContract.DEFAULT_ADMIN_ROLE(), guardian));
         assertTrue(guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_MANAGER_ROLE(), guardian));
@@ -219,6 +222,11 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         } else {
             assertTrue(stakingVault.hasRole(stakingVault.DEFAULT_ADMIN_ROLE(), address(timelock)));
         }
+    }
+
+    function _additionalGuardians() internal view returns (address[] memory guardians) {
+        guardians = new address[](1);
+        guardians[0] = additionalGuardian;
     }
 
     function test_guardian_roleAdminsConfigured() public view {

@@ -73,6 +73,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.standardParams.quorumNumerator D18{1} Stake fraction required for quorum.
     /// @param baseParams.selectorData Initial selector registry entries.
     /// @param baseParams.optimisticProposers Addresses granted optimistic proposer role.
+    /// @param baseParams.additionalGuardians Additional addresses granted guardian role.
     /// @param baseParams.timelockDelay {s} Timelock execution delay.
     /// @param baseParams.proposalThrottleCapacity Optimistic proposal throttle capacity.
     /// @param newStakingVaultParams.underlying Underlying token for the newly deployed vault.
@@ -131,6 +132,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.standardParams.quorumNumerator D18{1} Stake fraction required for quorum.
     /// @param baseParams.selectorData Initial selector registry entries.
     /// @param baseParams.optimisticProposers Addresses granted optimistic proposer role.
+    /// @param baseParams.additionalGuardians Additional addresses granted guardian role.
     /// @param baseParams.timelockDelay {s} Timelock execution delay.
     /// @param baseParams.proposalThrottleCapacity Optimistic proposals-per-account per 24h
     /// @param existingStakingVault Address of a pre-deployed StakingVault to use as governance token.
@@ -208,8 +210,13 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Grant Governor the CANCELLER_ROLE
         _timelock.grantRole(CANCELLER_ROLE, governor);
 
-        // Grant the shared Guardian the sole external CANCELLER_ROLE
+        // Grant the shared Guardian CANCELLER_ROLE
         _timelock.grantRole(CANCELLER_ROLE, guardian);
+
+        // Grant additional guardians the CANCELLER_ROLE
+        for (uint256 i = 0; i < baseParams.additionalGuardians.length; ++i) {
+            _timelock.grantRole(CANCELLER_ROLE, baseParams.additionalGuardians[i]);
+        }
 
         // Grant OPTIMISTIC_PROPOSER_ROLE to all optimistic proposers
         for (uint256 i = 0; i < baseParams.optimisticProposers.length; ++i) {
