@@ -451,11 +451,13 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | Parameter                  | Constraint                               | Constant                                            |
 | -------------------------- | ---------------------------------------- | --------------------------------------------------- |
 | `vetoDelay`                | >= 1 second and < `MAX_OPTIMISTIC_DELAY` | `MIN_OPTIMISTIC_VETO_DELAY`, `MAX_OPTIMISTIC_DELAY` |
-| `vetoPeriod`               | >= 15 minutes                            | `MIN_OPTIMISTIC_VETO_PERIOD`                        |
+| `vetoPeriod`               | >= 5 minutes                             | `MIN_OPTIMISTIC_VETO_PERIOD`                        |
 | `vetoThreshold`            | > 0 and <= 100%                          |                                                     |
 | `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day             | `MAX_PROPOSAL_THROTTLE_CAPACITY`                    |
 | `votingDelay`              | < `MAX_OPTIMISTIC_DELAY`                 | `MAX_OPTIMISTIC_DELAY`                              |
 | `proposalThreshold`        | > 0 and <= 100%                          |                                                     |
+
+The contract allows a `vetoPeriod` as low as 5 minutes, but this is not recommended. The lowest recommended production value is 15 minutes.
 
 ### Proposal Throttle Behavior
 

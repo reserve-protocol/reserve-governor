@@ -20,7 +20,7 @@ import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
-import { CANCELLER_ROLE, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { CANCELLER_ROLE, MIN_OPTIMISTIC_VETO_PERIOD, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
 import { MockERC20 } from "@mocks/MockERC20.sol";
 import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
@@ -1552,7 +1552,27 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(governor.proposalThrottleCharges(optimisticProposer), PROPOSAL_THROTTLE_CAPACITY);
     }
 
-    function test_setOptimisticParams_revertsWhenInvalid() public {
+    function test_setOptimisticParams_allowsMinimumVetoPeriod() public {
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory newParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoDelay: 2 hours,
+                vetoPeriod: uint32(MIN_OPTIMISTIC_VETO_PERIOD),
+                vetoThreshold: 0.25e18
+            });
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(governor), 0, abi.encodeCall(governor.setOptimisticParams, (newParams)));
+
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Set minimum veto period");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        (, uint32 vetoPeriod,) = governor.optimisticParams();
+        assertEq(vetoPeriod, uint32(MIN_OPTIMISTIC_VETO_PERIOD));
+    }
+
+    function test_setOptimisticParams_revertsWhenVetoDelayBelowMinimum() public {
         IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
             IReserveOptimisticGovernor.OptimisticGovernanceParams({
                 vetoDelay: 0, // below MIN_OPTIMISTIC_VETO_DELAY
@@ -1565,6 +1585,25 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         (, bytes32 descriptionHash) =
             _proposePassAndQueueStandard(targets, values, calldatas, "Invalid optimistic params");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__InvalidOptimisticParameters.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_setOptimisticParams_revertsWhenVetoPeriodBelowMinimum() public {
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({
+                vetoDelay: VETO_DELAY,
+                vetoPeriod: uint32(MIN_OPTIMISTIC_VETO_PERIOD - 1),
+                vetoThreshold: VETO_THRESHOLD
+            });
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(governor), 0, abi.encodeCall(governor.setOptimisticParams, (badParams)));
+
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Set veto period below minimum");
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
         vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__InvalidOptimisticParameters.selector);

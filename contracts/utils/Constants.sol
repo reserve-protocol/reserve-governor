@@ -13,7 +13,7 @@ bytes32 constant OPTIMISTIC_GUARDIAN_MANAGER_ROLE = keccak256("OPTIMISTIC_GUARDI
 uint256 constant MIN_OPTIMISTIC_VETO_DELAY = 1 seconds;
 uint256 constant MAX_OPTIMISTIC_DELAY = type(uint48).max / 2;
 uint256 constant MAX_VOTE_EXTENSION = type(uint48).max / 2;
-uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 15 minutes;
+uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 5 minutes; // not recommended
 
 // ProposalThrottle
 uint256 constant MAX_PROPOSAL_THROTTLE_CAPACITY = 10; // 10 per day
