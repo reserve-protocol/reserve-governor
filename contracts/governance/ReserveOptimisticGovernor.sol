@@ -243,6 +243,7 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Defeated;
             }
 
+            // {tok}
             uint256 pastSupply = token().getPastTotalSupply(snapshot);
 
             if (pastSupply == 0) {
