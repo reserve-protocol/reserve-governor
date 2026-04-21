@@ -230,12 +230,14 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Canceled;
             }
 
+            // {s}
             uint256 snapshot = proposalCore.voteStart;
 
             if (snapshot >= block.timestamp) {
                 return ProposalState.Pending;
             }
 
+            // D18{1}
             uint256 _vetoThreshold = vetoThreshold(proposalId);
 
             if (_vetoThreshold == ProposalLib.TRANSITIONED_VETO_THRESHOLD) {
@@ -254,6 +256,7 @@ contract ReserveOptimisticGovernor is
             uint256 vetoThresholdTok = (_vetoThreshold * pastSupply) / 1e18;
             vetoThresholdTok = Math.max(vetoThresholdTok, 1);
 
+            // {tok}
             (uint256 againstVotes,,) = proposalVotes(proposalId);
 
             if (againstVotes >= vetoThresholdTok) {
