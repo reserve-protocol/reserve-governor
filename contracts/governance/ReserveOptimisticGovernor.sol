@@ -243,12 +243,15 @@ contract ReserveOptimisticGovernor is
                 return ProposalState.Defeated;
             }
 
-            // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (_vetoThreshold * token().getPastTotalSupply(snapshot)) / 1e18;
+            uint256 pastSupply = token().getPastTotalSupply(snapshot);
 
-            if (vetoThresholdTok == 0) {
+            if (pastSupply == 0) {
                 return ProposalState.Canceled;
             }
+
+            // {tok} = D18{1} * {tok} / D18{1}
+            uint256 vetoThresholdTok = (_vetoThreshold * pastSupply) / 1e18;
+            vetoThresholdTok = Math.max(vetoThresholdTok, 1);
 
             (uint256 againstVotes,,) = proposalVotes(proposalId);
 
