@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface IReserveOptimisticGovernor {
+import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
+
+import { IOptimisticSelectorRegistry } from "./IOptimisticSelectorRegistry.sol";
+
+interface IReserveOptimisticGovernor is IGovernor {
     // === Errors ===
 
     error OptimisticGovernor__InvalidProposalThreshold();
@@ -55,11 +60,63 @@ interface IReserveOptimisticGovernor {
         address _selectorRegistry
     ) external;
 
+    function lateQuorumVoteExtension() external view returns (uint48);
+
+    function optimisticParams() external view returns (uint48 vetoDelay, uint32 vetoPeriod, uint256 vetoThreshold);
+
+    function proposalThrottleCapacity() external view returns (uint256);
+
+    function proposalThrottleCharges(address account) external view returns (uint256);
+
+    function proposalVotes(uint256 proposalId)
+        external
+        view
+        returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes);
+
+    function proposeOptimistic(
+        address[] calldata targets,
+        uint256[] calldata values,
+        bytes[] calldata calldatas,
+        string calldata description
+    ) external returns (uint256 proposalId);
+
+    function quorumDenominator() external pure returns (uint256);
+
+    function quorumNumerator() external view returns (uint256);
+
+    function quorumNumerator(uint256 timepoint) external view returns (uint256);
+
+    function relay(address target, uint256 value, bytes calldata data) external payable;
+
+    function selectorRegistry() external view returns (IOptimisticSelectorRegistry);
+
+    function setLateQuorumVoteExtension(uint48 newVoteExtension) external;
+
+    function setOptimisticParams(OptimisticGovernanceParams calldata params) external;
+
+    function setProposalThreshold(uint256 newProposalThreshold) external;
+
+    function setProposalThrottle(uint256 newProposalThrottleCapacity) external;
+
+    function setVotingDelay(uint48 newVotingDelay) external;
+
+    function setVotingPeriod(uint32 newVotingPeriod) external;
+
+    function token() external view returns (IERC5805);
+
+    function updateQuorumNumerator(uint256 newQuorumNumerator) external;
+
+    function updateTimelock(address newTimelock) external;
+
+    function upgradeToAndCall(address newImplementation, bytes calldata data) external payable;
+
     function getOptimisticVotes(address account, uint256 timepoint) external view returns (uint256);
 
     function isOptimistic(uint256 proposalId) external view returns (bool);
 
     function timelock() external view returns (address);
+
+    function vetoThreshold(uint256 proposalId) external view returns (uint256);
 
     function cancel(
         address[] calldata targets,

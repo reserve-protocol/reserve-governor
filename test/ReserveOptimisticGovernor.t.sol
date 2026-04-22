@@ -224,6 +224,58 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         }
     }
 
+    function test_interface_exposesLegacyAndOptimisticGovernanceSurface() public view {
+        IReserveOptimisticGovernor governorInterface = IReserveOptimisticGovernor(address(governor));
+
+        assertEq(address(governorInterface.selectorRegistry()), address(registry));
+        assertEq(governorInterface.proposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
+        assertEq(governorInterface.proposalThrottleCharges(optimisticProposer), PROPOSAL_THROTTLE_CAPACITY);
+        assertEq(address(governorInterface.token()), address(stakingVault));
+        assertEq(governorInterface.votingDelay(), VOTING_DELAY);
+        assertEq(governorInterface.votingPeriod(), VOTING_PERIOD);
+        assertEq(governorInterface.proposalThreshold(), governor.proposalThreshold());
+
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governorInterface.proposalVotes(0);
+        assertEq(againstVotes, 0);
+        assertEq(forVotes, 0);
+        assertEq(abstainVotes, 0);
+
+        (uint48 vetoDelay, uint32 vetoPeriod, uint256 vetoThreshold) = governorInterface.optimisticParams();
+        assertEq(vetoDelay, VETO_DELAY);
+        assertEq(vetoPeriod, VETO_PERIOD);
+        assertEq(vetoThreshold, VETO_THRESHOLD);
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(underlying);
+
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(IERC20.transfer, (alice, 1));
+
+        IReserveOptimisticGovernor.OptimisticGovernanceParams memory optimisticParams =
+            IReserveOptimisticGovernor.OptimisticGovernanceParams({ vetoDelay: 1, vetoPeriod: 1, vetoThreshold: 1 });
+
+        bytes memory payload = abi.encodeCall(IGovernor.propose, (targets, values, calldatas, "std"));
+        payload = abi.encodeCall(IGovernor.queue, (targets, values, calldatas, bytes32(0)));
+        payload = abi.encodeCall(IGovernor.execute, (targets, values, calldatas, bytes32(0)));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.cancel, (targets, values, calldatas, bytes32(0)));
+        payload = abi.encodeCall(IGovernor.castVote, (uint256(0), uint8(0)));
+        payload = abi.encodeCall(IGovernor.castVoteWithReasonAndParams, (uint256(0), uint8(0), "", bytes("")));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.proposeOptimistic, (targets, values, calldatas, "opt"));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.setVotingDelay, (uint48(1)));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.setVotingPeriod, (uint32(1)));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.setLateQuorumVoteExtension, (uint48(1)));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.setProposalThreshold, (uint256(1)));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.setProposalThrottle, (uint256(1)));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.setOptimisticParams, (optimisticParams));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.updateQuorumNumerator, (uint256(1)));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.updateTimelock, (address(timelock)));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.upgradeToAndCall, (address(governor), bytes("")));
+        payload = abi.encodeCall(IReserveOptimisticGovernor.relay, (address(underlying), uint256(0), bytes("")));
+
+        assertGt(payload.length, 0);
+    }
+
     function _additionalGuardians() internal view returns (address[] memory guardians) {
         guardians = new address[](1);
         guardians[0] = additionalGuardian;

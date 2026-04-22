@@ -28,10 +28,10 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorVotesUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
-import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { ProposalLib } from "@governance/lib/ProposalLib.sol";
 import { ThrottleLib } from "@governance/lib/ThrottleLib.sol";
@@ -64,16 +64,15 @@ contract ReserveOptimisticGovernor is
     GovernorVotesQuorumFractionUpgradeable,
     GovernorTimelockControlUpgradeable,
     Versioned,
-    UUPSUpgradeable,
-    IReserveOptimisticGovernor
+    UUPSUpgradeable
 {
-    OptimisticGovernanceParams public optimisticParams;
+    IReserveOptimisticGovernor.OptimisticGovernanceParams public optimisticParams;
 
-    OptimisticSelectorRegistry public selectorRegistry;
+    IOptimisticSelectorRegistry public selectorRegistry;
 
     ThrottleLib.ProposalThrottleStorage private proposalThrottle;
 
-    mapping(uint256 proposalId => OptimisticProposalDetails) private optimisticProposalDetails;
+    mapping(uint256 proposalId => IReserveOptimisticGovernor.OptimisticProposalDetails) private optimisticProposalDetails;
 
     constructor() {
         _disableInitializers();
@@ -89,8 +88,8 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
     /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 24h
     function initialize(
-        OptimisticGovernanceParams calldata optimisticGovParams,
-        StandardGovernanceParams calldata standardGovParams,
+        IReserveOptimisticGovernor.OptimisticGovernanceParams calldata optimisticGovParams,
+        IReserveOptimisticGovernor.StandardGovernanceParams calldata standardGovParams,
         uint256 _proposalThrottleCapacity,
         address _token,
         address _timelockController,
@@ -110,14 +109,17 @@ contract ReserveOptimisticGovernor is
         _setProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
 
-        selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
+        selectorRegistry = IOptimisticSelectorRegistry(_selectorRegistry);
     }
 
     function setProposalThrottle(uint256 newProposalThrottleCapacity) external onlyGovernance {
         _setProposalThrottle(newProposalThrottleCapacity);
     }
 
-    function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
+    function setOptimisticParams(IReserveOptimisticGovernor.OptimisticGovernanceParams calldata params)
+        external
+        onlyGovernance
+    {
         _setOptimisticParams(params);
     }
 
@@ -158,7 +160,7 @@ contract ReserveOptimisticGovernor is
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        optimisticProposalDetails[proposalId] = OptimisticProposalDetails({
+        optimisticProposalDetails[proposalId] = IReserveOptimisticGovernor.OptimisticProposalDetails({
             targets: targets,
             values: values,
             calldatas: calldatas,
@@ -193,7 +195,7 @@ contract ReserveOptimisticGovernor is
         uint256[] memory values,
         bytes[] memory calldatas,
         bytes32 descriptionHash
-    ) public override(GovernorUpgradeable, IReserveOptimisticGovernor) returns (uint256 proposalId) {
+    ) public override(GovernorUpgradeable) returns (uint256 proposalId) {
         return super.cancel(targets, values, calldatas, descriptionHash);
     }
 
@@ -317,7 +319,7 @@ contract ReserveOptimisticGovernor is
     function timelock()
         public
         view
-        override(GovernorTimelockControlUpgradeable, IReserveOptimisticGovernor)
+        override(GovernorTimelockControlUpgradeable)
         returns (address)
     {
         return super.timelock();
@@ -332,7 +334,10 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         bytes32 descriptionHash
     ) internal override(GovernorUpgradeable, GovernorTimelockControlUpgradeable) returns (uint48) {
-        require(!_isOptimistic(proposalId), OptimisticGovernor__OptimisticProposalCannotBeQueued(proposalId));
+        require(
+            !_isOptimistic(proposalId),
+            IReserveOptimisticGovernor.OptimisticGovernor__OptimisticProposalCannotBeQueued(proposalId)
+        );
 
         return super._queueOperations(proposalId, targets, values, calldatas, descriptionHash);
     }
@@ -389,7 +394,7 @@ contract ReserveOptimisticGovernor is
     {
         require(
             !_isOptimistic(proposalId) || support == uint8(VoteType.Against),
-            OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(proposalId)
+            IReserveOptimisticGovernor.OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(proposalId)
         );
 
         return super._countVote(proposalId, account, support, totalWeight, params);
@@ -429,7 +434,7 @@ contract ReserveOptimisticGovernor is
             return super._tallyUpdated(proposalId);
         }
 
-        OptimisticProposalDetails storage optimisticProposal = optimisticProposalDetails[proposalId];
+        IReserveOptimisticGovernor.OptimisticProposalDetails storage optimisticProposal = optimisticProposalDetails[proposalId];
 
         if (state(proposalId) == ProposalState.Defeated) {
             // transition optimistic -> pessimistic
@@ -454,7 +459,8 @@ contract ReserveOptimisticGovernor is
 
     function _setProposalThreshold(uint256 newProposalThreshold) internal override {
         require(
-            newProposalThreshold != 0 && newProposalThreshold <= 1e18, OptimisticGovernor__InvalidProposalThreshold()
+            newProposalThreshold != 0 && newProposalThreshold <= 1e18,
+            IReserveOptimisticGovernor.OptimisticGovernor__InvalidProposalThreshold()
         );
 
         super._setProposalThreshold(newProposalThreshold);
@@ -464,34 +470,36 @@ contract ReserveOptimisticGovernor is
     function _setProposalThrottle(uint256 newCapacity) internal {
         require(
             newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY,
-            OptimisticGovernor__InvalidProposalThrottle()
+            IReserveOptimisticGovernor.OptimisticGovernor__InvalidProposalThrottle()
         );
 
         proposalThrottle.capacity = newCapacity;
-        emit ProposalThrottleUpdated(newCapacity);
+        emit IReserveOptimisticGovernor.ProposalThrottleUpdated(newCapacity);
     }
 
     function _setVotingDelay(uint48 newVotingDelay) internal override {
-        require(newVotingDelay < MAX_OPTIMISTIC_DELAY, OptimisticGovernor__InvalidDelay());
+        require(newVotingDelay < MAX_OPTIMISTIC_DELAY, IReserveOptimisticGovernor.OptimisticGovernor__InvalidDelay());
 
         super._setVotingDelay(newVotingDelay);
     }
 
     function _setLateQuorumVoteExtension(uint48 newVoteExtension) internal override {
-        require(newVoteExtension < MAX_VOTE_EXTENSION, OptimisticGovernor__InvalidDelay());
+        require(
+            newVoteExtension < MAX_VOTE_EXTENSION, IReserveOptimisticGovernor.OptimisticGovernor__InvalidDelay()
+        );
 
         super._setLateQuorumVoteExtension(newVoteExtension);
     }
 
-    function _setOptimisticParams(OptimisticGovernanceParams calldata params) private {
+    function _setOptimisticParams(IReserveOptimisticGovernor.OptimisticGovernanceParams calldata params) private {
         require(
             params.vetoDelay >= MIN_OPTIMISTIC_VETO_DELAY && params.vetoDelay < MAX_OPTIMISTIC_DELAY
                 && params.vetoPeriod >= MIN_OPTIMISTIC_VETO_PERIOD && params.vetoThreshold != 0
                 && params.vetoThreshold <= 1e18,
-            OptimisticGovernor__InvalidOptimisticParameters()
+            IReserveOptimisticGovernor.OptimisticGovernor__InvalidOptimisticParameters()
         );
         optimisticParams = params;
-        emit OptimisticParamsUpdated(params);
+        emit IReserveOptimisticGovernor.OptimisticParamsUpdated(params);
     }
 
     // === Private ===

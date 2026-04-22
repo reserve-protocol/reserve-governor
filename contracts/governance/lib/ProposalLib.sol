@@ -8,9 +8,9 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 
+import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
-import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
 import { OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
@@ -49,7 +49,7 @@ library ProposalLib {
         // validate calls
 
         {
-            OptimisticSelectorRegistry selectorRegistry = governor.selectorRegistry();
+            IOptimisticSelectorRegistry selectorRegistry = governor.selectorRegistry();
 
             for (uint256 i = 0; i < proposal.targets.length; i++) {
                 address target = proposal.targets[i];
