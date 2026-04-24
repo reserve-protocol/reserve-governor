@@ -323,6 +323,11 @@ contract ReserveOptimisticGovernor is
         return super.timelock();
     }
 
+    /// @dev Prevent proposals from executing through a different timelock
+    function updateTimelock(TimelockControllerUpgradeable) external pure override {
+        revert OptimisticGovernor__TimelockCannotBeUpdated();
+    }
+
     // === Internal Overrides ===
 
     function _queueOperations(
