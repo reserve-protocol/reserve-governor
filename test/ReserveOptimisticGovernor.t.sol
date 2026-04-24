@@ -3,6 +3,9 @@ pragma solidity ^0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 
+import {
+    TimelockControllerUpgradeable
+} from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -1724,6 +1727,25 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
 
         assertEq(TimelockControllerOptimisticV2Mock(payable(address(timelock))).version(), "2.0.0");
+    }
+
+    function test_updateTimelock_reverts() public {
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__TimelockCannotBeUpdated.selector);
+        governor.updateTimelock(TimelockControllerUpgradeable(payable(address(timelock))));
+    }
+
+    function test_updateTimelock_revertsViaGovernance() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _singleCall(
+            address(governor),
+            0,
+            abi.encodeCall(governor.updateTimelock, (TimelockControllerUpgradeable(payable(address(timelock)))))
+        );
+
+        (, bytes32 descriptionHash) = _proposePassAndQueueStandard(targets, values, calldatas, "Update timelock");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__TimelockCannotBeUpdated.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
     }
 
     function test_cannotUpgradeTimelock_unauthorized() public {
