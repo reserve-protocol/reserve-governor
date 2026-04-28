@@ -4,10 +4,10 @@ pragma solidity ^0.8.28;
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
 library ThrottleLib {
-    uint256 constant PROPOSAL_THROTTLE_PERIOD = 1 days;
+    uint256 constant PROPOSAL_THROTTLE_PERIOD = 12 hours;
 
     struct ProposalThrottleStorage {
-        uint256 capacity; // max number of proposals per 24h
+        uint256 capacity; // max number of proposals per 12h
         mapping(address account => ProposalThrottle) throttles;
     }
 

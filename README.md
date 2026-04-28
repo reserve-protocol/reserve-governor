@@ -11,7 +11,7 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Fast proposals are protected by a proposer throttle that limits how many optimistic proposals each account can create per 24-hour window.
+Fast proposals are protected by a proposer throttle that limits how many optimistic proposals each account can create per 12-hour window.
 
 ## Architecture
 
@@ -265,7 +265,7 @@ The main hybrid governor contract.
 **Configuration:**
 
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
-- `setProposalThrottle(capacity)` -- Update optimistic proposals-per-24h throttle capacity (onlyGovernance)
+- `setProposalThrottle(capacity)` -- Update optimistic proposals-per-12h throttle capacity (onlyGovernance)
 - `proposalThrottleCapacity()` -- Read current throttle capacity
 
 ### OptimisticSelectorRegistry
@@ -444,7 +444,7 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 
 | Parameter                  | Type      | Description                                   |
 | -------------------------- | --------- | --------------------------------------------- |
-| `proposalThrottleCapacity` | `uint256` | Max optimistic proposals per proposer per 24h |
+| `proposalThrottleCapacity` | `uint256` | Max optimistic proposals per proposer per 12h |
 
 ### Parameter Constraints
 
@@ -453,18 +453,20 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `vetoDelay`                | >= 1 second and < `MAX_OPTIMISTIC_DELAY` | `MIN_OPTIMISTIC_VETO_DELAY`, `MAX_OPTIMISTIC_DELAY` |
 | `vetoPeriod`               | >= 5 minutes                             | `MIN_OPTIMISTIC_VETO_PERIOD`                        |
 | `vetoThreshold`            | > 0 and <= 100%                          |                                                     |
-| `proposalThrottleCapacity` | >= 1 and <= 10 proposals/day             | `MAX_PROPOSAL_THROTTLE_CAPACITY`                    |
+| `proposalThrottleCapacity` | >= 1 and <= 12 proposals/12h            | `MAX_PROPOSAL_THROTTLE_CAPACITY`                    |
 | `votingDelay`              | < `MAX_OPTIMISTIC_DELAY`                 | `MAX_OPTIMISTIC_DELAY`                              |
 | `proposalThreshold`        | > 0 and <= 100%                          |                                                     |
 
 The contract allows a `vetoPeriod` as low as 5 minutes, but this is not recommended. The lowest recommended production value is 15 minutes.
 
+Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but not recommended. 
+
 ### Proposal Throttle Behavior
 
 - Throttle is tracked per proposer account for `proposeOptimistic()`
-- Capacity is measured as proposals per 24 hours
+- Capacity is measured as proposals per 12 hours
 - Each optimistic proposal consumes one unit of capacity
-- Capacity recharges linearly over time (full recharge over 24 hours)
+- Capacity recharges linearly over time (full recharge over 12 hours)
 
 ### StakingVault Parameters
 

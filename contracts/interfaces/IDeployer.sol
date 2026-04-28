@@ -25,7 +25,7 @@ interface IReserveOptimisticGovernorDeployer {
         address[] optimisticProposers;
         address[] additionalGuardians;
         uint256 timelockDelay; // {s}
-        uint256 proposalThrottleCapacity; // optimistic proposals-per-account per 24h
+        uint256 proposalThrottleCapacity; // optimistic proposals-per-account per 12h
     }
 
     struct NewStakingVaultParams {
