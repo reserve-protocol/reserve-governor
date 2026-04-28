@@ -23,7 +23,12 @@ import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
-import { CANCELLER_ROLE, MIN_OPTIMISTIC_VETO_PERIOD, OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import {
+    CANCELLER_ROLE,
+    MAX_PROPOSAL_THROTTLE_CAPACITY,
+    MIN_OPTIMISTIC_VETO_PERIOD,
+    OPTIMISTIC_PROPOSER_ROLE
+} from "@utils/Constants.sol";
 
 import { MockERC20 } from "@mocks/MockERC20.sol";
 import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
@@ -68,7 +73,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     uint48 internal constant VOTE_EXTENSION = 1 days;
     uint256 internal constant PROPOSAL_THRESHOLD = 0.01e18; // 1%
     uint256 internal constant QUORUM_NUMERATOR = 0.1e18; // 10%
-    uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per 24h
+    uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per 12h
 
     uint256 internal constant TIMELOCK_DELAY = 2 days;
     string internal constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -181,7 +186,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         _setupVoter(carol, CAROL_STAKE);
 
         // Charge throttles
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 12 hours);
     }
 
     // ===== Deployment / Initialization =====
@@ -1299,8 +1304,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
         governor.proposeOptimistic(targets, values, calldatas, "No charge available");
 
-        // With capacity=2/day, each proposal charge refills in 12h.
-        vm.warp(block.timestamp + 12 hours);
+        // With capacity=2/12h, each proposal charge refills in 6h.
+        vm.warp(block.timestamp + 6 hours);
 
         vm.prank(optimisticProposer);
         governor.proposeOptimistic(targets, values, calldatas, "Recharged charge #1");
@@ -1320,6 +1325,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             _proposePassAndQueueStandard(targets, values, calldatas, "Set proposal throttle to three");
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
         governor.execute(targets, values, calldatas, descriptionHash);
+        assertEq(governor.proposalThrottleCapacity(), capacity);
 
         (address[] memory callTargets, uint256[] memory callValues, bytes[] memory callCalldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
@@ -1558,9 +1564,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     function test_setOptimisticParams_allowsMinimumVetoPeriod() public {
         IReserveOptimisticGovernor.OptimisticGovernanceParams memory newParams =
             IReserveOptimisticGovernor.OptimisticGovernanceParams({
-                vetoDelay: 2 hours,
-                vetoPeriod: uint32(MIN_OPTIMISTIC_VETO_PERIOD),
-                vetoThreshold: 0.25e18
+                vetoDelay: 2 hours, vetoPeriod: uint32(MIN_OPTIMISTIC_VETO_PERIOD), vetoThreshold: 0.25e18
             });
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
@@ -1597,9 +1601,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     function test_setOptimisticParams_revertsWhenVetoPeriodBelowMinimum() public {
         IReserveOptimisticGovernor.OptimisticGovernanceParams memory badParams =
             IReserveOptimisticGovernor.OptimisticGovernanceParams({
-                vetoDelay: VETO_DELAY,
-                vetoPeriod: uint32(MIN_OPTIMISTIC_VETO_PERIOD - 1),
-                vetoThreshold: VETO_THRESHOLD
+                vetoDelay: VETO_DELAY, vetoPeriod: uint32(MIN_OPTIMISTIC_VETO_PERIOD - 1), vetoThreshold: VETO_THRESHOLD
             });
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
@@ -1657,7 +1659,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     function test_setProposalThrottle_viaGovernance() public {
-        uint256 newProposalThrottle = 4;
+        uint256 newProposalThrottle = MAX_PROPOSAL_THROTTLE_CAPACITY;
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(governor), 0, abi.encodeCall(governor.setProposalThrottle, (newProposalThrottle)));
 
@@ -1665,6 +1667,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             _proposePassAndQueueStandard(targets, values, calldatas, "Update proposal throttle");
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
         governor.execute(targets, values, calldatas, descriptionHash);
+        assertEq(governor.proposalThrottleCapacity(), newProposalThrottle);
 
         (address[] memory callTargets, uint256[] memory callValues, bytes[] memory callCalldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
@@ -1687,6 +1690,19 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         (, bytes32 descriptionHash) =
             _proposePassAndQueueStandard(targets, values, calldatas, "Set proposal throttle to zero");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__InvalidProposalThrottle.selector);
+        governor.execute(targets, values, calldatas, descriptionHash);
+    }
+
+    function test_setProposalThrottle_revertsWhenAboveMaximum() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _singleCall(
+            address(governor), 0, abi.encodeCall(governor.setProposalThrottle, (MAX_PROPOSAL_THROTTLE_CAPACITY + 1))
+        );
+
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Set proposal throttle above maximum");
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
 
         vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__InvalidProposalThrottle.selector);
