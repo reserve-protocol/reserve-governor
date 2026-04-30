@@ -1,29 +1,18 @@
 {
   "name": "Reserve Governor",
-  "build": {
-    "context": ".",
-    "dockerfile": "Dockerfile"
-  },
+  "image": "ghcr.io/akshatmittal/devbox:v1.2.0",
   "remoteUser": "vscode",
-  "containerEnv": {
-    "DISABLE_AUTOUPDATER": "1",
-    "OPENCODE_CONFIG_CONTENT": "{\"autoupdate\":false}",
-    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
-  },
   "mounts": [
-    "source=${localEnv:HOME}/.devcontainer-gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly",
-    "source=/run/host-services/ssh-auth.sock,target=/tmp/ssh-agent.sock,type=bind",
-    "source=reserve-governor-codex,target=/home/vscode/.codex,type=volume",
-    "source=reserve-governor-claude,target=/home/vscode/.claude,type=volume",
-    "source=reserve-governor-opencode-config,target=/home/vscode/.config/opencode,type=volume",
-    "source=reserve-governor-opencode-data,target=/home/vscode/.local/share/opencode,type=volume"
+    "source=${localEnv:HOME}/.devcontainer-data/.gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly",
+    "source=${localEnv:HOME}/.devcontainer-data/.codex,target=/home/vscode/.codex,type=volume",
+    "source=${localEnv:HOME}/.devcontainer-data/.claude,target=/home/vscode/.claude,type=volume",
+    "source=${localEnv:HOME}/.devcontainer-data/.opencode-config,target=/home/vscode/.config/opencode,type=volume",
+    "source=${localEnv:HOME}/.devcontainer-data/.opencode-data,target=/home/vscode/.local/share/opencode,type=volume"
   ],
   "postCreateCommand": "pnpm install --frozen-lockfile",
   "customizations": {
     "vscode": {
-      "extensions": [
-        "NomicFoundation.hardhat-solidity"
-      ]
+      "extensions": ["NomicFoundation.hardhat-solidity"]
     }
   }
 }
