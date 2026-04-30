@@ -1,0 +1,20 @@
+{
+  "name": "Reserve Governor",
+  "build": {
+    "context": ".",
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "DISABLE_AUTOUPDATER": "1",
+    "OPENCODE_CONFIG_CONTENT": "{\"autoupdate\":false}"
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.devcontainer-gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly",
+    "source=reserve-governor-codex,target=/home/vscode/.codex,type=volume",
+    "source=reserve-governor-claude,target=/home/vscode/.claude,type=volume",
+    "source=reserve-governor-opencode-config,target=/home/vscode/.config/opencode,type=volume",
+    "source=reserve-governor-opencode-data,target=/home/vscode/.local/share/opencode,type=volume"
+  ],
+  "postCreateCommand": "pnpm install --frozen-lockfile"
+}
