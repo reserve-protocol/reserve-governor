@@ -18,6 +18,8 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        less \
+        openssh-client \
         sudo \
         tar \
         xz-utils \
@@ -30,6 +32,7 @@ RUN if getent passwd ubuntu >/dev/null; then \
         groupadd --gid 1000 vscode; \
         useradd --uid 1000 --gid 1000 -m -s /bin/bash vscode; \
     fi \
+    && usermod -aG root vscode \
     && echo "vscode ALL=(root) NOPASSWD:ALL" >/etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode
 
@@ -59,3 +62,14 @@ RUN mkdir -p \
         /home/vscode/.claude \
         /home/vscode/.config/opencode \
         /home/vscode/.local/share/opencode
+
+RUN cat >>/home/vscode/.bashrc <<'EOF'
+
+git_branch() {
+  local branch
+  branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null) || return
+  printf ' (%s)' "$branch"
+}
+
+PS1='\[\033[01;34m\]\w\[\033[00m\]\[\033[01;33m\]$(git_branch)\[\033[00m\] \$ '
+EOF

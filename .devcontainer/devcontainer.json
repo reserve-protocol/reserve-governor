@@ -7,10 +7,12 @@
   "remoteUser": "vscode",
   "containerEnv": {
     "DISABLE_AUTOUPDATER": "1",
-    "OPENCODE_CONFIG_CONTENT": "{\"autoupdate\":false}"
+    "OPENCODE_CONFIG_CONTENT": "{\"autoupdate\":false}",
+    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
   },
   "mounts": [
     "source=${localEnv:HOME}/.devcontainer-gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly",
+    "source=/run/host-services/ssh-auth.sock,target=/tmp/ssh-agent.sock,type=bind",
     "source=reserve-governor-codex,target=/home/vscode/.codex,type=volume",
     "source=reserve-governor-claude,target=/home/vscode/.claude,type=volume",
     "source=reserve-governor-opencode-config,target=/home/vscode/.config/opencode,type=volume",
