@@ -1,4 +1,4 @@
-
+Can you help me understand the below more clearly? As if I am a five year old? @coderabbit!
 
 A hybrid optimistic/pessimistic governance system for the Reserve protocol.
 
