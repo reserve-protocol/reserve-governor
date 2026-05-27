@@ -932,7 +932,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         uint256 snapshot = governor.proposalSnapshot(proposalId);
         assertEq(stakingVault.getPastTotalSupply(snapshot), ALICE_STAKE + BOB_STAKE + CAROL_STAKE + passiveStake);
-        assertEq(stakingVault.getPastOptimisticTotalSupply(snapshot), ALICE_STAKE + BOB_STAKE + CAROL_STAKE);
+        assertEq(stakingVault.getPastOptimisticVotingSupply(snapshot), ALICE_STAKE + BOB_STAKE + CAROL_STAKE);
         assertEq(stakingVault.getPastOptimisticVotes(passiveLP, snapshot), 0);
 
         vm.prank(alice);

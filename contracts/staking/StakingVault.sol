@@ -236,7 +236,7 @@ contract StakingVault is
         return _optimisticVotesStorage._delegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
     }
 
-    function getPastOptimisticTotalSupply(uint256 timepoint) external view returns (uint256) {
+    function getPastOptimisticVotingSupply(uint256 timepoint) external view returns (uint256) {
         return _optimisticVotesStorage._totalCheckpoints.upperLookupRecent(_validateTimepoint(timepoint));
     }
 
