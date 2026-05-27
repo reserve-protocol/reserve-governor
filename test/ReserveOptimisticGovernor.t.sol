@@ -10,6 +10,7 @@ import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.so
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import { GenericTokenJar } from "@reserve-protocol/trusted-fillers/contracts/extras/GenericTokenJar.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
@@ -62,6 +63,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     address public optimisticGuardian = makeAddr("optimisticGuardian");
     address public optimisticProposer = makeAddr("optimisticProposer");
     address public optimisticProposer2 = makeAddr("optimisticProposer2");
+    address public trustedFillerRegistry = makeAddr("trustedFillerRegistry");
 
     // Governance params
     uint48 internal constant VETO_DELAY = 1 hours;
@@ -109,6 +111,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
             address(rewardTokenRegistry),
+            trustedFillerRegistry,
             address(guardianContract),
             address(stakingVaultImpl),
             address(governorImpl),
@@ -219,6 +222,13 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertTrue(guardianContract.hasRole(guardianContract.OPTIMISTIC_GUARDIAN_ROLE(), optimisticGuardian));
 
         assertTrue(registry.isAllowed(address(underlying), IERC20.transfer.selector));
+
+        GenericTokenJar jar = GenericTokenJar(stakingVault.tokenJar());
+        assertNotEq(address(jar), address(0));
+        assertEq(jar.destination(), address(stakingVault));
+        assertEq(address(jar.token()), address(underlying));
+        assertEq(address(jar.trustedFillerRegistry()), trustedFillerRegistry);
+        assertEq(jar.owner(), address(0));
 
         uint256 supply = stakingVault.getPastTotalSupply(block.timestamp - 1);
         uint256 expectedThreshold = (PROPOSAL_THRESHOLD * supply + (1e18 - 1)) / 1e18;

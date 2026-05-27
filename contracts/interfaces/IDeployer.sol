@@ -53,6 +53,8 @@ interface IReserveOptimisticGovernorDeployer {
 
     function rewardTokenRegistry() external view returns (address);
 
+    function trustedFillerRegistry() external view returns (address);
+
     function guardian() external view returns (address);
 
     function stakingVaultImpl() external view returns (address);

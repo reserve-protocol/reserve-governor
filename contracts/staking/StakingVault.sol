@@ -25,14 +25,13 @@ import {
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 
-import { UD60x18 } from "@prb/math/src/UD60x18.sol";
-
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IRewardTokenRegistry } from "@interfaces/IRewardTokenRegistry.sol";
 
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { UnstakingManager } from "@staking/UnstakingManager.sol";
+import { RewardMathLib } from "@staking/lib/RewardMathLib.sol";
 import { Versioned } from "@utils/Versioned.sol";
 
 import {
@@ -70,8 +69,8 @@ contract StakingVault is
     UUPSUpgradeable,
     IOptimisticVotes
 {
-    using EnumerableSet for EnumerableSet.AddressSet;
     using Checkpoints for Checkpoints.Trace208;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     ReserveOptimisticGovernanceVersionRegistry public versionRegistry;
 
@@ -107,6 +106,8 @@ contract StakingVault is
     uint256 private nativeBalanceLastKnown; // {asset}
     uint256 private nativeRewardsLastPaid; // {s}
 
+    address public tokenJar;
+
     error Vault__InvalidRewardToken(address rewardToken);
     error Vault__DisallowedRewardToken(address rewardToken);
     error Vault__RewardAlreadyRegistered();
@@ -140,13 +141,15 @@ contract StakingVault is
     /// @param _initialAdmin Initial admin of the vault
     /// @param _rewardPeriod {s} Half life of the reward handout rate
     /// @param _unstakingDelay {s} Delay after unstaking before user receives their deposit
+    /// @param _tokenJar GenericTokenJar used to convert rewards into this vault's underlying token
     function initialize(
         string memory _name,
         string memory _symbol,
         IERC20 _underlying,
         address _initialAdmin,
         uint256 _rewardPeriod,
-        uint256 _unstakingDelay
+        uint256 _unstakingDelay,
+        address _tokenJar
     ) external initializer {
         require(_initialAdmin != address(0), Vault__InvalidAdmin(_initialAdmin));
 
@@ -171,6 +174,8 @@ contract StakingVault is
         address _versionRegistry = deployer.versionRegistry();
         emit VersionRegistrySet(_versionRegistry);
         versionRegistry = ReserveOptimisticGovernanceVersionRegistry(_versionRegistry);
+
+        tokenJar = _tokenJar;
 
         unstakingManager = new UnstakingManager(_underlying);
 
@@ -490,7 +495,7 @@ contract StakingVault is
             return 0;
         }
 
-        uint256 handoutPercentage = 1e18 - UD60x18.wrap(1e18 - rewardRatio).powu(elapsed).unwrap() - 1; // rounds down
+        uint256 handoutPercentage = 1e18 - RewardMathLib.powu(1e18 - rewardRatio, elapsed) - 1; // rounds down
 
         // {reward|asset} = {reward|asset} * D18{1} / D18
         tokensToHandout = Math.mulDiv(balanceAvailable, handoutPercentage, 1e18);

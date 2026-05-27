@@ -18,6 +18,7 @@
     "@openzeppelin/contracts": "^5.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.4.0",
     "@prb/math": "^4.1.0",
+    "@reserve-protocol/trusted-fillers": "github:reserve-protocol/trusted-fillers#3cbd2ba56b742b28906d81824e2380ea61ba475f",
     "forge-std": "github:foundry-rs/forge-std#v1.14.0"
   },
   "packageManager": "pnpm@10.28.0"

@@ -12,6 +12,7 @@ import { ReserveOptimisticGovernorDeployer } from "@src/artifacts/ReserveOptimis
 import {
     ReserveOptimisticGovernorDeployerDeployer
 } from "@src/artifacts/ReserveOptimisticGovernorDeployerDeployer.sol";
+import { RewardMathLibDeployer } from "@src/artifacts/RewardMathLibDeployer.sol";
 import { StakingVaultDeployer } from "@src/artifacts/StakingVaultDeployer.sol";
 import { ThrottleLibDeployer } from "@src/artifacts/ThrottleLibDeployer.sol";
 import { TimelockControllerOptimisticDeployer } from "@src/artifacts/TimelockControllerOptimisticDeployer.sol";
@@ -32,6 +33,12 @@ contract ArtifactsTest is Test {
         address deployed = ProposalLibDeployer.deploy(_salt("ProposalLib"));
         assertNotEq(deployed, address(0), "ProposalLib deployment failed");
         assertTrue(deployed.code.length > 0, "ProposalLib has no code");
+    }
+
+    function test_deployRewardMathLib() public {
+        address deployed = RewardMathLibDeployer.deploy(_salt("RewardMathLib"));
+        assertNotEq(deployed, address(0), "RewardMathLib deployment failed");
+        assertTrue(deployed.code.length > 0, "RewardMathLib has no code");
     }
 
     function test_deployThrottleLib() public {
@@ -73,6 +80,7 @@ contract ArtifactsTest is Test {
         address deployer = ReserveOptimisticGovernorDeployerDeployer.deploy(
             address(versionRegistry),
             address(rewardTokenRegistry),
+            address(2),
             address(guardian),
             stakingVault,
             governor,
