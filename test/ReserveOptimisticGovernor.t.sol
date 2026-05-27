@@ -912,6 +912,37 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(abstainVotes, 0);
     }
 
+    function test_optimisticProposal_vetoThresholdUsesOptimisticDelegatedSupply() public {
+        address passiveLP = makeAddr("passiveLP");
+        uint256 passiveStake = 6_000_000e18;
+
+        underlying.mint(passiveLP, passiveStake);
+        vm.startPrank(passiveLP);
+        underlying.approve(address(stakingVault), passiveStake);
+        stakingVault.deposit(passiveStake, passiveLP);
+        vm.stopPrank();
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        string memory description = "Passive supply should not inflate veto threshold";
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        _warpToActive(proposalId);
+
+        uint256 snapshot = governor.proposalSnapshot(proposalId);
+        assertEq(stakingVault.getPastTotalSupply(snapshot), ALICE_STAKE + BOB_STAKE + CAROL_STAKE + passiveStake);
+        assertEq(stakingVault.getPastOptimisticTotalSupply(snapshot), ALICE_STAKE + BOB_STAKE + CAROL_STAKE);
+        assertEq(stakingVault.getPastOptimisticVotes(passiveLP, snapshot), 0);
+
+        vm.prank(alice);
+        governor.castVote(proposalId, 0);
+
+        uint256 confirmationProposalId = _confirmationProposalId(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Defeated));
+        assertEq(uint256(governor.state(confirmationProposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
     function test_optimisticProposal_proposerCannotCancelWhenDefeated() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));

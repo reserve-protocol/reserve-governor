@@ -101,8 +101,7 @@ contract StakingVault is
     mapping(address token => bool isDisallowed) public disallowedRewardTokens;
     mapping(address token => mapping(address user => UserRewardInfo userReward)) public userRewardTrackers;
 
-    mapping(address account => address delegatee) private optimisticDelegatees;
-    mapping(address delegatee => Checkpoints.Trace208) private optimisticDelegateCheckpoints;
+    VotesStorage private _optimisticVotesStorage;
 
     uint256 private totalDeposited; // {asset}
     uint256 private nativeBalanceLastKnown; // {asset}
@@ -214,15 +213,15 @@ contract StakingVault is
     }
 
     function optimisticDelegates(address account) external view returns (address) {
-        return optimisticDelegatees[account];
+        return _optimisticVotesStorage._delegatee[account];
     }
 
     function getOptimisticVotes(address account) external view returns (uint256) {
-        return optimisticDelegateCheckpoints[account].latest();
+        return _optimisticVotesStorage._delegateCheckpoints[account].latest();
     }
 
     function numOptimisticCheckpoints(address account) external view returns (uint32) {
-        return SafeCast.toUint32(optimisticDelegateCheckpoints[account].length());
+        return SafeCast.toUint32(_optimisticVotesStorage._delegateCheckpoints[account].length());
     }
 
     function optimisticCheckpoints(address account, uint32 pos)
@@ -230,11 +229,15 @@ contract StakingVault is
         view
         returns (Checkpoints.Checkpoint208 memory)
     {
-        return optimisticDelegateCheckpoints[account].at(pos);
+        return _optimisticVotesStorage._delegateCheckpoints[account].at(pos);
     }
 
     function getPastOptimisticVotes(address account, uint256 timepoint) external view returns (uint256) {
-        return optimisticDelegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
+        return _optimisticVotesStorage._delegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
+    }
+
+    function getPastOptimisticTotalSupply(uint256 timepoint) external view returns (uint256) {
+        return _optimisticVotesStorage._totalCheckpoints.upperLookupRecent(_validateTimepoint(timepoint));
     }
 
     function totalAssets() public view override returns (uint256) {
@@ -502,7 +505,9 @@ contract StakingVault is
         accrueRewards(from, to)
     {
         super._update(from, to, value);
-        _moveOptimisticDelegateVotes(optimisticDelegatees[from], optimisticDelegatees[to], value);
+        _moveOptimisticDelegateVotes(
+            _optimisticVotesStorage._delegatee[from], _optimisticVotesStorage._delegatee[to], value
+        );
     }
 
     function nonces(address _owner) public view override(ERC20PermitUpgradeable, NoncesUpgradeable) returns (uint256) {
@@ -541,8 +546,9 @@ contract StakingVault is
     }
 
     function _delegateOptimistic(address account, address delegatee) internal {
-        address oldDelegate = optimisticDelegatees[account];
-        optimisticDelegatees[account] = delegatee;
+        VotesStorage storage $ = _optimisticVotesStorage;
+        address oldDelegate = $._delegatee[account];
+        $._delegatee[account] = delegatee;
 
         emit OptimisticDelegateChanged(account, oldDelegate, delegatee);
         _moveOptimisticDelegateVotes(oldDelegate, delegatee, balanceOf(account));
@@ -553,8 +559,20 @@ contract StakingVault is
             return;
         }
 
+        VotesStorage storage $ = _optimisticVotesStorage;
+
+        if (from == address(0)) {
+            uint256 oldValue = $._totalCheckpoints.latest();
+            uint256 newValue = oldValue + amount;
+            $._totalCheckpoints.push(clock(), SafeCast.toUint208(newValue));
+        } else if (to == address(0)) {
+            uint256 oldValue = $._totalCheckpoints.latest();
+            uint256 newValue = oldValue - amount;
+            $._totalCheckpoints.push(clock(), SafeCast.toUint208(newValue));
+        }
+
         if (from != address(0)) {
-            Checkpoints.Trace208 storage fromCheckpoints = optimisticDelegateCheckpoints[from];
+            Checkpoints.Trace208 storage fromCheckpoints = $._delegateCheckpoints[from];
             uint256 oldValue = fromCheckpoints.latest();
             uint256 newValue = oldValue - amount;
             fromCheckpoints.push(clock(), SafeCast.toUint208(newValue));
@@ -562,7 +580,7 @@ contract StakingVault is
         }
 
         if (to != address(0)) {
-            Checkpoints.Trace208 storage toCheckpoints = optimisticDelegateCheckpoints[to];
+            Checkpoints.Trace208 storage toCheckpoints = $._delegateCheckpoints[to];
             uint256 oldValue = toCheckpoints.latest();
             uint256 newValue = oldValue + amount;
             toCheckpoints.push(clock(), SafeCast.toUint208(newValue));

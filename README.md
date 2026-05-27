@@ -164,12 +164,13 @@ During a fast proposal's veto period, any token holder can vote using the standa
 **Veto threshold calculation:**
 
 ```
-vetoThreshold = ceil(vetoThresholdRatio * pastTotalSupply / 1e18)
+if pastOptimisticTotalSupply == 0: Canceled
+else vetoThreshold = max(1, vetoThresholdRatio * pastOptimisticTotalSupply / 1e18)
 ```
 
-Where `pastTotalSupply = token.getPastTotalSupply(snapshot)` and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%).
+Where `pastOptimisticTotalSupply = token.getPastOptimisticTotalSupply(snapshot)` is the total supply that had a nonzero optimistic delegate at the snapshot, and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%).
 
-If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote via a new proposal id. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass. If the snapshot `pastTotalSupply` is zero (so computed threshold in tokens is zero), the optimistic proposal resolves to `Canceled`.
+If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote via a new proposal id. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass.
 
 ## Proposal Kind Detection
 

@@ -600,6 +600,48 @@ contract StakingVaultTest is Test {
         assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, snapshot), 1000e18);
     }
 
+    function test_optimisticTotalSupplyTracksOnlyOptimisticallyDelegatedShares() public {
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+
+        vault.deposit(1000e18, address(this));
+
+        uint256 plainDepositSnapshot = block.timestamp;
+        vm.warp(plainDepositSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(plainDepositSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticTotalSupply(plainDepositSnapshot), 0);
+
+        vault.delegateOptimistic(ACTOR_BOB);
+
+        uint256 delegatedSnapshot = block.timestamp;
+        vm.warp(delegatedSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(delegatedSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticTotalSupply(delegatedSnapshot), 1000e18);
+
+        vault.transfer(ACTOR_ALICE, 400e18);
+
+        uint256 transferToUndelegatedSnapshot = block.timestamp;
+        vm.warp(transferToUndelegatedSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(transferToUndelegatedSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticTotalSupply(transferToUndelegatedSnapshot), 600e18);
+
+        vm.prank(ACTOR_ALICE);
+        vault.delegateOptimistic(ACTOR_ALICE);
+
+        uint256 aliceDelegatedSnapshot = block.timestamp;
+        vm.warp(aliceDelegatedSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(aliceDelegatedSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticTotalSupply(aliceDelegatedSnapshot), 1000e18);
+
+        vm.prank(ACTOR_ALICE);
+        vault.delegateOptimistic(address(0));
+
+        uint256 aliceUndelegatedSnapshot = block.timestamp;
+        vm.warp(aliceUndelegatedSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(aliceUndelegatedSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticTotalSupply(aliceUndelegatedSnapshot), 600e18);
+    }
+
     function test_transferMovesStandardAndOptimisticDelegateWeights() public {
         token.mint(address(this), 1000e18);
         token.approve(address(vault), 1000e18);
