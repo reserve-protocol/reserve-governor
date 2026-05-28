@@ -23,8 +23,8 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0
       '@reserve-protocol/trusted-fillers':
-        specifier: github:reserve-protocol/trusted-fillers#3cbd2ba56b742b28906d81824e2380ea61ba475f
-        version: https://codeload.github.com/reserve-protocol/trusted-fillers/tar.gz/3cbd2ba56b742b28906d81824e2380ea61ba475f(ajv@8.20.0)(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)
+        specifier: github:reserve-protocol/trusted-fillers#303e0a56948b602365a1ed0024ed473f683aeb0f
+        version: https://codeload.github.com/reserve-protocol/trusted-fillers/tar.gz/303e0a56948b602365a1ed0024ed473f683aeb0f(ajv@8.20.0)(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)
       forge-std:
         specifier: github:foundry-rs/forge-std#v1.14.0
         version: https://codeload.github.com/foundry-rs/forge-std/tar.gz/1801b0541f4fda118a10798fd3486bb7051c5dd6
@@ -259,8 +259,8 @@ packages:
   '@protobufjs/utf8@1.1.1':
     resolution: {integrity: sha512-oOAWABowe8EAbMyWKM0tYDKi8Yaox52D+HWZhAIJqQXbqe0xI/GV7FhLWqlEKreMkfDjshR5FKgi3mnle0h6Eg==}
 
-  '@reserve-protocol/trusted-fillers@https://codeload.github.com/reserve-protocol/trusted-fillers/tar.gz/3cbd2ba56b742b28906d81824e2380ea61ba475f':
-    resolution: {tarball: https://codeload.github.com/reserve-protocol/trusted-fillers/tar.gz/3cbd2ba56b742b28906d81824e2380ea61ba475f}
+  '@reserve-protocol/trusted-fillers@https://codeload.github.com/reserve-protocol/trusted-fillers/tar.gz/303e0a56948b602365a1ed0024ed473f683aeb0f':
+    resolution: {tarball: https://codeload.github.com/reserve-protocol/trusted-fillers/tar.gz/303e0a56948b602365a1ed0024ed473f683aeb0f}
     version: 0.1.0
 
   '@scure/base@1.2.6':
@@ -1230,7 +1230,7 @@ snapshots:
 
   '@protobufjs/utf8@1.1.1': {}
 
-  '@reserve-protocol/trusted-fillers@https://codeload.github.com/reserve-protocol/trusted-fillers/tar.gz/3cbd2ba56b742b28906d81824e2380ea61ba475f(ajv@8.20.0)(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)':
+  '@reserve-protocol/trusted-fillers@https://codeload.github.com/reserve-protocol/trusted-fillers/tar.gz/303e0a56948b602365a1ed0024ed473f683aeb0f(ajv@8.20.0)(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)':
     dependencies:
       '@cowprotocol/app-data': 3.3.1(cross-fetch@3.2.0)(ethers@5.8.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)
       '@cowprotocol/cow-sdk': 8.1.0(ajv@8.20.0)(cross-fetch@3.2.0)(ipfs-only-hash@4.0.0)(multiformats@9.9.0)

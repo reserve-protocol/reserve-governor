@@ -12,13 +12,19 @@
     "format": "forge fmt",
     "selectors:upload": "forge selectors upload --all",
     "deploy": "forge script script/Deploy.s.sol:DeployScript --slow",
+    "deploy:governance:mainnet": "forge script script/DeployGovernanceSystems.s.sol:DeployGovernanceSystemsScript --rpc-url mainnet",
+    "deploy:governance:base": "forge script script/DeployGovernanceSystems.s.sol:DeployGovernanceSystemsScript --rpc-url base",
+    "deploy:governance:bsc": "forge script script/DeployGovernanceSystems.s.sol:DeployGovernanceSystemsScript --rpc-url bsc",
+    "deploy:governance:mainnet:broadcast": "forge script script/DeployGovernanceSystems.s.sol:DeployGovernanceSystemsScript --rpc-url mainnet --broadcast --slow",
+    "deploy:governance:base:broadcast": "forge script script/DeployGovernanceSystems.s.sol:DeployGovernanceSystemsScript --rpc-url base --broadcast --slow",
+    "deploy:governance:bsc:broadcast": "forge script script/DeployGovernanceSystems.s.sol:DeployGovernanceSystemsScript --rpc-url bsc --broadcast --slow",
     "artifacts": "./scripts/generate-artifacts.sh"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.4.0",
     "@prb/math": "^4.1.0",
-    "@reserve-protocol/trusted-fillers": "github:reserve-protocol/trusted-fillers#3cbd2ba56b742b28906d81824e2380ea61ba475f",
+    "@reserve-protocol/trusted-fillers": "github:reserve-protocol/trusted-fillers#303e0a56948b602365a1ed0024ed473f683aeb0f",
     "forge-std": "github:foundry-rs/forge-std#v1.14.0"
   },
   "packageManager": "pnpm@10.28.0"
