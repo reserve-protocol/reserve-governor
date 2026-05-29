@@ -20,6 +20,7 @@ import { TimelockControllerOptimistic } from "@governance/TimelockControllerOpti
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { OptimisticVotesUpgradeable } from "@src/staking/OptimisticVotesUpgradeable.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
@@ -562,7 +563,7 @@ contract StakingVaultTest is Test {
         vm.expectEmit(true, true, true, true);
         emit IVotes.DelegateChanged(address(this), address(0), ACTOR_ALICE);
         vm.expectEmit(true, true, true, true);
-        emit StakingVault.OptimisticDelegateChanged(address(this), address(0), ACTOR_BOB);
+        emit OptimisticVotesUpgradeable.OptimisticDelegateChanged(address(this), address(0), ACTOR_BOB);
         vault.depositAndDelegate(500e18, ACTOR_ALICE, ACTOR_BOB);
 
         assertEq(vault.balanceOf(address(this)), 500e18);
@@ -673,6 +674,35 @@ contract StakingVaultTest is Test {
         Checkpoints.Checkpoint208 memory bobUpdatedCheckpoint = vault.optimisticCheckpoints(ACTOR_BOB, 1);
         assertEq(bobUpdatedCheckpoint._key, block.timestamp);
         assertEq(bobUpdatedCheckpoint._value, 600e18);
+    }
+
+    function test_optimisticTotalSupplyTracksMintAndBurn() public {
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(0);
+
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+
+        // Mint (deposit) increases the optimistic total supply, independent of any delegation.
+        vault.deposit(1000e18, address(this));
+
+        uint256 mintSnapshot = block.timestamp;
+        vm.warp(mintSnapshot + 1);
+        assertEq(vault.getPastOptimisticTotalSupply(mintSnapshot), 1000e18);
+
+        // Transfers between holders do not change the total supply.
+        vault.transfer(ACTOR_ALICE, 400e18);
+
+        uint256 transferSnapshot = block.timestamp;
+        vm.warp(transferSnapshot + 1);
+        assertEq(vault.getPastOptimisticTotalSupply(transferSnapshot), 1000e18);
+
+        // Burn (unstake) decreases the optimistic total supply.
+        vault.redeem(600e18, address(this), address(this));
+
+        uint256 burnSnapshot = block.timestamp;
+        vm.warp(burnSnapshot + 1);
+        assertEq(vault.getPastOptimisticTotalSupply(burnSnapshot), 400e18);
     }
 
     function test_unstake_noDelay() public {

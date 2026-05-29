@@ -8,7 +8,7 @@
   "scripts": {
     "compile": "forge compile",
     "test": "forge test",
-    "size": "forge compile --sizes",
+    "size": "forge compile --sizes contracts/",
     "format": "forge fmt",
     "selectors:upload": "forge selectors upload --all",
     "deploy": "forge script script/Deploy.s.sol:DeployScript --slow",
