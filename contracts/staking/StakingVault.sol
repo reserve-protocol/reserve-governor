@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IERC6372 } from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -16,9 +17,6 @@ import { ERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC2
 import {
     ERC20PermitUpgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
-import {
-    ERC20VotesUpgradeable
-} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20VotesUpgradeable.sol";
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 
@@ -28,7 +26,7 @@ import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IRewardTokenRegistry } from "@interfaces/IRewardTokenRegistry.sol";
 
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
-import { OptimisticVotesUpgradeable } from "@staking/OptimisticVotesUpgradeable.sol";
+import { ERC20OptimisticVotesUpgradeable } from "@staking/ERC20OptimisticVotesUpgradeable.sol";
 import { UnstakingManager } from "@staking/UnstakingManager.sol";
 import { Versioned } from "@utils/Versioned.sol";
 
@@ -59,8 +57,7 @@ uint256 constant SCALAR = 1e18; // D18
 contract StakingVault is
     ERC4626Upgradeable,
     ERC20PermitUpgradeable,
-    ERC20VotesUpgradeable,
-    OptimisticVotesUpgradeable,
+    ERC20OptimisticVotesUpgradeable,
     AccessControlEnumerableUpgradeable,
     Versioned,
     UUPSUpgradeable
@@ -141,8 +138,7 @@ contract StakingVault is
         __ERC4626_init(_underlying);
         __ERC20_init(_name, _symbol);
         __ERC20Permit_init(_name);
-        __ERC20Votes_init();
-        __OptimisticVotes_init();
+        __ERC20OptimisticVotes_init();
         __AccessControlEnumerable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
@@ -444,11 +440,10 @@ contract StakingVault is
      */
     function _update(address from, address to, uint256 value)
         internal
-        override(ERC20Upgradeable, ERC20VotesUpgradeable)
+        override(ERC20Upgradeable, ERC20OptimisticVotesUpgradeable)
         accrueRewards(from, to)
     {
         super._update(from, to, value);
-        _transferOptimisticVotingUnits(from, to, value);
     }
 
     function nonces(address _owner) public view override(ERC20PermitUpgradeable, NoncesUpgradeable) returns (uint256) {
@@ -462,11 +457,11 @@ contract StakingVault is
     /**
      * ERC5805 Clock
      */
-    function clock() public view override(VotesUpgradeable, OptimisticVotesUpgradeable) returns (uint48) {
+    function clock() public view override(VotesUpgradeable, IERC6372) returns (uint48) {
         return Time.timestamp();
     }
 
-    function CLOCK_MODE() public pure override returns (string memory) {
+    function CLOCK_MODE() public pure override(VotesUpgradeable, IERC6372) returns (string memory) {
         return "mode=timestamp";
     }
 
@@ -484,15 +479,5 @@ contract StakingVault is
 
         (address latestStakingVaultImpl,,) = versionRegistry.getImplementationsForVersion(versionHash);
         require(latestStakingVaultImpl == stakingVaultImpl, Vault__NotLatestStakingVault(stakingVaultImpl));
-    }
-
-    /// @dev Backs both the standard and optimistic delegation graphs with the holder's share balance.
-    function _getVotingUnits(address account)
-        internal
-        view
-        override(ERC20VotesUpgradeable, OptimisticVotesUpgradeable)
-        returns (uint256)
-    {
-        return super._getVotingUnits(account);
     }
 }

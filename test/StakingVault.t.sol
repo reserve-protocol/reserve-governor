@@ -12,6 +12,7 @@ import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.s
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
+import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
@@ -20,7 +21,6 @@ import { TimelockControllerOptimistic } from "@governance/TimelockControllerOpti
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
-import { OptimisticVotesUpgradeable } from "@src/staking/OptimisticVotesUpgradeable.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
@@ -563,7 +563,7 @@ contract StakingVaultTest is Test {
         vm.expectEmit(true, true, true, true);
         emit IVotes.DelegateChanged(address(this), address(0), ACTOR_ALICE);
         vm.expectEmit(true, true, true, true);
-        emit OptimisticVotesUpgradeable.OptimisticDelegateChanged(address(this), address(0), ACTOR_BOB);
+        emit IOptimisticVotes.OptimisticDelegateChanged(address(this), address(0), ACTOR_BOB);
         vault.depositAndDelegate(500e18, ACTOR_ALICE, ACTOR_BOB);
 
         assertEq(vault.balanceOf(address(this)), 500e18);

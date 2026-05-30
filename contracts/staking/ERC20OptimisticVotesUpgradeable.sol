@@ -2,44 +2,26 @@
 pragma solidity ^0.8.28;
 
 import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
+import {
+    ERC20VotesUpgradeable
+} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20VotesUpgradeable.sol";
 
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
-import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { ContextUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
-import { EIP712Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
-
 import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 
 /**
- * @title OptimisticVotesUpgradeable
- * @notice A 1:1 mirror of OpenZeppelin's {VotesUpgradeable}, tracking a *second*, independent delegation graph
- *         used exclusively for optimistic (veto) governance.
+ * @title ERC20OptimisticVotesUpgradeable
+ * @notice ERC20Votes extension that tracks a second, independent delegation graph for optimistic governance.
  *
- * @dev This is a base abstract contract that tracks optimistic voting units, which are a measure of veto power that can
- *      be transferred, and provides a system of vote delegation independent of the standard {VotesUpgradeable} graph.
- *      An account can therefore appoint one representative for standard proposals and a different one for vetoing
- *      optimistic proposals.
- *
- *      The full history of delegated optimistic votes (and of the optimistic total supply) is checkpointed on-chain so
- *      that governance can read veto power as-of a past timepoint. The deriving contract must implement
- *      {_getOptimisticVotingUnits} (typically the token balance) and call {_transferOptimisticVotingUnits} whenever
- *      those units move (typically from the token `_update` hook).
- *
- *      The optimistic graph reuses {VotesUpgradeable.VotesStorage} as its storage layout, but anchored at a distinct
- *      ERC-7201 slot so the two graphs never collide.
+ * @dev The optimistic graph uses the same ERC20 voting units as {ERC20VotesUpgradeable}, but stores delegate and
+ *      checkpoint state at a separate ERC-7201 slot. Token mint, burn, and transfer events update both graphs through
+ *      {_update}.
  */
-abstract contract OptimisticVotesUpgradeable is
-    Initializable,
-    ContextUpgradeable,
-    EIP712Upgradeable,
-    NoncesUpgradeable,
-    IOptimisticVotes
-{
+abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOptimisticVotes {
     using Checkpoints for Checkpoints.Trace208;
 
     bytes32 private constant OPTIMISTIC_DELEGATION_TYPEHASH =
@@ -56,23 +38,12 @@ abstract contract OptimisticVotesUpgradeable is
         }
     }
 
-    /// @dev Emitted when an account changes their optimistic delegate.
-    event OptimisticDelegateChanged(
-        address indexed delegator, address indexed fromDelegate, address indexed toDelegate
-    );
+    function __ERC20OptimisticVotes_init() internal onlyInitializing {
+        __ERC20Votes_init();
+        __ERC20OptimisticVotes_init_unchained();
+    }
 
-    /// @dev Emitted when a delegate's amount of optimistic votes changes.
-    event OptimisticDelegateVotesChanged(address indexed delegate, uint256 previousVotes, uint256 newVotes);
-
-    function __OptimisticVotes_init() internal onlyInitializing { }
-
-    function __OptimisticVotes_init_unchained() internal onlyInitializing { }
-
-    /**
-     * @dev Clock used for flagging checkpoints. Implemented by the deriving contract and shared with the standard
-     *      {VotesUpgradeable} clock so both graphs checkpoint against the same timepoint.
-     */
-    function clock() public view virtual returns (uint48);
+    function __ERC20OptimisticVotes_init_unchained() internal onlyInitializing { }
 
     /// @dev Returns the optimistic delegate that `account` has chosen.
     function optimisticDelegates(address account) public view virtual returns (address) {
@@ -93,7 +64,7 @@ abstract contract OptimisticVotesUpgradeable is
      */
     function getPastOptimisticVotes(address account, uint256 timepoint) public view virtual returns (uint256) {
         VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
-        return $._delegateCheckpoints[account].upperLookupRecent(_validateOptimisticTimepoint(timepoint));
+        return $._delegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
     }
 
     /**
@@ -108,7 +79,7 @@ abstract contract OptimisticVotesUpgradeable is
      */
     function getPastOptimisticTotalSupply(uint256 timepoint) public view virtual returns (uint256) {
         VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
-        return $._totalCheckpoints.upperLookupRecent(_validateOptimisticTimepoint(timepoint));
+        return $._totalCheckpoints.upperLookupRecent(_validateTimepoint(timepoint));
     }
 
     /// @dev Returns the current total supply of optimistic votes.
@@ -137,18 +108,18 @@ abstract contract OptimisticVotesUpgradeable is
     }
 
     /// @inheritdoc IOptimisticVotes
-    function numOptimisticCheckpoints(address account) external view virtual returns (uint32) {
-        return SafeCast.toUint32(_getOptimisticVotesStorage()._delegateCheckpoints[account].length());
+    function numOptimisticCheckpoints(address account) public view virtual returns (uint32) {
+        return _numOptimisticCheckpoints(account);
     }
 
     /// @inheritdoc IOptimisticVotes
     function optimisticCheckpoints(address account, uint32 pos)
-        external
+        public
         view
         virtual
         returns (Checkpoints.Checkpoint208 memory)
     {
-        return _getOptimisticVotesStorage()._delegateCheckpoints[account].at(pos);
+        return _optimisticCheckpoints(account, pos);
     }
 
     /**
@@ -165,17 +136,24 @@ abstract contract OptimisticVotesUpgradeable is
         _moveOptimisticDelegateVotes(oldDelegate, delegatee, _getVotingUnits(account));
     }
 
+    function _update(address from, address to, uint256 value) internal virtual override {
+        super._update(from, to, value);
+        _transferOptimisticVotingUnits(from, to, value);
+    }
+
     /**
      * @dev Transfers, mints, or burns optimistic voting units. To register a mint, `from` should be zero. To register
      *      a burn, `to` should be zero. The optimistic total supply is adjusted with mints and burns.
      */
     function _transferOptimisticVotingUnits(address from, address to, uint256 amount) internal virtual {
         VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
+        uint208 safeAmount = SafeCast.toUint208(amount);
+
         if (from == address(0)) {
-            _pushOptimistic($._totalCheckpoints, _addOptimistic, SafeCast.toUint208(amount));
+            _pushOptimistic($._totalCheckpoints, $._totalCheckpoints.latest() + safeAmount);
         }
         if (to == address(0)) {
-            _pushOptimistic($._totalCheckpoints, _subtractOptimistic, SafeCast.toUint208(amount));
+            _pushOptimistic($._totalCheckpoints, $._totalCheckpoints.latest() - safeAmount);
         }
         _moveOptimisticDelegateVotes(optimisticDelegates(from), optimisticDelegates(to), amount);
     }
@@ -184,49 +162,40 @@ abstract contract OptimisticVotesUpgradeable is
     function _moveOptimisticDelegateVotes(address from, address to, uint256 amount) internal virtual {
         VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
         if (from != to && amount > 0) {
+            uint208 safeAmount = SafeCast.toUint208(amount);
+
             if (from != address(0)) {
                 (uint256 oldValue, uint256 newValue) =
-                    _pushOptimistic($._delegateCheckpoints[from], _subtractOptimistic, SafeCast.toUint208(amount));
+                    _pushOptimistic($._delegateCheckpoints[from], $._delegateCheckpoints[from].latest() - safeAmount);
                 emit OptimisticDelegateVotesChanged(from, oldValue, newValue);
             }
             if (to != address(0)) {
                 (uint256 oldValue, uint256 newValue) =
-                    _pushOptimistic($._delegateCheckpoints[to], _addOptimistic, SafeCast.toUint208(amount));
+                    _pushOptimistic($._delegateCheckpoints[to], $._delegateCheckpoints[to].latest() + safeAmount);
                 emit OptimisticDelegateVotesChanged(to, oldValue, newValue);
             }
         }
     }
 
-    /// @dev Validate that a timepoint is in the past, and return it as a uint48.
-    /// @dev Reuses {VotesUpgradeable.ERC5805FutureLookup} so the failure mode matches the standard votes graph.
-    function _validateOptimisticTimepoint(uint256 timepoint) internal view returns (uint48) {
-        uint48 currentTimepoint = clock();
-        if (timepoint >= currentTimepoint) {
-            revert VotesUpgradeable.ERC5805FutureLookup(timepoint, currentTimepoint);
-        }
-        return SafeCast.toUint48(timepoint);
+    /// @dev Get number of optimistic checkpoints for `account`.
+    function _numOptimisticCheckpoints(address account) internal view virtual returns (uint32) {
+        return SafeCast.toUint32(_getOptimisticVotesStorage()._delegateCheckpoints[account].length());
     }
 
-    function _pushOptimistic(
-        Checkpoints.Trace208 storage store,
-        function(uint208, uint208) view returns (uint208) op,
-        uint208 delta
-    ) private returns (uint208 oldValue, uint208 newValue) {
-        return store.push(clock(), op(store.latest(), delta));
+    /// @dev Get the `pos`-th optimistic checkpoint for `account`.
+    function _optimisticCheckpoints(address account, uint32 pos)
+        internal
+        view
+        virtual
+        returns (Checkpoints.Checkpoint208 memory)
+    {
+        return _getOptimisticVotesStorage()._delegateCheckpoints[account].at(pos);
     }
 
-    function _addOptimistic(uint208 a, uint208 b) private pure returns (uint208) {
-        return a + b;
+    function _pushOptimistic(Checkpoints.Trace208 storage store, uint208 value)
+        private
+        returns (uint208 oldValue, uint208 newValue)
+    {
+        return store.push(clock(), value);
     }
-
-    function _subtractOptimistic(uint208 a, uint208 b) private pure returns (uint208) {
-        return a - b;
-    }
-
-    /**
-     * @dev Must return the voting units held by an account. Shares the same signature (and, in practice, the same
-     *      `balanceOf` implementation) as {VotesUpgradeable-_getVotingUnits}, so a single override in the deriving
-     *      contract backs both the standard and optimistic graphs with identical units.
-     */
-    function _getVotingUnits(address) internal view virtual returns (uint256);
 }
