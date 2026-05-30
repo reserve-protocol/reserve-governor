@@ -48,18 +48,20 @@ jobs:
 
       - name: Commit Updated Artifacts
         run: |
-          if git diff --quiet -- contracts/artifacts/; then
+          ARTIFACT_CHANGES="$(git status --porcelain --untracked-files=all -- contracts/artifacts/)"
+          if [ -z "$ARTIFACT_CHANGES" ]; then
             echo "Artifact files are up to date."
             exit 0
           fi
 
+          echo "Artifact files are out of date."
+          printf '%s\n' "$ARTIFACT_CHANGES"
+
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
             echo "::error:: Artifact files are outdated, but this workflow cannot push to forked pull request branches. Run ./scripts/generate-artifacts.sh and commit the changes."
-            git diff --stat -- contracts/artifacts/
             exit 1
           fi
 
-          git status --short -- contracts/artifacts/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add contracts/artifacts/
