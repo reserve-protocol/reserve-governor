@@ -28,6 +28,7 @@ import { IRewardTokenRegistry } from "@interfaces/IRewardTokenRegistry.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { ERC20OptimisticVotesUpgradeable } from "@staking/ERC20OptimisticVotesUpgradeable.sol";
 import { UnstakingManager } from "@staking/UnstakingManager.sol";
+import { StakingVaultUpgradeLib } from "@staking/lib/StakingVaultUpgradeLib.sol";
 import { Versioned } from "@utils/Versioned.sol";
 
 import {
@@ -96,6 +97,8 @@ contract StakingVault is
     uint256 private nativeBalanceLastKnown; // {asset}
     uint256 private nativeRewardsLastPaid; // {s}
 
+    address public tokenJar;
+
     error Vault__InvalidRewardToken(address rewardToken);
     error Vault__DisallowedRewardToken(address rewardToken);
     error Vault__RewardAlreadyRegistered();
@@ -125,13 +128,15 @@ contract StakingVault is
     /// @param _initialAdmin Initial admin of the vault
     /// @param _rewardPeriod {s} Half life of the reward handout rate
     /// @param _unstakingDelay {s} Delay after unstaking before user receives their deposit
+    /// @param _tokenJar GenericTokenJar used to convert rewards into this vault's underlying token
     function initialize(
         string memory _name,
         string memory _symbol,
         IERC20 _underlying,
         address _initialAdmin,
         uint256 _rewardPeriod,
-        uint256 _unstakingDelay
+        uint256 _unstakingDelay,
+        address _tokenJar
     ) external initializer {
         require(_initialAdmin != address(0), Vault__InvalidAdmin(_initialAdmin));
 
@@ -156,6 +161,8 @@ contract StakingVault is
         address _versionRegistry = deployer.versionRegistry();
         emit VersionRegistrySet(_versionRegistry);
         versionRegistry = ReserveOptimisticGovernanceVersionRegistry(_versionRegistry);
+
+        tokenJar = _tokenJar;
 
         unstakingManager = new UnstakingManager(_underlying);
 
@@ -470,15 +477,6 @@ contract StakingVault is
      * @dev Upgrade to latest non-deprecated version only
      */
     function _authorizeUpgrade(address stakingVaultImpl) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
-        bytes32 versionHash = keccak256(abi.encodePacked(Versioned(stakingVaultImpl).version()));
-
-        // RoleRegistry SHOULD maintain fresh latest versions
-
-        (bytes32 latestVersionHash,,, bool deprecated) = versionRegistry.getLatestVersion();
-        require(!deprecated, Vault__VersionDeprecated(versionHash));
-        require(versionHash == latestVersionHash, Vault__NotLatestStakingVault(stakingVaultImpl));
-
-        (address latestStakingVaultImpl,,) = versionRegistry.getImplementationsForVersion(versionHash);
-        require(latestStakingVaultImpl == stakingVaultImpl, Vault__NotLatestStakingVault(stakingVaultImpl));
+        StakingVaultUpgradeLib.authorizeUpgrade(versionRegistry, stakingVaultImpl);
     }
 }

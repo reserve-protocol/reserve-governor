@@ -9,6 +9,7 @@ ARTIFACTS_DIR="$ROOT_DIR/contracts/artifacts"
 
 CONTRACTS=(
     "StakingVault"
+    "StakingVaultUpgradeLib"
     "ProposalLib"
     "ThrottleLib"
     "ReserveOptimisticGovernor"

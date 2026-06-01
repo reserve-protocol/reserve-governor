@@ -9,6 +9,7 @@ import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { IERC20, IERC4626 } from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
+import { GenericTokenJar } from "@reserve-protocol/trusted-fillers/contracts/extras/GenericTokenJar.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
@@ -45,6 +46,7 @@ contract StakingVaultTest is Test {
 
     uint256 private constant REWARD_HALF_LIFE = 3 days;
     uint256 private constant UNSTAKING_DELAY = 1 weeks;
+    address private constant TRUSTED_FILLER_REGISTRY = address(0xF111E7);
 
     address constant ACTOR_ALICE = address(0x123123001);
     address constant ACTOR_BOB = address(0x123123002);
@@ -73,6 +75,7 @@ contract StakingVaultTest is Test {
         ReserveOptimisticGovernorDeployer deployer = new ReserveOptimisticGovernorDeployer(
             address(versionRegistry),
             address(rewardTokenRegistry),
+            TRUSTED_FILLER_REGISTRY,
             address(guardian),
             vaultImpl,
             governorImpl,
@@ -158,6 +161,7 @@ contract StakingVaultTest is Test {
         deployer = new ReserveOptimisticGovernorDeployerV2Mock(
             address(versionRegistry),
             address(rewardTokenRegistry),
+            TRUSTED_FILLER_REGISTRY,
             address(new Guardian(address(this), address(0), new address[](0))),
             stakingVaultImplementation,
             address(new ReserveOptimisticGovernor()),
@@ -188,6 +192,13 @@ contract StakingVaultTest is Test {
         assertEq(reward.balanceOf(address(vault)), 0);
         assertEq(reward.balanceOf(ACTOR_ALICE), 0);
         assertEq(reward.balanceOf(ACTOR_BOB), 0);
+
+        GenericTokenJar jar = GenericTokenJar(vault.tokenJar());
+        assertNotEq(address(jar), address(0));
+        assertEq(jar.destination(), address(vault));
+        assertEq(address(jar.token()), address(token));
+        assertEq(address(jar.trustedFillerRegistry()), TRUSTED_FILLER_REGISTRY);
+        assertEq(jar.owner(), address(0));
 
         (uint256 payoutLastPaid,,,,) = vault.rewardTrackers(address(reward));
         assertGt(payoutLastPaid, 0);
@@ -1357,12 +1368,14 @@ contract StakingVaultTest is Test {
 
     function test_cannotInitializeTwice() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        vault.initialize("New Name", "NEW", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0);
+        vault.initialize("New Name", "NEW", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0, address(0));
     }
 
     function test_implementationCannotBeInitialized() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         StakingVault(vaultImpl)
-            .initialize("Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0);
+            .initialize(
+                "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0, address(0)
+            );
     }
 }
