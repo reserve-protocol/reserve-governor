@@ -1,4 +1,2 @@
-allowBuilds:
-  protobufjs: true
 patchedDependencies:
   "@openzeppelin/contracts-upgradeable": patches/@openzeppelin__contracts-upgradeable.patch
