@@ -9,7 +9,7 @@ library GuardianDeployer {
      *
      * @notice Source Contract: contracts/Guardian.sol
      * - solc: 0.8.33+commit.64118f21
-     * - optimizer_runs: 159
+     * - optimizer_runs: 149
      * - viaIR: false
      * - evm_version: cancun
      * - bytecodeHash: none
