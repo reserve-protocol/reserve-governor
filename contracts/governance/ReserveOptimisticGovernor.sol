@@ -246,7 +246,7 @@ contract ReserveOptimisticGovernor is
             }
 
             // {tok}
-            uint256 pastSupply = token().getPastTotalSupply(snapshot);
+            uint256 pastSupply = IOptimisticVotes(address(token())).getPastOptimisticTotalSupply(snapshot);
 
             if (pastSupply == 0) {
                 return ProposalState.Canceled;
