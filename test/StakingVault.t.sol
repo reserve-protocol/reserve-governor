@@ -393,6 +393,35 @@ contract StakingVaultTest is Test {
         assertApproxEqRel(reward.balanceOf(ACTOR_BOB), 999.02344e18, 0.0001e18);
     }
 
+    function test__accrual_preservesSubWeiRewardsAcrossRepeatedUserAccruals() public {
+        _mintAndDepositFor(ACTOR_ALICE, 1);
+        _mintAndDepositFor(ACTOR_BOB, 1);
+
+        vm.warp(block.timestamp + 1);
+        reward.mint(address(vault), 3);
+        vault.poke();
+
+        address[] memory rewardTokens = new address[](1);
+        rewardTokens[0] = address(reward);
+
+        _payoutRewards(1);
+
+        vm.prank(ACTOR_ALICE);
+        uint256[] memory firstClaim = vault.claimRewards(rewardTokens);
+        assertEq(firstClaim[0], 0);
+        assertEq(reward.balanceOf(ACTOR_ALICE), 0);
+
+        reward.mint(address(vault), 1);
+        vault.poke();
+
+        _payoutRewards(1);
+
+        vm.prank(ACTOR_ALICE);
+        uint256[] memory secondClaim = vault.claimRewards(rewardTokens);
+        assertEq(secondClaim[0], 1);
+        assertEq(reward.balanceOf(ACTOR_ALICE), 1);
+    }
+
     function test__accrual_emitsEventWhenClaimingRewards() public {
         _mintAndDepositFor(ACTOR_ALICE, 1000e18);
 
@@ -676,7 +705,7 @@ contract StakingVaultTest is Test {
         assertEq(bobUpdatedCheckpoint._value, 600e18);
     }
 
-    function test_optimisticTotalSupplyTracksMintAndBurn() public {
+    function test_optimisticTotalSupplyUsesStandardVotesTotalSupply() public {
         vm.prank(address(timelock));
         vault.setUnstakingDelay(0);
 
@@ -688,6 +717,7 @@ contract StakingVaultTest is Test {
 
         uint256 mintSnapshot = block.timestamp;
         vm.warp(mintSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(mintSnapshot), 1000e18);
         assertEq(vault.getPastOptimisticTotalSupply(mintSnapshot), 1000e18);
 
         // Transfers between holders do not change the total supply.
@@ -695,6 +725,7 @@ contract StakingVaultTest is Test {
 
         uint256 transferSnapshot = block.timestamp;
         vm.warp(transferSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(transferSnapshot), 1000e18);
         assertEq(vault.getPastOptimisticTotalSupply(transferSnapshot), 1000e18);
 
         // Burn (unstake) decreases the optimistic total supply.
@@ -702,6 +733,7 @@ contract StakingVaultTest is Test {
 
         uint256 burnSnapshot = block.timestamp;
         vm.warp(burnSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(burnSnapshot), 400e18);
         assertEq(vault.getPastOptimisticTotalSupply(burnSnapshot), 400e18);
     }
 
