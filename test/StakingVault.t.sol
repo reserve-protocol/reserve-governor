@@ -12,6 +12,7 @@ import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.s
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
+import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
@@ -392,6 +393,35 @@ contract StakingVaultTest is Test {
         assertApproxEqRel(reward.balanceOf(ACTOR_BOB), 999.02344e18, 0.0001e18);
     }
 
+    function test__accrual_preservesSubWeiRewardsAcrossRepeatedUserAccruals() public {
+        _mintAndDepositFor(ACTOR_ALICE, 1);
+        _mintAndDepositFor(ACTOR_BOB, 1);
+
+        vm.warp(block.timestamp + 1);
+        reward.mint(address(vault), 3);
+        vault.poke();
+
+        address[] memory rewardTokens = new address[](1);
+        rewardTokens[0] = address(reward);
+
+        _payoutRewards(1);
+
+        vm.prank(ACTOR_ALICE);
+        uint256[] memory firstClaim = vault.claimRewards(rewardTokens);
+        assertEq(firstClaim[0], 0);
+        assertEq(reward.balanceOf(ACTOR_ALICE), 0);
+
+        reward.mint(address(vault), 1);
+        vault.poke();
+
+        _payoutRewards(1);
+
+        vm.prank(ACTOR_ALICE);
+        uint256[] memory secondClaim = vault.claimRewards(rewardTokens);
+        assertEq(secondClaim[0], 1);
+        assertEq(reward.balanceOf(ACTOR_ALICE), 1);
+    }
+
     function test__accrual_emitsEventWhenClaimingRewards() public {
         _mintAndDepositFor(ACTOR_ALICE, 1000e18);
 
@@ -562,7 +592,7 @@ contract StakingVaultTest is Test {
         vm.expectEmit(true, true, true, true);
         emit IVotes.DelegateChanged(address(this), address(0), ACTOR_ALICE);
         vm.expectEmit(true, true, true, true);
-        emit StakingVault.OptimisticDelegateChanged(address(this), address(0), ACTOR_BOB);
+        emit IOptimisticVotes.OptimisticDelegateChanged(address(this), address(0), ACTOR_BOB);
         vault.depositAndDelegate(500e18, ACTOR_ALICE, ACTOR_BOB);
 
         assertEq(vault.balanceOf(address(this)), 500e18);
@@ -673,6 +703,67 @@ contract StakingVaultTest is Test {
         Checkpoints.Checkpoint208 memory bobUpdatedCheckpoint = vault.optimisticCheckpoints(ACTOR_BOB, 1);
         assertEq(bobUpdatedCheckpoint._key, block.timestamp);
         assertEq(bobUpdatedCheckpoint._value, 600e18);
+    }
+
+    function test_delegateOptimisticBySigAndPastOptimisticTotalSupply() public {
+        uint256 signerPrivateKey = 0xA11CE;
+        address signer = vm.addr(signerPrivateKey);
+        uint256 amount = 1000e18;
+        _mintAndDepositFor(signer, amount);
+
+        uint256 nonce = vault.nonces(signer);
+        uint256 expiry = block.timestamp + 1 days;
+        bytes32 optimisticDelegationTypehash =
+            keccak256("OptimisticDelegation(address delegatee,uint256 nonce,uint256 expiry)");
+        bytes32 structHash = keccak256(abi.encode(optimisticDelegationTypehash, ACTOR_BOB, nonce, expiry));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vault.DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPrivateKey, digest);
+
+        vault.delegateOptimisticBySig(ACTOR_BOB, nonce, expiry, v, r, s);
+
+        assertEq(vault.nonces(signer), nonce + 1);
+        assertEq(vault.optimisticDelegates(signer), ACTOR_BOB);
+        assertEq(vault.getOptimisticVotes(ACTOR_BOB), amount);
+        assertEq(vault.getOptimisticVotes(signer), 0);
+
+        uint256 snapshot = block.timestamp;
+        vm.warp(snapshot + 1);
+
+        assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, snapshot), amount);
+        assertEq(vault.getPastOptimisticTotalSupply(snapshot), vault.getPastTotalSupply(snapshot));
+        assertEq(vault.getPastOptimisticTotalSupply(snapshot), amount);
+    }
+
+    function test_optimisticTotalSupplyUsesStandardVotesTotalSupply() public {
+        vm.prank(address(timelock));
+        vault.setUnstakingDelay(0);
+
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+
+        // Mint (deposit) increases the optimistic total supply, independent of any delegation.
+        vault.deposit(1000e18, address(this));
+
+        uint256 mintSnapshot = block.timestamp;
+        vm.warp(mintSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(mintSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticTotalSupply(mintSnapshot), 1000e18);
+
+        // Transfers between holders do not change the total supply.
+        vault.transfer(ACTOR_ALICE, 400e18);
+
+        uint256 transferSnapshot = block.timestamp;
+        vm.warp(transferSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(transferSnapshot), 1000e18);
+        assertEq(vault.getPastOptimisticTotalSupply(transferSnapshot), 1000e18);
+
+        // Burn (unstake) decreases the optimistic total supply.
+        vault.redeem(600e18, address(this), address(this));
+
+        uint256 burnSnapshot = block.timestamp;
+        vm.warp(burnSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(burnSnapshot), 400e18);
+        assertEq(vault.getPastOptimisticTotalSupply(burnSnapshot), 400e18);
     }
 
     function test_unstake_noDelay() public {

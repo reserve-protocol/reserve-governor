@@ -1,37 +1,32 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
+import { IERC6372 } from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 
 import {
     AccessControlEnumerableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
+import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { ERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {
     ERC20PermitUpgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
-import {
-    ERC20VotesUpgradeable
-} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20VotesUpgradeable.sol";
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { NoncesUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 
 import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
-import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IRewardTokenRegistry } from "@interfaces/IRewardTokenRegistry.sol";
 
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { ERC20OptimisticVotesUpgradeable } from "@staking/ERC20OptimisticVotesUpgradeable.sol";
 import { UnstakingManager } from "@staking/UnstakingManager.sol";
 import { Versioned } from "@utils/Versioned.sol";
 
@@ -45,8 +40,6 @@ import {
 uint256 constant LN_2 = 0.693147180559945309e18; // D18{1} ln(2e18)
 
 uint256 constant SCALAR = 1e18; // D18
-bytes32 constant OPTIMISTIC_DELEGATION_TYPEHASH =
-    keccak256("OptimisticDelegation(address delegatee,uint256 nonce,uint256 expiry)");
 
 /**
  * @title StakingVault
@@ -64,14 +57,12 @@ bytes32 constant OPTIMISTIC_DELEGATION_TYPEHASH =
 contract StakingVault is
     ERC4626Upgradeable,
     ERC20PermitUpgradeable,
-    ERC20VotesUpgradeable,
+    ERC20OptimisticVotesUpgradeable,
     AccessControlEnumerableUpgradeable,
     Versioned,
-    UUPSUpgradeable,
-    IOptimisticVotes
+    UUPSUpgradeable
 {
     using EnumerableSet for EnumerableSet.AddressSet;
-    using Checkpoints for Checkpoints.Trace208;
 
     ReserveOptimisticGovernanceVersionRegistry public versionRegistry;
 
@@ -92,7 +83,7 @@ contract StakingVault is
 
     struct UserRewardInfo {
         uint256 lastRewardIndex; // D18+decimals{reward/share}
-        uint256 accruedRewards; // {reward}
+        uint256 accruedRewards; // D18{reward}
     }
 
     IRewardTokenRegistry public rewardTokenRegistry;
@@ -100,9 +91,6 @@ contract StakingVault is
     mapping(address token => RewardInfo rewardInfo) public rewardTrackers;
     mapping(address token => bool isDisallowed) public disallowedRewardTokens;
     mapping(address token => mapping(address user => UserRewardInfo userReward)) public userRewardTrackers;
-
-    mapping(address account => address delegatee) private optimisticDelegatees;
-    mapping(address delegatee => Checkpoints.Trace208) private optimisticDelegateCheckpoints;
 
     uint256 private totalDeposited; // {asset}
     uint256 private nativeBalanceLastKnown; // {asset}
@@ -126,10 +114,6 @@ contract StakingVault is
     event RewardTokenRegistrySet(address rewardTokenRegistry);
     event RewardsClaimed(address user, address rewardToken, uint256 amount);
     event RewardRatioSet(uint256 rewardRatio, uint256 halfLife);
-    event OptimisticDelegateChanged(
-        address indexed delegator, address indexed fromDelegate, address indexed toDelegate
-    );
-    event OptimisticDelegateVotesChanged(address indexed delegate, uint256 previousVotes, uint256 newVotes);
 
     constructor() {
         _disableInitializers();
@@ -154,7 +138,7 @@ contract StakingVault is
         __ERC4626_init(_underlying);
         __ERC20_init(_name, _symbol);
         __ERC20Permit_init(_name);
-        __ERC20Votes_init();
+        __ERC20OptimisticVotes_init();
         __AccessControlEnumerable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
@@ -193,48 +177,6 @@ contract StakingVault is
 
         _delegate(msg.sender, delegatee);
         _delegateOptimistic(msg.sender, optimisticDelegatee);
-    }
-
-    function delegateOptimistic(address delegatee) external {
-        _delegateOptimistic(msg.sender, delegatee);
-    }
-
-    function delegateOptimisticBySig(address delegatee, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s)
-        external
-    {
-        if (block.timestamp > expiry) {
-            revert IVotes.VotesExpiredSignature(expiry);
-        }
-
-        address signer = ECDSA.recover(
-            _hashTypedDataV4(keccak256(abi.encode(OPTIMISTIC_DELEGATION_TYPEHASH, delegatee, nonce, expiry))), v, r, s
-        );
-        _useCheckedNonce(signer, nonce);
-        _delegateOptimistic(signer, delegatee);
-    }
-
-    function optimisticDelegates(address account) external view returns (address) {
-        return optimisticDelegatees[account];
-    }
-
-    function getOptimisticVotes(address account) external view returns (uint256) {
-        return optimisticDelegateCheckpoints[account].latest();
-    }
-
-    function numOptimisticCheckpoints(address account) external view returns (uint32) {
-        return SafeCast.toUint32(optimisticDelegateCheckpoints[account].length());
-    }
-
-    function optimisticCheckpoints(address account, uint32 pos)
-        external
-        view
-        returns (Checkpoints.Checkpoint208 memory)
-    {
-        return optimisticDelegateCheckpoints[account].at(pos);
-    }
-
-    function getPastOptimisticVotes(address account, uint256 timepoint) external view returns (uint256) {
-        return optimisticDelegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
     }
 
     function totalAssets() public view override returns (uint256) {
@@ -351,12 +293,13 @@ contract StakingVault is
             RewardInfo storage rewardInfo = rewardTrackers[_rewardToken];
             UserRewardInfo storage userRewardTracker = userRewardTrackers[_rewardToken][msg.sender];
 
-            claimableRewards[i] = userRewardTracker.accruedRewards;
+            // {reward} = D18{reward} / D18
+            claimableRewards[i] = userRewardTracker.accruedRewards / SCALAR;
 
             if (claimableRewards[i] != 0) {
                 // {reward} += {reward}
                 rewardInfo.totalClaimed += claimableRewards[i];
-                userRewardTracker.accruedRewards = 0;
+                userRewardTracker.accruedRewards %= SCALAR;
 
                 SafeERC20.safeTransfer(IERC20(_rewardToken), msg.sender, claimableRewards[i]);
 
@@ -465,10 +408,10 @@ contract StakingVault is
 
         if (deltaIndex != 0) {
             // Accumulate rewards by multiplying user tokens by index and adding on unclaimed
-            // {reward} = {share} * D18+decimals{reward/share} / decimals / D18
-            uint256 supplierDelta = Math.mulDiv(balanceOf(_user), deltaIndex, uint256(10 ** decimals()) * SCALAR);
+            // D18{reward} = {share} * D18+decimals{reward/share} / decimals
+            uint256 supplierDelta = Math.mulDiv(balanceOf(_user), deltaIndex, uint256(10 ** decimals()));
 
-            // {reward} += {reward}
+            // D18{reward} += D18{reward}
             userRewardTracker.accruedRewards += supplierDelta;
             userRewardTracker.lastRewardIndex = rewardInfo.rewardIndex;
         }
@@ -498,11 +441,10 @@ contract StakingVault is
      */
     function _update(address from, address to, uint256 value)
         internal
-        override(ERC20Upgradeable, ERC20VotesUpgradeable)
+        override(ERC20Upgradeable, ERC20OptimisticVotesUpgradeable)
         accrueRewards(from, to)
     {
         super._update(from, to, value);
-        _moveOptimisticDelegateVotes(optimisticDelegatees[from], optimisticDelegatees[to], value);
     }
 
     function nonces(address _owner) public view override(ERC20PermitUpgradeable, NoncesUpgradeable) returns (uint256) {
@@ -516,11 +458,11 @@ contract StakingVault is
     /**
      * ERC5805 Clock
      */
-    function clock() public view override returns (uint48) {
+    function clock() public view override(VotesUpgradeable, IERC6372) returns (uint48) {
         return Time.timestamp();
     }
 
-    function CLOCK_MODE() public pure override returns (string memory) {
+    function CLOCK_MODE() public pure override(VotesUpgradeable, IERC6372) returns (string memory) {
         return "mode=timestamp";
     }
 
@@ -538,35 +480,5 @@ contract StakingVault is
 
         (address latestStakingVaultImpl,,) = versionRegistry.getImplementationsForVersion(versionHash);
         require(latestStakingVaultImpl == stakingVaultImpl, Vault__NotLatestStakingVault(stakingVaultImpl));
-    }
-
-    function _delegateOptimistic(address account, address delegatee) internal {
-        address oldDelegate = optimisticDelegatees[account];
-        optimisticDelegatees[account] = delegatee;
-
-        emit OptimisticDelegateChanged(account, oldDelegate, delegatee);
-        _moveOptimisticDelegateVotes(oldDelegate, delegatee, balanceOf(account));
-    }
-
-    function _moveOptimisticDelegateVotes(address from, address to, uint256 amount) internal {
-        if (from == to || amount == 0) {
-            return;
-        }
-
-        if (from != address(0)) {
-            Checkpoints.Trace208 storage fromCheckpoints = optimisticDelegateCheckpoints[from];
-            uint256 oldValue = fromCheckpoints.latest();
-            uint256 newValue = oldValue - amount;
-            fromCheckpoints.push(clock(), SafeCast.toUint208(newValue));
-            emit OptimisticDelegateVotesChanged(from, oldValue, newValue);
-        }
-
-        if (to != address(0)) {
-            Checkpoints.Trace208 storage toCheckpoints = optimisticDelegateCheckpoints[to];
-            uint256 oldValue = toCheckpoints.latest();
-            uint256 newValue = oldValue + amount;
-            toCheckpoints.push(clock(), SafeCast.toUint208(newValue));
-            emit OptimisticDelegateVotesChanged(to, oldValue, newValue);
-        }
     }
 }
