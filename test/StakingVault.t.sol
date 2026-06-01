@@ -393,6 +393,35 @@ contract StakingVaultTest is Test {
         assertApproxEqRel(reward.balanceOf(ACTOR_BOB), 999.02344e18, 0.0001e18);
     }
 
+    function test__accrual_preservesSubWeiRewardsAcrossRepeatedUserAccruals() public {
+        _mintAndDepositFor(ACTOR_ALICE, 1);
+        _mintAndDepositFor(ACTOR_BOB, 1);
+
+        vm.warp(block.timestamp + 1);
+        reward.mint(address(vault), 3);
+        vault.poke();
+
+        address[] memory rewardTokens = new address[](1);
+        rewardTokens[0] = address(reward);
+
+        _payoutRewards(1);
+
+        vm.prank(ACTOR_ALICE);
+        uint256[] memory firstClaim = vault.claimRewards(rewardTokens);
+        assertEq(firstClaim[0], 0);
+        assertEq(reward.balanceOf(ACTOR_ALICE), 0);
+
+        reward.mint(address(vault), 1);
+        vault.poke();
+
+        _payoutRewards(1);
+
+        vm.prank(ACTOR_ALICE);
+        uint256[] memory secondClaim = vault.claimRewards(rewardTokens);
+        assertEq(secondClaim[0], 1);
+        assertEq(reward.balanceOf(ACTOR_ALICE), 1);
+    }
+
     function test__accrual_emitsEventWhenClaimingRewards() public {
         _mintAndDepositFor(ACTOR_ALICE, 1000e18);
 
