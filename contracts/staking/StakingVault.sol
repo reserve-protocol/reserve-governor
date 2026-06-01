@@ -92,7 +92,7 @@ contract StakingVault is
 
     struct UserRewardInfo {
         uint256 lastRewardIndex; // D18+decimals{reward/share}
-        uint256 accruedRewards; // {reward}
+        uint256 accruedRewards; // D18{reward}
     }
 
     IRewardTokenRegistry public rewardTokenRegistry;
@@ -351,7 +351,8 @@ contract StakingVault is
             RewardInfo storage rewardInfo = rewardTrackers[_rewardToken];
             UserRewardInfo storage userRewardTracker = userRewardTrackers[_rewardToken][msg.sender];
 
-            claimableRewards[i] = userRewardTracker.accruedRewards;
+            // {reward} = D18{reward} / D18
+            claimableRewards[i] = userRewardTracker.accruedRewards / SCALAR;
 
             if (claimableRewards[i] != 0) {
                 // {reward} += {reward}
@@ -465,10 +466,10 @@ contract StakingVault is
 
         if (deltaIndex != 0) {
             // Accumulate rewards by multiplying user tokens by index and adding on unclaimed
-            // {reward} = {share} * D18+decimals{reward/share} / decimals / D18
-            uint256 supplierDelta = Math.mulDiv(balanceOf(_user), deltaIndex, uint256(10 ** decimals()) * SCALAR);
+            // D18{reward} = {share} * D18+decimals{reward/share} / decimals
+            uint256 supplierDelta = Math.mulDiv(balanceOf(_user), deltaIndex, uint256(10 ** decimals()));
 
-            // {reward} += {reward}
+            // D18{reward} += D18{reward}
             userRewardTracker.accruedRewards += supplierDelta;
             userRewardTracker.lastRewardIndex = rewardInfo.rewardIndex;
         }
