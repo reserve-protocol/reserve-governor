@@ -293,6 +293,7 @@ contract StakingVault is
             RewardInfo storage rewardInfo = rewardTrackers[_rewardToken];
             UserRewardInfo storage userRewardTracker = userRewardTrackers[_rewardToken][msg.sender];
 
+            // {reward} = D18{reward} / D18
             claimableRewards[i] = userRewardTracker.accruedRewards / SCALAR;
 
             if (claimableRewards[i] != 0) {
