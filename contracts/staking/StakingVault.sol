@@ -407,11 +407,11 @@ contract StakingVault is
             return;
         }
 
-        RewardInfo memory rewardInfo = rewardTrackers[_rewardToken];
         UserRewardInfo storage userRewardTracker = userRewardTrackers[_rewardToken][_user];
 
         // D18+decimals{reward/share}
-        uint256 deltaIndex = rewardInfo.rewardIndex - userRewardTracker.lastRewardIndex;
+        uint256 rewardIndex = rewardTrackers[_rewardToken].rewardIndex;
+        uint256 deltaIndex = rewardIndex - userRewardTracker.lastRewardIndex;
 
         if (deltaIndex != 0) {
             // Accumulate rewards by multiplying user tokens by index and adding on unclaimed
@@ -420,7 +420,7 @@ contract StakingVault is
 
             // D18{reward} += D18{reward}
             userRewardTracker.accruedRewards += supplierDelta;
-            userRewardTracker.lastRewardIndex = rewardInfo.rewardIndex;
+            userRewardTracker.lastRewardIndex = rewardIndex;
         }
     }
 
