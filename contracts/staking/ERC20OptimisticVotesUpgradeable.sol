@@ -17,9 +17,9 @@ import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
  * @title ERC20OptimisticVotesUpgradeable
  * @notice ERC20Votes extension that tracks a second, independent delegation graph for optimistic governance.
  *
- * @dev The optimistic graph uses the same ERC20 voting units as {ERC20VotesUpgradeable}, but stores delegate and
- *      checkpoint state at a separate ERC-7201 slot. Token mint, burn, and transfer events update both graphs through
- *      {_update}.
+ * @dev The optimistic graph uses the same ERC20 voting units and total supply as {ERC20VotesUpgradeable}, but stores
+ *      delegate state and delegate checkpoints at a separate ERC-7201 slot. Token mint, burn, and transfer events
+ *      update both delegate graphs through {_update}.
  */
 abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOptimisticVotes {
     using Checkpoints for Checkpoints.Trace208;
@@ -31,7 +31,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     bytes32 private constant OptimisticVotesStorageLocation =
         0x70984a7d0b69c3ed645329f33455608f063bcf2582315816bc9835f4d0581600;
 
-    /// @dev Reuses {VotesUpgradeable.VotesStorage} ({_delegatee}, {_delegateCheckpoints}, {_totalCheckpoints}).
+    /// @dev Reuses {VotesUpgradeable.VotesStorage}; optimistic {_totalCheckpoints} is intentionally unused.
     function _getOptimisticVotesStorage() private pure returns (VotesUpgradeable.VotesStorage storage $) {
         assembly {
             $.slot := OptimisticVotesStorageLocation
@@ -70,21 +70,15 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     /**
      * @dev Returns the total supply of optimistic votes available at a specific moment in the past.
      *
-     * NOTE: As with {VotesUpgradeable}, this is the sum of all available optimistic votes, which is not necessarily the
-     * sum of all delegated optimistic votes. Undelegated units still count toward the total supply.
+     * NOTE: Optimistic votes use the same voting units and total supply as standard votes. Undelegated units still
+     * count toward the total supply.
      *
      * Requirements:
      *
      * - `timepoint` must be in the past.
      */
     function getPastOptimisticTotalSupply(uint256 timepoint) public view virtual returns (uint256) {
-        VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
-        return $._totalCheckpoints.upperLookupRecent(_validateTimepoint(timepoint));
-    }
-
-    /// @dev Returns the current total supply of optimistic votes.
-    function _getOptimisticTotalSupply() internal view virtual returns (uint256) {
-        return _getOptimisticVotesStorage()._totalCheckpoints.latest();
+        return getPastTotalSupply(timepoint);
     }
 
     /// @dev Delegates optimistic votes from the sender to `delegatee`.
@@ -138,24 +132,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
 
     function _update(address from, address to, uint256 value) internal virtual override {
         super._update(from, to, value);
-        _transferOptimisticVotingUnits(from, to, value);
-    }
-
-    /**
-     * @dev Transfers, mints, or burns optimistic voting units. To register a mint, `from` should be zero. To register
-     *      a burn, `to` should be zero. The optimistic total supply is adjusted with mints and burns.
-     */
-    function _transferOptimisticVotingUnits(address from, address to, uint256 amount) internal virtual {
-        VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
-        uint208 safeAmount = SafeCast.toUint208(amount);
-
-        if (from == address(0)) {
-            _pushOptimistic($._totalCheckpoints, $._totalCheckpoints.latest() + safeAmount);
-        }
-        if (to == address(0)) {
-            _pushOptimistic($._totalCheckpoints, $._totalCheckpoints.latest() - safeAmount);
-        }
-        _moveOptimisticDelegateVotes(optimisticDelegates(from), optimisticDelegates(to), amount);
+        _moveOptimisticDelegateVotes(optimisticDelegates(from), optimisticDelegates(to), value);
     }
 
     /// @dev Moves delegated optimistic votes from one delegate to another.

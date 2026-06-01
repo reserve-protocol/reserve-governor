@@ -705,7 +705,7 @@ contract StakingVaultTest is Test {
         assertEq(bobUpdatedCheckpoint._value, 600e18);
     }
 
-    function test_optimisticTotalSupplyTracksMintAndBurn() public {
+    function test_optimisticTotalSupplyUsesStandardVotesTotalSupply() public {
         vm.prank(address(timelock));
         vault.setUnstakingDelay(0);
 
@@ -717,6 +717,7 @@ contract StakingVaultTest is Test {
 
         uint256 mintSnapshot = block.timestamp;
         vm.warp(mintSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(mintSnapshot), 1000e18);
         assertEq(vault.getPastOptimisticTotalSupply(mintSnapshot), 1000e18);
 
         // Transfers between holders do not change the total supply.
@@ -724,6 +725,7 @@ contract StakingVaultTest is Test {
 
         uint256 transferSnapshot = block.timestamp;
         vm.warp(transferSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(transferSnapshot), 1000e18);
         assertEq(vault.getPastOptimisticTotalSupply(transferSnapshot), 1000e18);
 
         // Burn (unstake) decreases the optimistic total supply.
@@ -731,6 +733,7 @@ contract StakingVaultTest is Test {
 
         uint256 burnSnapshot = block.timestamp;
         vm.warp(burnSnapshot + 1);
+        assertEq(vault.getPastTotalSupply(burnSnapshot), 400e18);
         assertEq(vault.getPastOptimisticTotalSupply(burnSnapshot), 400e18);
     }
 
