@@ -2,6 +2,8 @@ forge-std/=node_modules/forge-std/src/
 @openzeppelin/contracts/=node_modules/@openzeppelin/contracts/
 @openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/
 @prb/math/=node_modules/@prb/math/
+@reserve-protocol/trusted-fillers/=node_modules/@reserve-protocol/trusted-fillers/
+node_modules/@reserve-protocol/trusted-fillers/:@interfaces/=node_modules/@reserve-protocol/trusted-fillers/contracts/interfaces/
 
 @src/=contracts/
 @governance/=contracts/governance/
