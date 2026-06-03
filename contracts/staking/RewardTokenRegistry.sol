@@ -18,6 +18,7 @@ contract RewardTokenRegistry is IRewardTokenRegistry {
     error RewardTokenRegistry__ZeroAddress();
     error RewardTokenRegistry__RewardAlreadyRegistered();
     error RewardTokenRegistry__RewardNotRegistered();
+    error RewardTokenRegistry__RewardDisallowed();
 
     event RewardTokenRegistered(address indexed rewardToken);
     event RewardTokenUnregistered(address indexed rewardToken);
@@ -25,6 +26,7 @@ contract RewardTokenRegistry is IRewardTokenRegistry {
     IRoleRegistry public immutable roleRegistry;
 
     EnumerableSet.AddressSet private _rewardTokens;
+    mapping(address token => bool isDisallowed) public disallowedRewardTokens;
 
     constructor(IRoleRegistry _roleRegistry) {
         require(address(_roleRegistry) != address(0), RewardTokenRegistry__ZeroAddress());
@@ -36,14 +38,16 @@ contract RewardTokenRegistry is IRewardTokenRegistry {
         require(roleRegistry.isOwner(msg.sender), RewardTokenRegistry__InvalidCaller());
         require(rewardToken != address(0), RewardTokenRegistry__ZeroAddress());
         require(_rewardTokens.add(rewardToken), RewardTokenRegistry__RewardAlreadyRegistered());
+        require(!disallowedRewardTokens[rewardToken], RewardTokenRegistry__RewardDisallowed());
 
         emit RewardTokenRegistered(rewardToken);
     }
 
-    /// @dev Assumption: RoleRegistry will not needlessly unregister + re-register to grief accounting in StakingVaults
     function unregisterRewardToken(address rewardToken) external {
         require(roleRegistry.isOwnerOrEmergencyCouncil(msg.sender), RewardTokenRegistry__InvalidCaller());
         require(_rewardTokens.remove(rewardToken), RewardTokenRegistry__RewardNotRegistered());
+
+        disallowedRewardTokens[rewardToken] = true;
 
         emit RewardTokenUnregistered(rewardToken);
     }
