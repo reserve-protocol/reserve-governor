@@ -4,6 +4,10 @@ pragma solidity ^0.8.28;
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { GenericTokenJar } from "@reserve-protocol/trusted-fillers/contracts/extras/GenericTokenJar.sol";
+import {
+    ITrustedFillerRegistry
+} from "@reserve-protocol/trusted-fillers/contracts/interfaces/ITrustedFillerRegistry.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 
@@ -19,6 +23,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
 
     error Deployer__InvalidVersionRegistry();
     error Deployer__InvalidRewardTokenRegistry();
+    error Deployer__InvalidTrustedFillerRegistry();
     error Deployer__InvalidGuardian();
     error Deployer__InvalidStakingVaultImpl();
     error Deployer__InvalidGovernorImpl();
@@ -27,6 +32,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
 
     address public immutable versionRegistry;
     address public immutable rewardTokenRegistry;
+    address public immutable trustedFillerRegistry;
     address public immutable guardian;
 
     address public immutable stakingVaultImpl;
@@ -37,6 +43,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     constructor(
         address _versionRegistry,
         address _rewardTokenRegistry,
+        address _trustedFillerRegistry,
         address _guardian,
         address _stakingVaultImpl,
         address _governorImpl,
@@ -45,6 +52,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     ) {
         require(address(_versionRegistry) != address(0), Deployer__InvalidVersionRegistry());
         require(address(_rewardTokenRegistry) != address(0), Deployer__InvalidRewardTokenRegistry());
+        require(address(_trustedFillerRegistry) != address(0), Deployer__InvalidTrustedFillerRegistry());
         require(address(_guardian) != address(0), Deployer__InvalidGuardian());
 
         require(address(_stakingVaultImpl) != address(0), Deployer__InvalidStakingVaultImpl());
@@ -54,6 +62,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
 
         versionRegistry = _versionRegistry;
         rewardTokenRegistry = _rewardTokenRegistry;
+        trustedFillerRegistry = _trustedFillerRegistry;
         guardian = _guardian;
 
         stakingVaultImpl = _stakingVaultImpl;
@@ -92,20 +101,26 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         bytes32 deploymentSalt = keccak256(abi.encode(msg.sender, baseParams, newStakingVaultParams, deploymentNonce));
 
         // Step 1: Deploy StakingVault proxy
-        bytes memory stakingVaultInitData = abi.encodeCall(
-            StakingVault.initialize,
-            (
+        stakingVault = address(new ERC1967Proxy{ salt: deploymentSalt }(stakingVaultImpl, ""));
+
+        // Step 1.5: Deploy token jar and initialize StakingVault while Deployer is temporary vault admin
+        GenericTokenJar tokenJar = new GenericTokenJar{ salt: deploymentSalt }(
+            stakingVault, newStakingVaultParams.underlying, address(this), ITrustedFillerRegistry(trustedFillerRegistry)
+        );
+        tokenJar.renounceOwnership();
+
+        StakingVault(stakingVault)
+            .initialize(
                 string.concat("Vote-Locked ", newStakingVaultParams.underlying.name()),
                 string.concat("vl", newStakingVaultParams.underlying.symbol()),
                 newStakingVaultParams.underlying,
                 address(this),
                 newStakingVaultParams.rewardHalfLife,
-                newStakingVaultParams.unstakingDelay
-            )
-        );
-        stakingVault = address(new ERC1967Proxy{ salt: deploymentSalt }(stakingVaultImpl, stakingVaultInitData));
+                newStakingVaultParams.unstakingDelay,
+                address(tokenJar)
+            );
 
-        // Step 1.5: Register additional reward tokens while Deployer is temporary vault admin
+        // Step 1.6: Register additional reward tokens while Deployer is temporary vault admin
         for (uint256 i = 0; i < newStakingVaultParams.rewardTokens.length; ++i) {
             StakingVault(stakingVault).addRewardToken(newStakingVaultParams.rewardTokens[i]);
         }

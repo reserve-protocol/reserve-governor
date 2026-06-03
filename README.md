@@ -26,21 +26,21 @@ The runtime system consists of five components:
 ```
 ┌──────────────────────────────────┐
 │          StakingVault            │
-│  ERC4626 + ERC20Votes           │
+│  ERC4626 + ERC20Votes            │
 │                                  │
 │  deposit / withdraw              │
 │  delegate / delegateOptimistic   │
 │  claimRewards                    │
 │  ┌────────────────────────────┐  │
-│  │     UnstakingManager      │  │
-│  │  createLock / claimLock   │  │
-│  │  cancelLock               │  │
+│  │     UnstakingManager       │  │
+│  │  createLock / claimLock    │  │
+│  │  cancelLock                │  │
 │  └────────────────────────────┘  │
 └───────────────┬──────────────────┘
                 │ (voting token)
                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  ReserveOptimisticGovernor                       │
+│                  ReserveOptimisticGovernor                      │
 │  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
 │  │   Fast (Optimistic) │    │        Slow (Standard)          │ │
 │  │                     │    │                                 │ │
@@ -55,10 +55,10 @@ The runtime system consists of five components:
                │               │
                ▼               ▼
 ┌────────────────────────────────┐  ┌───────────────────────────────┐
-│  OptimisticSelectorRegistry   │  │  TimelockControllerOptimistic │
-│                               │  │                               │
-│  Allowed (target,             │  │  Fast: executeBatchBypass()   │
-│   selector) pairs             │  │  Slow: scheduleBatch()        │
+│  OptimisticSelectorRegistry    │  │  TimelockControllerOptimistic │
+│                                │  │                               │
+│  Allowed (target,              │  │  Fast: executeBatchBypass()   │
+│   selector) pairs              │  │  Slow: scheduleBatch()        │
 └────────────────────────────────┘  └───────────────────────────────┘
 ```
 

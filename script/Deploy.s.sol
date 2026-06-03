@@ -46,10 +46,12 @@ contract DeployScript is Script {
         address guardian = _getGuardian();
         address versionRegistry = _getVersionRegistry();
         address rewardTokenRegistry = _getRewardTokenRegistry();
+        address trustedFillerRegistry = _getTrustedFillerRegistry();
 
         console2.log("Guardian:", guardian);
         console2.log("ReserveOptimisticGovernorStakingVaultVersionRegistry:", versionRegistry);
         console2.log("RewardTokenRegistry:", rewardTokenRegistry);
+        console2.log("TrustedFillerRegistry:", trustedFillerRegistry);
         console2.log("");
 
         vm.startBroadcast(privateKey);
@@ -65,6 +67,7 @@ contract DeployScript is Script {
             new ReserveOptimisticGovernorDeployer(
                 versionRegistry,
                 rewardTokenRegistry,
+                trustedFillerRegistry,
                 guardian,
                 stakingVaultImpl,
                 governorImpl,
@@ -84,6 +87,8 @@ contract DeployScript is Script {
     }
 
     function _getGuardian() internal view returns (address) {
+        // TODO Guardian deployments
+
         if (block.chainid == 1 || block.chainid == 31337) {
             return 0x0000000000000000000000000000000000000000;
         }
@@ -130,6 +135,22 @@ contract DeployScript is Script {
 
         if (block.chainid == 56) {
             return 0x0000000000000000000000000000000000000000;
+        }
+
+        revert DeployScript__InvalidChainId();
+    }
+
+    function _getTrustedFillerRegistry() internal view returns (address) {
+        if (block.chainid == 1 || block.chainid == 31337) {
+            return 0x279ccF56441fC74f1aAC39E7faC165Dec5A88B3A;
+        }
+
+        if (block.chainid == 8453) {
+            return 0x72DB5f49D0599C314E2f2FEDf6Fe33E1bA6C7A18;
+        }
+
+        if (block.chainid == 56) {
+            return 0x08424d7C52bf9edd4070701591Ea3FE6dca6449B;
         }
 
         revert DeployScript__InvalidChainId();
