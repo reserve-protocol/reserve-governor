@@ -14,6 +14,8 @@ library StakingVaultUpgradeLib {
     {
         bytes32 versionHash = keccak256(abi.encodePacked(Versioned(stakingVaultImpl).version()));
 
+        // RoleRegistry SHOULD maintain fresh latest versions
+
         (bytes32 latestVersionHash,,, bool deprecated) = versionRegistry.getLatestVersion();
         require(!deprecated, Vault__VersionDeprecated(versionHash));
         require(versionHash == latestVersionHash, Vault__NotLatestStakingVault(stakingVaultImpl));
