@@ -107,8 +107,6 @@ contract StakingVault is
     error Vault__InvalidUnstakingDelay();
     error Vault__InvalidRewardsHalfLife();
     error Vault__InvalidAdmin(address admin);
-    error Vault__VersionDeprecated(bytes32 versionHash);
-    error Vault__NotLatestStakingVault(address stakingVaultImpl);
 
     event VersionRegistrySet(address versionRegistry);
     event UnstakingDelaySet(uint256 delay);

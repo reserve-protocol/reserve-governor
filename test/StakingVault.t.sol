@@ -23,6 +23,7 @@ import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
+import { StakingVaultUpgradeLib } from "@src/staking/lib/StakingVaultUpgradeLib.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 
@@ -1371,7 +1372,9 @@ contract StakingVaultTest is Test {
         StakingVaultV2Mock newImpl = new StakingVaultV2Mock();
 
         vm.prank(address(timelock));
-        vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__NotLatestStakingVault.selector, address(newImpl)));
+        vm.expectRevert(
+            abi.encodeWithSelector(StakingVaultUpgradeLib.Vault__NotLatestStakingVault.selector, address(newImpl))
+        );
         vault.upgradeToAndCall(address(newImpl), "");
     }
 
@@ -1382,7 +1385,9 @@ contract StakingVaultTest is Test {
         StakingVaultV2Mock rogueImpl = new StakingVaultV2Mock();
 
         vm.prank(address(timelock));
-        vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__NotLatestStakingVault.selector, address(rogueImpl)));
+        vm.expectRevert(
+            abi.encodeWithSelector(StakingVaultUpgradeLib.Vault__NotLatestStakingVault.selector, address(rogueImpl))
+        );
         vault.upgradeToAndCall(address(rogueImpl), "");
     }
 
@@ -1394,7 +1399,7 @@ contract StakingVaultTest is Test {
         versionRegistry.deprecateVersion(versionHash);
 
         vm.prank(address(timelock));
-        vm.expectRevert(abi.encodeWithSelector(StakingVault.Vault__VersionDeprecated.selector, versionHash));
+        vm.expectRevert(abi.encodeWithSelector(StakingVaultUpgradeLib.Vault__VersionDeprecated.selector, versionHash));
         vault.upgradeToAndCall(address(newImpl), "");
     }
 
