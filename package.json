@@ -17,9 +17,11 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.4.0",
-    "@prb/math": "^4.1.0",
-    "@reserve-protocol/trusted-fillers": "github:reserve-protocol/trusted-fillers#303e0a56948b602365a1ed0024ed473f683aeb0f",
+    "@prb/math": "^4.1.0"
+  },
+  "devDependencies": {
+    "@reserve-protocol/trusted-fillers": "github:reserve-protocol/trusted-fillers#5ca2633ca3943a3a86e80820ccdfd8edf86af4f2",
     "forge-std": "github:foundry-rs/forge-std#v1.16.1"
   },
-  "packageManager": "pnpm@11.5.0"
+  "packageManager": "pnpm@11.8.0+sha512.c1f5e7c4cb241c8f174b743851d82f42b802324afc8b0f116b96adb15aa06664948dde36960a3ba1079ba5b4b29dd0140135b94b5b5f5263592249d68e555f26"
 }
