@@ -164,12 +164,12 @@ During a fast proposal's veto period, any token holder can vote using the standa
 **Veto threshold calculation:**
 
 ```
-vetoThreshold = ceil(vetoThresholdRatio * pastTotalSupply / 1e18)
+vetoThreshold = max(floor(vetoThresholdRatio * pastTotalSupply / 1e18), 1)
 ```
 
-Where `pastTotalSupply = token.getPastTotalSupply(snapshot)` and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%).
+Where `pastTotalSupply = token.getPastTotalSupply(snapshot)` and `vetoThresholdRatio` is a D18 fraction (e.g. `0.1e18` = 10%). The minimum of one token quantum applies only when `pastTotalSupply` is nonzero.
 
-If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote via a new proposal id. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass. If the snapshot `pastTotalSupply` is zero (so computed threshold in tokens is zero), the optimistic proposal resolves to `Canceled`.
+If the veto threshold is reached, the proposal is Defeated and automatically transitions to a confirmation vote via a new proposal id. If the veto period expires without reaching the threshold, the proposal Succeeds and can be executed immediately via timelock bypass. If the snapshot `pastTotalSupply` is zero, the optimistic proposal resolves to `Canceled` before calculating the token threshold.
 
 ## Proposal Kind Detection
 
@@ -184,20 +184,21 @@ Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or stand
 | `OPTIMISTIC_GUARDIAN_ROLE` | Designated optimistic guardian addresses on `Guardian` | Cancel non-defeated optimistic proposals through `Guardian`             |
 | `PROPOSER_ROLE`            | Governor contract                                         | Schedule operations on the timelock (granted automatically by Deployer) |
 | `EXECUTOR_ROLE`            | Governor contract                                         | Execute timelock operations for both slow and fast proposal paths       |
-| `CANCELLER_ROLE`           | Governor contract + shared `Guardian`                     | Cancel proposals (fast or slow), revoke optimistic proposers            |
+| `CANCELLER_ROLE`           | Governor contract + shared `Guardian` + optional deployment-specific cancellers | Cancel proposals (fast or slow), revoke optimistic proposers |
 
 **IMPORTANT**: Roles held exclusively by the Governor contract (`PROPOSER_ROLE`/`EXECUTOR_ROLE`) should NEVER be granted to other addresses. This could result in executing actions through the timelock without a delay.
 
 > **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself -- it allows the governor to schedule operations, not individual users to create proposals.
 
-> **Guardian Architecture:** Each governance timelock grants its only external `CANCELLER_ROLE` to a shared `Guardian` singleton. That `Guardian` uses `DEFAULT_ADMIN_ROLE` for break-glass authority, `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` for routine optimistic guardian additions, and `OPTIMISTIC_GUARDIAN_ROLE` for optimistic-only bot keys. Rotating optimistic guardian keys therefore only requires updating the shared `Guardian`, not each governance instance. Separately, `RoleRegistry` may still model an emergency council that serves as an admin/controller for the shared `Guardian`.
+> **Guardian Architecture:** Each governance timelock grants `CANCELLER_ROLE` to a shared `Guardian` singleton. A deployment may also grant the role directly to additional per-instance cancellers. The shared `Guardian` uses `DEFAULT_ADMIN_ROLE` for break-glass authority, `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` for routine optimistic guardian additions, and `OPTIMISTIC_GUARDIAN_ROLE` for optimistic-only bot keys. Rotating optimistic guardian keys therefore only requires updating the shared `Guardian`, not each governance instance. Separately, `RoleRegistry` may still model an emergency council that serves as an admin/controller for the shared `Guardian`.
 
 #### OPTIMISTIC_PROPOSER_ROLE
 
 The `OPTIMISTIC_PROPOSER_ROLE` is managed on the timelock via standard AccessControl:
 
 - Granted via `timelock.grantRole(OPTIMISTIC_PROPOSER_ROLE, address)`
-- Revoked via `timelock.revokeRole(OPTIMISTIC_PROPOSER_ROLE, address)` or `timelock.revokeOptimisticProposer(address)` (callable by `CANCELLER_ROLE`, which is held externally by `Guardian`)
+- Revoked via the standard `timelock.revokeRole(OPTIMISTIC_PROPOSER_ROLE, address)` governance path
+- Revoked by any `CANCELLER_ROLE` holder via `timelock.revokeOptimisticProposer(address)`, including the shared `Guardian` and optional deployment-specific cancellers
 - Checked via `timelock.hasRole(OPTIMISTIC_PROPOSER_ROLE, address)`
 - Revocation blocks new `proposeOptimistic()` calls by that account
 - Execution of a succeeded optimistic proposal is done via `execute(...)` and is not restricted to the original optimistic proposer
@@ -225,7 +226,7 @@ The `OPTIMISTIC_GUARDIAN_ROLE` is managed on the shared `Guardian` via `AccessCo
 
 #### CANCELLER_ROLE
 
-The `CANCELLER_ROLE` is granted on each timelock to the governor contract and the shared `Guardian`. `Guardian`'s `DEFAULT_ADMIN_ROLE` holders are expected to revoke an optimistic proposer if they become malicious or otherwise compromised. This includes directly proposing malicious proposals as well as indirect griefing actions such as stuffing a proposal with excess data to increase the gas cost of veto actions.
+The `CANCELLER_ROLE` is granted on each timelock to the governor contract and the shared `Guardian`. Deployments may also grant it directly to addresses in `BaseDeploymentParams.additionalGuardians`. Direct additional cancellers have the full timelock role: they can cancel fast or slow proposals and revoke optimistic proposers; they are not restricted like `OPTIMISTIC_GUARDIAN_ROLE` holders on the shared `Guardian`. `Guardian`'s `DEFAULT_ADMIN_ROLE` holders are expected to revoke an optimistic proposer if they become malicious or otherwise compromised. This includes directly proposing malicious proposals as well as indirect griefing actions such as stuffing a proposal with excess data to increase the gas cost of veto actions.
 
 ## Contract Reference
 
@@ -295,12 +296,12 @@ Extended timelock supporting both flows.
 - Slow proposals use standard `scheduleBatch()` + `executeBatch()`
 - Fast proposals use `executeBatchBypass()` for immediate execution (governor must hold `PROPOSER_ROLE` and `EXECUTOR_ROLE`)
 - `revokeOptimisticProposer(account)` -- Revoke an optimistic proposer (requires `CANCELLER_ROLE`)
-- In production wiring, the only external `CANCELLER_ROLE` holder should be the shared `Guardian`
+- In the default production wiring, the shared `Guardian` is the external `CANCELLER_ROLE` holder; deployments may explicitly add per-instance cancellers
 - UUPS upgradeable; `_authorizeUpgrade()` only allows self-calls from the timelock proxy itself
 
 ### Guardian
 
-Shared guardian contract intended to be the sole external `CANCELLER_ROLE` holder across all timelocks.
+Shared guardian contract intended to provide the default external `CANCELLER_ROLE` holder across timelocks. Deployments can additionally configure direct per-instance cancellers.
 
 - Uses `DEFAULT_ADMIN_ROLE` for full guardian authority
 - Uses `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` to grant new optimistic guardian keys
@@ -322,8 +323,8 @@ Versioned factory for full system deployments.
 - Stores immutable pointers to `versionRegistry`, `rewardTokenRegistry`, `guardian`, `stakingVaultImpl`, `governorImpl`, `timelockImpl`, and `selectorRegistryImpl`
 - `deployWithNewStakingVault(baseParams, newStakingVaultParams, deploymentNonce)` -- Deploy a new `StakingVault` proxy and the timelock/governor/selector-registry stack
 - `deployWithExistingStakingVault(baseParams, existingStakingVault, deploymentNonce)` -- Deploy the timelock/governor/selector-registry stack around an already deployed vault
-- During deployment, grants `CANCELLER_ROLE` on each timelock to the governor contract and the shared `Guardian`
-- `BaseDeploymentParams` includes optimistic proposers but no per-instance guardian or optimistic-guardian address lists; optimistic guardian management is centralized in `Guardian`
+- During deployment, grants `CANCELLER_ROLE` on each timelock to the governor contract, the shared `Guardian`, and every address in `baseParams.additionalGuardians`
+- `BaseDeploymentParams` includes optimistic proposers and optional direct per-instance cancellers; optimistic-only guardian management remains centralized in `Guardian`
 
 ### RewardTokenRegistry
 
