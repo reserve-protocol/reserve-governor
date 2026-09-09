@@ -12,6 +12,7 @@ import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovern
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
+import { ThrottleLib } from "@governance/lib/ThrottleLib.sol";
 import { OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
 
 library ProposalLib {
@@ -71,9 +72,10 @@ library ProposalLib {
     function proposePessimistic(ProposalData calldata proposal, GovernorUpgradeable.ProposalCore storage proposalCore)
         external
     {
-        _validateProposal(proposal, proposalCore);
-
         ReserveOptimisticGovernor governor = _governor();
+        ThrottleLib.consumePessimisticProposalCharge(proposal.proposer, governor.proposalThrottleCapacity());
+
+        _validateProposal(proposal, proposalCore);
 
         // validate proposer
 

@@ -1276,29 +1276,44 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     // ===== Proposal Throttle =====
 
-    function test_proposalThrottle_isIsolatedPerAccountAcrossOptimisticAndStandard() public {
+    function test_proposalThrottles_areIndependentAcrossOptimisticAndStandard() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
-        vm.prank(alice);
+        _setupVoter(optimisticProposer, ALICE_STAKE);
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(optimisticProposer);
+        uint256 optimisticProposalId = governor.proposeOptimistic(targets, values, calldatas, "optimistic #1");
+
+        vm.prank(optimisticProposer);
         governor.propose(targets, values, calldatas, "standard #1");
-        vm.prank(alice);
+        vm.prank(optimisticProposer);
         governor.propose(targets, values, calldatas, "standard #2");
-        vm.prank(alice);
+        vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
         governor.propose(targets, values, calldatas, "standard #3");
 
-        vm.prank(optimisticProposer);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic #1");
+        // Pessimistic throttle writes cannot collide with existing optimistic proposal state.
+        assertTrue(governor.isOptimistic(optimisticProposalId));
+        assertEq(governor.vetoThreshold(optimisticProposalId), VETO_THRESHOLD);
+
         vm.prank(optimisticProposer);
         governor.proposeOptimistic(targets, values, calldatas, "optimistic #2");
-
         vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
         governor.proposeOptimistic(targets, values, calldatas, "optimistic #3");
 
+        // With capacity=2/12h, one proposal charge refills in each independent bucket after 6h.
+        vm.warp(block.timestamp + 6 hours);
+        vm.prank(optimisticProposer);
+        governor.propose(targets, values, calldatas, "standard #3 after recharge");
+        vm.prank(optimisticProposer);
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #3 after recharge");
+
         // Throttling is account-specific.
-        vm.prank(optimisticProposer2);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic proposer2 #1");
+        vm.prank(bob);
+        governor.propose(targets, values, calldatas, "bob standard #1");
     }
 
     function test_proposalThrottle_rechargesLinearlyOverTime() public {
@@ -1691,7 +1706,18 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
         vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
-        governor.proposeOptimistic(callTargets, callValues, callCalldatas, "Throttle reset should be exhausted");
+        governor.proposeOptimistic(callTargets, callValues, callCalldatas, "Optimistic throttle should be exhausted");
+
+        for (uint256 i = 0; i < newProposalThrottle; i++) {
+            vm.prank(alice);
+            governor.propose(
+                callTargets, callValues, callCalldatas, string.concat("Pessimistic throttle propose #", vm.toString(i))
+            );
+        }
+
+        vm.prank(alice);
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
+        governor.propose(callTargets, callValues, callCalldatas, "Pessimistic throttle should be exhausted");
     }
 
     function test_setProposalThrottle_revertsWhenInvalid() public {

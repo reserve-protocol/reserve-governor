@@ -10,19 +10,35 @@ library ThrottleLib {
         mapping(address account => ProposalThrottle) throttles;
     }
 
+    // keccak256(abi.encode(uint256(keccak256("reserve.storage.PessimisticProposalThrottle")) - 1)) &
+    // ~bytes32(uint256(0xff))
+    bytes32 private constant PESSIMISTIC_PROPOSAL_THROTTLE_STORAGE =
+        0x1b552e2349c8f71b53d37da6a2f5cebd50db593b23c71b0ea8a9c163c2942b00;
+
+    struct PessimisticProposalThrottleStorage {
+        mapping(address account => ProposalThrottle) throttles;
+    }
+
     struct ProposalThrottle {
         uint256 currentCharge; // D18{1}
         uint256 lastUpdated; // {s}
     }
 
     function consumeProposalCharge(ProposalThrottleStorage storage proposalThrottle, address account) external {
-        (uint256 proposalsAvailable, uint256 charge) = _getProposalsAvailable(proposalThrottle, account);
+        _consumeProposalCharge(proposalThrottle.throttles[account], proposalThrottle.capacity);
+    }
+
+    function consumePessimisticProposalCharge(address account, uint256 capacity) internal {
+        PessimisticProposalThrottleStorage storage $ = _pessimisticProposalThrottleStorage();
+        _consumeProposalCharge($.throttles[account], capacity);
+    }
+
+    function _consumeProposalCharge(ProposalThrottle storage throttle, uint256 capacity) private {
+        (uint256 proposalsAvailable, uint256 charge) = _getProposalsAvailable(throttle, capacity);
         require(proposalsAvailable >= 1, IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded());
 
-        ProposalThrottle storage throttle = proposalThrottle.throttles[account];
-
         // Acceptable simplifiction to use latest `capacity`
-        throttle.currentCharge = charge - (1e18 / proposalThrottle.capacity);
+        throttle.currentCharge = charge - (1e18 / capacity);
         throttle.lastUpdated = block.timestamp;
     }
 
@@ -31,20 +47,24 @@ library ThrottleLib {
         view
         returns (uint256 proposalsAvailable)
     {
-        (proposalsAvailable,) = _getProposalsAvailable(proposalThrottle, account);
+        (proposalsAvailable,) = _getProposalsAvailable(proposalThrottle.throttles[account], proposalThrottle.capacity);
     }
 
     // === Private ===
 
+    function _pessimisticProposalThrottleStorage() private pure returns (PessimisticProposalThrottleStorage storage $) {
+        assembly {
+            $.slot := PESSIMISTIC_PROPOSAL_THROTTLE_STORAGE
+        }
+    }
+
     /// @return proposalsAvailable The number of proposals available for the account
     /// @return charge D18{1} The charge for the account
-    function _getProposalsAvailable(ProposalThrottleStorage storage proposalThrottle, address account)
+    function _getProposalsAvailable(ProposalThrottle storage throttle, uint256 capacity)
         private
         view
         returns (uint256 proposalsAvailable, uint256 charge)
     {
-        ProposalThrottle storage throttle = proposalThrottle.throttles[account];
-
         uint256 elapsed = block.timestamp - throttle.lastUpdated;
         charge = throttle.currentCharge + (elapsed * 1e18) / PROPOSAL_THROTTLE_PERIOD;
 
@@ -52,6 +72,6 @@ library ThrottleLib {
             charge = 1e18;
         }
 
-        proposalsAvailable = (proposalThrottle.capacity * charge) / 1e18;
+        proposalsAvailable = (capacity * charge) / 1e18;
     }
 }
