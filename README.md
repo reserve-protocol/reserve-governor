@@ -536,6 +536,8 @@ Upgrades are intended to be executed by the existing vault admin. They cannot be
 
 Only the `StakingVault` upgrade path is constrained by the version registry. This guarantees that `StakingVault` governance cannot brick the other governors that also depend on the same `StakingVault`. However, each `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` depending on a StakingVault (or governing it) can be broken either via role changes or by upgrading to a malicious implementation. 
 
+When upgrading a governor from a version without the pessimistic throttle bucket, include `initializePessimisticProposalThrottle(capacity)` as the `upgradeToAndCall` data. Existing delegates should repeat `delegate(currentDelegate)` after the upgrade to seed their integral history; they become eligible after the 12-hour warmup.
+
 For deployments created with `deployWithExistingStakingVault()`, the new timelock does not automatically become the existing vault's admin. Any later `StakingVault` upgrade is still controlled by whichever address currently holds that vault's `DEFAULT_ADMIN_ROLE`.
 
 
