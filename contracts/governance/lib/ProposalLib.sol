@@ -33,8 +33,20 @@ library ProposalLib {
     function proposeOptimistic(
         ProposalData calldata proposal,
         GovernorUpgradeable.ProposalCore storage proposalCore,
+        mapping(
+            uint256 proposalId => IReserveOptimisticGovernor.OptimisticProposalDetails
+        ) storage optimisticProposals,
         IReserveOptimisticGovernor.OptimisticGovernanceParams calldata optimisticParams
     ) external {
+        // Keep payload storage writes in the library so the governor does not embed the dynamic-array copy code.
+        optimisticProposals[proposal.proposalId] = IReserveOptimisticGovernor.OptimisticProposalDetails({
+            targets: proposal.targets,
+            values: proposal.values,
+            calldatas: proposal.calldatas,
+            description: proposal.description,
+            vetoThreshold: optimisticParams.vetoThreshold
+        });
+
         _validateProposal(proposal, proposalCore);
 
         ReserveOptimisticGovernor governor = _governor();

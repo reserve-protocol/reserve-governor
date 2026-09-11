@@ -888,6 +888,41 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     // ===== Optimistic -> Confirmation Transition =====
 
+    function testFuzz_optimisticProposal_confirmationPreservesPayload(string memory description, bytes memory suffix)
+        public
+    {
+        DummyTarget target = new DummyTarget();
+        _allowSelector(address(target), DummyTarget.ping.selector);
+
+        // Exercise distinct targets and values, plus both short and long bytes storage encodings.
+        address[] memory targets = new address[](2);
+        targets[0] = address(target);
+        targets[1] = address(underlying);
+        uint256[] memory values = new uint256[](2);
+        values[0] = 7;
+        values[1] = 19;
+        bytes[] memory calldatas = new bytes[](2);
+        calldatas[0] = abi.encodeCall(DummyTarget.ping, ());
+        calldatas[1] = bytes.concat(abi.encodeCall(IERC20.transfer, (bob, 123e18)), suffix);
+        // Keep arbitrary fuzz input clear of the reserved prefix and proposer suffix validation.
+        description = string.concat("Batch: ", description, ".");
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);
+        _warpToActive(proposalId);
+
+        vm.prank(alice);
+        governor.castVote(proposalId, 0);
+
+        // The expected id uses the original inputs; the transition computes it from the stored payload.
+        uint256 confirmationId = _confirmationProposalId(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(confirmationId)), uint256(IGovernor.ProposalState.Pending));
+        assertEq(governor.proposalProposer(confirmationId), optimisticProposer);
+        assertEq(governor.vetoThreshold(confirmationId), 0);
+        assertEq(governor.vetoThreshold(proposalId), type(uint256).max);
+    }
+
     function test_optimisticProposal_againstThresholdSchedulesConfirmation() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));

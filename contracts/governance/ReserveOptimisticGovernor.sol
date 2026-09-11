@@ -147,10 +147,10 @@ contract ReserveOptimisticGovernor is
 
     /// @dev Only callable by OPTIMISTIC_PROPOSER_ROLE
     function proposeOptimistic(
-        address[] calldata targets,
-        uint256[] calldata values,
-        bytes[] calldata calldatas,
-        string calldata description
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
     ) external returns (uint256 proposalId) {
         address proposer = msg.sender;
 
@@ -158,17 +158,10 @@ contract ReserveOptimisticGovernor is
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        optimisticProposalDetails[proposalId] = OptimisticProposalDetails({
-            targets: targets,
-            values: values,
-            calldatas: calldatas,
-            description: description,
-            vetoThreshold: optimisticParams.vetoThreshold
-        });
-
         ProposalLib.proposeOptimistic(
             ProposalLib.ProposalData(proposalId, proposer, targets, values, calldatas, description),
             _proposalCore(proposalId),
+            optimisticProposalDetails,
             optimisticParams
         );
     }
