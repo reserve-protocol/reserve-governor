@@ -14,7 +14,7 @@ import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovern
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
-import { OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { OPTIMISTIC_PROPOSER_ROLE, PROPOSAL_THROTTLE_PERIOD } from "@utils/Constants.sol";
 
 library ProposalLib {
     string constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -146,6 +146,16 @@ library ProposalLib {
             require(
                 proposerVotes >= votesThreshold,
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
+            );
+
+            IOptimisticVotes votes = IOptimisticVotes(address(governor.token()));
+            uint256 averageVotes =
+                (votes.getPastVotesIntegral(proposal.proposer, block.timestamp)
+                        - votes.getPastVotesIntegral(proposal.proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD))
+                    / PROPOSAL_THROTTLE_PERIOD;
+            require(
+                averageVotes >= votesThreshold,
+                IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
             );
         }
 

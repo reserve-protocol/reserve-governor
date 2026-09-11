@@ -75,6 +75,8 @@ contract ReserveOptimisticGovernor is
 
     mapping(uint256 proposalId => OptimisticProposalDetails) private optimisticProposalDetails;
 
+    ThrottleLib.ProposalThrottleStorage private pessimisticProposalThrottle;
+
     constructor() {
         _disableInitializers();
     }
@@ -87,11 +89,12 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
-    /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 12h
+    /// @param _proposalThrottleCapacity Proposals-per-account per 12h for each proposal path
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         uint256 _proposalThrottleCapacity,
+        uint256 _pessimisticProposalThrottleCapacity,
         address _token,
         address _timelockController,
         address _selectorRegistry
@@ -108,6 +111,7 @@ contract ReserveOptimisticGovernor is
         __UUPSUpgradeable_init();
 
         _setProposalThrottle(_proposalThrottleCapacity);
+        _setPessimisticProposalThrottle(_pessimisticProposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
 
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
@@ -115,6 +119,10 @@ contract ReserveOptimisticGovernor is
 
     function setProposalThrottle(uint256 newProposalThrottleCapacity) external onlyGovernance {
         _setProposalThrottle(newProposalThrottleCapacity);
+    }
+
+    function setPessimisticProposalThrottle(uint256 newCapacity) external onlyGovernance {
+        _setPessimisticProposalThrottle(newCapacity);
     }
 
     function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
@@ -127,6 +135,19 @@ contract ReserveOptimisticGovernor is
 
     function proposalThrottleCharges(address account) external view returns (uint256) {
         return ThrottleLib.getProposalsAvailable(proposalThrottle, account);
+    }
+
+    function pessimisticProposalThrottleCapacity() external view returns (uint256) {
+        return pessimisticProposalThrottle.capacity;
+    }
+
+    function pessimisticProposalThrottleCharges(address account) external view returns (uint256) {
+        return ThrottleLib.getProposalsAvailable(pessimisticProposalThrottle, account);
+    }
+
+    function initializePessimisticProposalThrottle(uint256 capacity) external reinitializer(2) {
+        require(msg.sender == _executor(), GovernorOnlyExecutor(msg.sender));
+        _setPessimisticProposalThrottle(capacity);
     }
 
     function quorumDenominator() public pure override returns (uint256) {
@@ -173,6 +194,8 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256 proposalId) {
+        ThrottleLib.consumeProposalCharge(pessimisticProposalThrottle, msg.sender);
+
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         ProposalLib.proposePessimistic(
@@ -419,6 +442,16 @@ contract ReserveOptimisticGovernor is
 
         proposalThrottle.capacity = newCapacity;
         emit ProposalThrottleUpdated(newCapacity);
+    }
+
+    function _setPessimisticProposalThrottle(uint256 newCapacity) internal {
+        require(
+            newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY,
+            OptimisticGovernor__InvalidProposalThrottle()
+        );
+
+        pessimisticProposalThrottle.capacity = newCapacity;
+        emit PessimisticProposalThrottleUpdated(newCapacity);
     }
 
     function _setVotingDelay(uint48 newVotingDelay) internal override {

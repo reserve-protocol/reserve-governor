@@ -11,7 +11,9 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Fast proposals are protected by a proposer throttle that limits how many optimistic proposals each account can create per 12-hour window.
+Proposals are protected by per-account throttles. Optimistic proposals use the existing refillable proposal-count bucket. Standard proposals use an independent count bucket and also require the proposer to have held delegated standard voting power at least equal to the proposal threshold on average over the preceding 12 hours.
+
+Accounts that held delegated votes before the integral extension was activated begin tracking when their delegated balance next moves. They must then remain above threshold for a full 12-hour warm-up before creating a standard proposal.
 
 ## Architecture
 
@@ -250,6 +252,7 @@ The main hybrid governor contract.
 **Proposal Creation Rules:**
 
 - `proposeOptimistic()` consumes proposer throttle charge
+- `propose()` consumes an independent proposer throttle charge and requires the proposer’s delegated standard voting power to meet the proposal threshold on average over the preceding 12 hours
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -266,8 +269,9 @@ The main hybrid governor contract.
 **Configuration:**
 
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
-- `setProposalThrottle(capacity)` -- Update optimistic proposals-per-12h throttle capacity (onlyGovernance)
-- `proposalThrottleCapacity()` -- Read current throttle capacity
+- `setProposalThrottle(capacity)` -- Update optimistic proposal-count throttle capacity (onlyGovernance)
+- `setPessimisticProposalThrottle(capacity)` -- Update standard proposal-count throttle capacity (onlyGovernance)
+- `proposalThrottleCapacity()` / `pessimisticProposalThrottleCapacity()` -- Read current throttle capacities
 
 ### OptimisticSelectorRegistry
 

@@ -18,6 +18,7 @@ import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
+import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
@@ -29,7 +30,8 @@ import {
     CANCELLER_ROLE,
     MAX_PROPOSAL_THROTTLE_CAPACITY,
     MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_PROPOSER_ROLE
+    OPTIMISTIC_PROPOSER_ROLE,
+    PROPOSAL_THROTTLE_PERIOD
 } from "@utils/Constants.sol";
 
 import { MockERC20 } from "@mocks/MockERC20.sol";
@@ -167,7 +169,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                 optimisticProposers: optimisticProposers,
                 additionalGuardians: _additionalGuardians(),
                 timelockDelay: TIMELOCK_DELAY,
-                proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
+                proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY,
+                pessimisticProposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
             });
 
         IReserveOptimisticGovernorDeployer.NewStakingVaultParams memory newStakingVaultParams =
@@ -231,6 +234,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(vetoPeriod, VETO_PERIOD);
         assertEq(vetoThreshold, VETO_THRESHOLD);
         assertEq(governor.proposalThrottleCharges(optimisticProposer), PROPOSAL_THROTTLE_CAPACITY);
+        assertEq(governor.pessimisticProposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
 
         assertEq(governor.votingDelay(), VOTING_DELAY);
         assertEq(governor.votingPeriod(), VOTING_PERIOD);
@@ -454,6 +458,37 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, noVotes, 0, threshold)
         );
         governor.propose(targets, values, calldatas, "No votes proposer");
+    }
+
+    function test_standardProposal_requiresAverageDelegatedVotes() public {
+        address recentVoter = makeAddr("recentVoter");
+        uint256 amount = 100_000e18;
+        underlying.mint(recentVoter, amount);
+
+        vm.startPrank(recentVoter);
+        underlying.approve(address(stakingVault), amount);
+        stakingVault.depositAndDelegate(amount);
+        vm.stopPrank();
+        vm.warp(block.timestamp + 1);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        uint256 threshold = governor.proposalThreshold();
+        IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
+        uint256 averageVotes =
+            (votes.getPastVotesIntegral(recentVoter, block.timestamp)
+                    - votes.getPastVotesIntegral(recentVoter, block.timestamp - PROPOSAL_THROTTLE_PERIOD))
+                / PROPOSAL_THROTTLE_PERIOD;
+
+        assertGe(governor.getVotes(recentVoter, block.timestamp - 1), threshold);
+        assertLt(averageVotes, threshold);
+        vm.prank(recentVoter);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, averageVotes, threshold
+            )
+        );
+        governor.propose(targets, values, calldatas, "Recent delegated voter");
     }
 
     function test_standardProposal_rejectsConfirmationPrefixDescription() public {
@@ -1358,29 +1393,37 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     // ===== Proposal Throttle =====
 
-    function test_proposalThrottle_isIsolatedPerAccountAcrossOptimisticAndStandard() public {
+    function test_proposalThrottles_areIndependentAcrossOptimisticAndStandard() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "standard #1");
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "standard #2");
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "standard #3");
+        _setupVoter(optimisticProposer, ALICE_STAKE);
+        vm.warp(block.timestamp + PROPOSAL_THROTTLE_PERIOD);
 
         vm.prank(optimisticProposer);
         governor.proposeOptimistic(targets, values, calldatas, "optimistic #1");
         vm.prank(optimisticProposer);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic #2");
+        governor.propose(targets, values, calldatas, "standard #1");
+        vm.prank(optimisticProposer);
+        governor.propose(targets, values, calldatas, "standard #2");
+        vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
+        governor.propose(targets, values, calldatas, "standard #3");
 
+        vm.prank(optimisticProposer);
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #2");
         vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
         governor.proposeOptimistic(targets, values, calldatas, "optimistic #3");
 
-        // Throttling is account-specific.
-        vm.prank(optimisticProposer2);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic proposer2 #1");
+        vm.warp(block.timestamp + 6 hours);
+        vm.prank(optimisticProposer);
+        governor.propose(targets, values, calldatas, "standard #3 after recharge");
+        vm.prank(optimisticProposer);
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #3 after recharge");
+
+        vm.prank(bob);
+        governor.propose(targets, values, calldatas, "bob standard #1");
     }
 
     function test_proposalThrottle_rechargesLinearlyOverTime() public {
@@ -1814,6 +1857,26 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
 
         assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).version(), "2.0.0");
+    }
+
+    function test_upgradeGovernor_initializesPessimisticThrottle() public {
+        ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
+        uint256 newCapacity = 3;
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _singleCall(
+            address(governor),
+            0,
+            abi.encodeCall(
+                governor.upgradeToAndCall,
+                (address(newImpl), abi.encodeCall(governor.initializePessimisticProposalThrottle, (newCapacity)))
+            )
+        );
+
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Initialize pessimistic proposal throttle");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        assertEq(governor.pessimisticProposalThrottleCapacity(), newCapacity);
     }
 
     function test_cannotUpgradeGovernor_unauthorized() public {

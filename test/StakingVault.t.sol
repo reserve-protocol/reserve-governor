@@ -23,8 +23,8 @@ import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { StakingVault } from "@src/staking/StakingVault.sol";
-import { StakingVaultUpgradeLib } from "@src/staking/lib/StakingVaultUpgradeLib.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
+import { StakingVaultUpgradeLib } from "@src/staking/lib/StakingVaultUpgradeLib.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 
 import { MockERC20 } from "@mocks/MockERC20.sol";
@@ -106,7 +106,8 @@ contract StakingVaultTest is Test {
                 optimisticProposers: new address[](0),
                 additionalGuardians: new address[](0),
                 timelockDelay: 2 days,
-                proposalThrottleCapacity: 12
+                proposalThrottleCapacity: 12,
+                pessimisticProposalThrottleCapacity: 12
             });
 
         IReserveOptimisticGovernorDeployer.NewStakingVaultParams memory newStakingVaultParams =
@@ -640,6 +641,48 @@ contract StakingVaultTest is Test {
         assertEq(vault.getPastVotes(ACTOR_BOB, snapshot), 0);
         assertEq(vault.getPastOptimisticVotes(ACTOR_ALICE, snapshot), 0);
         assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, snapshot), 1000e18);
+    }
+
+    function test_standardDelegatedVoteIntegral_tracksTimeAndCoalescesTimestamp() public {
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+
+        uint256 start = block.timestamp;
+        vault.depositAndDelegate(1000e18);
+
+        vm.warp(start + 6 hours);
+        uint256 halfwayIntegral = vault.getPastVotesIntegral(address(this), block.timestamp);
+        assertEq(halfwayIntegral, 1000e18 * 6 hours);
+
+        // Delegation changes at one timestamp must not create a zero-duration
+        // segment or lose the integral accumulated before the change.
+        vault.delegate(ACTOR_BOB);
+        assertEq(vault.getPastVotesIntegral(address(this), block.timestamp), halfwayIntegral);
+
+        vm.warp(start + 12 hours);
+        assertEq(vault.getPastVotesIntegral(address(this), block.timestamp), halfwayIntegral);
+        assertEq(vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp), 1000e18 * 6 hours);
+    }
+
+    function test_standardDelegatedVoteIntegral_ignoresNoopDelegateMovements() public {
+        token.mint(address(this), 1000e18);
+        token.approve(address(vault), 1000e18);
+        vault.depositAndDelegate(1000e18, ACTOR_BOB, ACTOR_BOB);
+
+        uint256 start = block.timestamp;
+        vm.warp(start + 1 hours);
+        uint256 beforeNoop = vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp);
+
+        // Re-delegating to the same delegate and moving shares between two
+        // accounts with the same delegate must not alter the integral.
+        vm.prank(address(this));
+        vault.delegate(ACTOR_BOB);
+        _mintAndDepositFor(ACTOR_ALICE, 100e18);
+        vm.prank(ACTOR_ALICE);
+        vault.delegate(ACTOR_BOB);
+        vault.transfer(ACTOR_ALICE, 100e18);
+
+        assertEq(vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp), beforeNoop);
     }
 
     function test_transferMovesStandardAndOptimisticDelegateWeights() public {
