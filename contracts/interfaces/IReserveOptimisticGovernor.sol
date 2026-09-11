@@ -63,6 +63,8 @@ interface IReserveOptimisticGovernor {
 
     function pessimisticProposalThrottleCharges(address account) external view returns (uint256);
 
+    function initializePessimisticProposalThrottle(uint256 initialCapacity) external;
+
     function isOptimistic(uint256 proposalId) external view returns (bool);
 
     function timelock() external view returns (address);
