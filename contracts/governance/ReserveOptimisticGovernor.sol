@@ -147,10 +147,10 @@ contract ReserveOptimisticGovernor is
 
     /// @dev Only callable by OPTIMISTIC_PROPOSER_ROLE
     function proposeOptimistic(
-        address[] calldata targets,
-        uint256[] calldata values,
-        bytes[] calldata calldatas,
-        string calldata description
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
     ) external returns (uint256 proposalId) {
         address proposer = msg.sender;
 
@@ -158,17 +158,10 @@ contract ReserveOptimisticGovernor is
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        optimisticProposalDetails[proposalId] = OptimisticProposalDetails({
-            targets: targets,
-            values: values,
-            calldatas: calldatas,
-            description: description,
-            vetoThreshold: optimisticParams.vetoThreshold
-        });
-
         ProposalLib.proposeOptimistic(
             ProposalLib.ProposalData(proposalId, proposer, targets, values, calldatas, description),
             _proposalCore(proposalId),
+            optimisticProposalDetails,
             optimisticParams
         );
     }
@@ -220,57 +213,9 @@ contract ReserveOptimisticGovernor is
         returns (ProposalState)
     {
         if (_isOptimistic(proposalId)) {
-            ProposalCore storage proposalCore = _proposalCore(proposalId);
-
-            if (proposalCore.executed) {
-                return ProposalState.Executed;
-            }
-
-            if (proposalCore.canceled) {
-                return ProposalState.Canceled;
-            }
-
-            // {s}
-            uint256 snapshot = proposalCore.voteStart;
-
-            if (snapshot >= block.timestamp) {
-                return ProposalState.Pending;
-            }
-
-            // D18{1}
-            uint256 _vetoThreshold = vetoThreshold(proposalId);
-
-            if (_vetoThreshold == ProposalLib.TRANSITIONED_VETO_THRESHOLD) {
-                // special-case for transitioned proposals
-                return ProposalState.Defeated;
-            }
-
-            // {tok}
-            uint256 pastSupply = IOptimisticVotes(address(token())).getPastOptimisticTotalSupply(snapshot);
-
-            if (pastSupply == 0) {
-                return ProposalState.Canceled;
-            }
-
-            // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (_vetoThreshold * pastSupply) / 1e18;
-            vetoThresholdTok = Math.max(vetoThresholdTok, 1);
-
-            // {tok}
-            (uint256 againstVotes,,) = proposalVotes(proposalId);
-
-            if (againstVotes >= vetoThresholdTok) {
-                return ProposalState.Defeated;
-            }
-
-            // {s}
-            uint256 deadline = proposalCore.voteStart + proposalCore.voteDuration;
-
-            if (deadline >= block.timestamp) {
-                return ProposalState.Active;
-            }
-
-            return ProposalState.Succeeded;
+            return ProposalLib.optimisticState(
+                _proposalCore(proposalId), vetoThreshold(proposalId), IOptimisticVotes(address(token())), proposalId
+            );
         }
 
         return super.state(proposalId);

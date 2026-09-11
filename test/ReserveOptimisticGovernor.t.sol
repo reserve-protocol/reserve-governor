@@ -8,6 +8,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
+import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { GenericTokenJar } from "@reserve-protocol/trusted-fillers/contracts/extras/GenericTokenJar.sol";
@@ -39,6 +40,25 @@ import { TimelockControllerOptimisticV2Mock } from "@mocks/TimelockControllerOpt
 contract DummyTarget {
     function ping() external pure returns (uint256) {
         return 1;
+    }
+}
+
+contract GovernorSignatureWallet is IERC1271 {
+    address private immutable governor;
+    bytes32 public digest;
+
+    constructor(address _governor) {
+        governor = _governor;
+    }
+
+    function setDigest(bytes32 _digest) external {
+        digest = _digest;
+    }
+
+    function isValidSignature(bytes32 hash, bytes memory signature) external view returns (bytes4) {
+        return msg.sender == governor && hash == digest && keccak256(signature) == keccak256(hex"1271")
+            ? IERC1271.isValidSignature.selector
+            : bytes4(0xffffffff);
     }
 }
 
@@ -193,6 +213,17 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     // ===== Deployment / Initialization =====
+
+    function test_deployment_initializesSigningDomain() public view {
+        (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifier,,) =
+            governor.eip712Domain();
+        assertEq(fields, hex"0f");
+        assertEq(name, "Reserve Optimistic Governor");
+        assertEq(governor.name(), name);
+        assertEq(version, "1.0.0");
+        assertEq(chainId, block.chainid);
+        assertEq(verifier, address(governor));
+    }
 
     function test_deployment_initializesConfigAndRoles() public view {
         (uint48 vetoDelay, uint32 vetoPeriod, uint256 vetoThreshold) = governor.optimisticParams();
@@ -728,6 +759,22 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     // ===== Optimistic (Fast) Uncontested Flow =====
 
+    function test_optimisticProposal_stateTimingBoundaries() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, "State boundaries");
+
+        vm.warp(governor.proposalSnapshot(proposalId));
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+        vm.warp(block.timestamp + 1);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
+        vm.warp(governor.proposalDeadline(proposalId));
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Active));
+        vm.warp(block.timestamp + 1);
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
+    }
+
     function test_optimisticProposal_uncontestedLifecycle() public {
         uint256 transferAmount = 1_000e18;
         underlying.mint(address(timelock), transferAmount);
@@ -887,6 +934,41 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     // ===== Optimistic -> Confirmation Transition =====
+
+    function testFuzz_optimisticProposal_confirmationPreservesPayload(string memory description, bytes memory suffix)
+        public
+    {
+        DummyTarget target = new DummyTarget();
+        _allowSelector(address(target), DummyTarget.ping.selector);
+
+        // Exercise distinct targets and values, plus both short and long bytes storage encodings.
+        address[] memory targets = new address[](2);
+        targets[0] = address(target);
+        targets[1] = address(underlying);
+        uint256[] memory values = new uint256[](2);
+        values[0] = 7;
+        values[1] = 19;
+        bytes[] memory calldatas = new bytes[](2);
+        calldatas[0] = abi.encodeCall(DummyTarget.ping, ());
+        calldatas[1] = bytes.concat(abi.encodeCall(IERC20.transfer, (bob, 123e18)), suffix);
+        // Keep arbitrary fuzz input clear of the reserved prefix and proposer suffix validation.
+        description = string.concat("Batch: ", description, ".");
+
+        vm.prank(optimisticProposer);
+        uint256 proposalId = governor.proposeOptimistic(targets, values, calldatas, description);
+        assertEq(governor.vetoThreshold(proposalId), VETO_THRESHOLD);
+        _warpToActive(proposalId);
+
+        vm.prank(alice);
+        governor.castVote(proposalId, 0);
+
+        // The expected id uses the original inputs; the transition computes it from the stored payload.
+        uint256 confirmationId = _confirmationProposalId(targets, values, calldatas, description);
+        assertEq(uint256(governor.state(confirmationId)), uint256(IGovernor.ProposalState.Pending));
+        assertEq(governor.proposalProposer(confirmationId), optimisticProposer);
+        assertEq(governor.vetoThreshold(confirmationId), 0);
+        assertEq(governor.vetoThreshold(proposalId), type(uint256).max);
+    }
 
     function test_optimisticProposal_againstThresholdSchedulesConfirmation() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
@@ -1797,7 +1879,111 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.castVote(proposalId, 3);
     }
 
+    function testFuzz_voteBySig_validatesSignaturesAndNonces(bool optimistic, bool extended, bool contractVoter)
+        public
+    {
+        uint256 privateKey = 0xA11CE;
+        address voter = contractVoter ? address(new GovernorSignatureWallet(address(governor))) : vm.addr(privateKey);
+        _setupVoter(voter, 11_000e18);
+        vm.warp(block.timestamp + 1);
+
+        uint256 proposalId;
+        {
+            (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+                _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+            if (optimistic) {
+                vm.prank(optimisticProposer);
+                proposalId = governor.proposeOptimistic(targets, values, calldatas, "Signed vote");
+            } else {
+                vm.prank(alice);
+                proposalId = governor.propose(targets, values, calldatas, "Signed vote");
+            }
+        }
+        _warpToActive(proposalId);
+
+        uint8 support = optimistic ? 0 : 1;
+        bytes32 digest = _ballotDigest(proposalId, support, voter, extended);
+        bytes memory signature;
+        if (contractVoter) {
+            GovernorSignatureWallet(voter).setDigest(digest);
+            signature = hex"1271";
+        } else {
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+            signature = abi.encodePacked(r, s, v);
+        }
+
+        // A changed ballot must fail without consuming a nonce or casting a vote.
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorInvalidSignature.selector, voter));
+        _castSignedVote(proposalId, support ^ 1, voter, signature, extended);
+        assertEq(governor.nonces(voter), 0);
+        assertFalse(governor.hasVoted(proposalId, voter));
+
+        assertEq(_castSignedVote(proposalId, support, voter, signature, extended), 11_000e18);
+        assertEq(governor.nonces(voter), 1);
+        assertTrue(governor.hasVoted(proposalId, voter));
+        (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) = governor.proposalVotes(proposalId);
+        assertEq(againstVotes, optimistic ? 11_000e18 : 0);
+        assertEq(forVotes, optimistic ? 0 : 11_000e18);
+        assertEq(abstainVotes, 0);
+
+        // Replay fails signature validation, rather than reaching the already-voted check.
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorInvalidSignature.selector, voter));
+        _castSignedVote(proposalId, support, voter, signature, extended);
+        assertEq(governor.nonces(voter), 1);
+    }
+
     // ===== Helpers =====
+
+    function _ballotDigest(uint256 proposalId, uint8 support, address voter, bool extended)
+        internal
+        view
+        returns (bytes32)
+    {
+        bytes32 domain = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256("Reserve Optimistic Governor"),
+                keccak256("1.0.0"),
+                block.chainid,
+                address(governor)
+            )
+        );
+        bytes32 ballot = extended
+            ? keccak256(
+                abi.encode(
+                    keccak256(
+                        "ExtendedBallot(uint256 proposalId,uint8 support,address voter,uint256 nonce,string reason,bytes params)"
+                    ),
+                    proposalId,
+                    support,
+                    voter,
+                    uint256(0),
+                    keccak256("Signed reason"),
+                    keccak256(hex"1234")
+                )
+            )
+            : keccak256(
+                abi.encode(
+                    keccak256("Ballot(uint256 proposalId,uint8 support,address voter,uint256 nonce)"),
+                    proposalId,
+                    support,
+                    voter,
+                    uint256(0)
+                )
+            );
+        return keccak256(abi.encodePacked(hex"1901", domain, ballot));
+    }
+
+    function _castSignedVote(uint256 proposalId, uint8 support, address voter, bytes memory signature, bool extended)
+        internal
+        returns (uint256)
+    {
+        return extended
+            ? governor.castVoteWithReasonAndParamsBySig(
+                proposalId, support, voter, "Signed reason", hex"1234", signature
+            )
+            : governor.castVoteBySig(proposalId, support, voter, signature);
+    }
 
     function _setupVoter(address voter, uint256 amount) internal {
         underlying.mint(voter, amount);
