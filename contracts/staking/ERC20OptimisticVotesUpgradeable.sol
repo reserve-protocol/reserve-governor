@@ -148,11 +148,9 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     }
 
     function _moveDelegateVotes(address from, address to, uint256 amount) internal virtual override {
-        {
-            VoteIntegralLib.update(
-                _getOptimisticVotesStorage()._integrals, from, to, amount, getVotes(from), getVotes(to), block.timestamp
-            );
-        }
+        VoteIntegralLib.update(
+            _getOptimisticVotesStorage()._integrals, from, to, amount, getVotes(from), getVotes(to), block.timestamp
+        );
         super._moveDelegateVotes(from, to, amount);
     }
 
