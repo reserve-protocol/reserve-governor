@@ -470,6 +470,7 @@ Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but
 - Capacity is measured as proposals per 12 hours.
 - Each proposal consumes one unit of capacity from its path’s bucket.
 - Capacity recharges linearly over time (full recharge over 12 hours)
+- The bucket refill period and standard vote-power lookback are fixed at `PROPOSAL_THROTTLE_PERIOD` (12 hours).
 - Standard proposals additionally require the proposer’s delegated standard vote power to average at least `proposalThreshold()` over the preceding 12 hours. The average is calculated from append-only cumulative integral observations updated on every delegated vote movement.
 
 ### StakingVault Parameters
