@@ -21,6 +21,7 @@ library ThrottleLib {
         0x1b552e2349c8f71b53d37da6a2f5cebd50db593b23c71b0ea8a9c163c2942b00;
 
     struct PessimisticProposalThrottleStorage {
+        uint256 capacity;
         mapping(address account => ProposalThrottle) throttles;
     }
 
@@ -28,18 +29,22 @@ library ThrottleLib {
         _consumeProposalCharge(proposalThrottle.throttles[account], proposalThrottle.capacity);
     }
 
-    function consumePessimisticProposalCharge(address account, uint256 capacity) external {
+    function consumePessimisticProposalCharge(address account) external {
         PessimisticProposalThrottleStorage storage $ = _pessimisticProposalThrottleStorage();
-        _consumeProposalCharge($.throttles[account], capacity);
+        _consumeProposalCharge($.throttles[account], $.capacity);
     }
 
-    function getPessimisticProposalsAvailable(address account, uint256 capacity)
-        external
-        view
-        returns (uint256 proposalsAvailable)
-    {
-        (proposalsAvailable,) =
-            _getProposalsAvailable(_pessimisticProposalThrottleStorage().throttles[account], capacity);
+    function getPessimisticProposalsAvailable(address account) external view returns (uint256 proposalsAvailable) {
+        PessimisticProposalThrottleStorage storage $ = _pessimisticProposalThrottleStorage();
+        (proposalsAvailable,) = _getProposalsAvailable($.throttles[account], $.capacity);
+    }
+
+    function setPessimisticCapacity(uint256 capacity) external {
+        _pessimisticProposalThrottleStorage().capacity = capacity;
+    }
+
+    function getPessimisticCapacity() external view returns (uint256) {
+        return _pessimisticProposalThrottleStorage().capacity;
     }
 
     function getProposalsAvailable(ProposalThrottleStorage storage proposalThrottle, address account)

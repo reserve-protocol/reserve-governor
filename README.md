@@ -269,6 +269,8 @@ The main hybrid governor contract.
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
 - `setProposalThrottle(capacity)` -- Update optimistic proposals-per-12h throttle capacity (onlyGovernance)
 - `proposalThrottleCapacity()` -- Read current throttle capacity
+- `setPessimisticProposalThrottle(capacity)` -- Update standard proposals-per-12h throttle capacity (onlyGovernance)
+- `pessimisticProposalThrottleCapacity()` -- Read current standard throttle capacity
 - `pessimisticProposalThrottleCharges(account)` -- Read standard proposal throttle capacity for an account
 
 ### OptimisticSelectorRegistry
@@ -447,7 +449,7 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 
 | Parameter                  | Type      | Description                                   |
 | -------------------------- | --------- | --------------------------------------------- |
-| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer, per path, per 12h |
+| `proposalThrottleCapacity` | `uint256` | Max optimistic proposals per proposer per 12h |
 
 ### Parameter Constraints
 
@@ -466,7 +468,7 @@ Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but
 
 ### Proposal Throttle Behavior
 
-- Throttle is tracked per proposer account independently for `proposeOptimistic()` and `propose()`
+- Throttle is tracked per proposer account independently for `proposeOptimistic()` and `propose()`; each path has its own capacity setting
 - Capacity is measured as proposals per 12 hours
 - Each proposal consumes one unit of its path's capacity
 - Capacity recharges linearly over time (full recharge over 12 hours)

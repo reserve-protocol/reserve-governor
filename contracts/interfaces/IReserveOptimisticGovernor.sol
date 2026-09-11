@@ -21,6 +21,7 @@ interface IReserveOptimisticGovernor {
     /// @param vetoThreshold D18{1} Fraction of token supply required to start confirmation process
     event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
     event ProposalThrottleUpdated(uint256 throttleCapacity);
+    event PessimisticProposalThrottleUpdated(uint256 throttleCapacity);
     event OptimisticParamsUpdated(OptimisticGovernanceParams optimisticParams);
 
     // === Data ===
@@ -57,6 +58,10 @@ interface IReserveOptimisticGovernor {
     ) external;
 
     function getOptimisticVotes(address account, uint256 timepoint) external view returns (uint256);
+
+    function pessimisticProposalThrottleCapacity() external view returns (uint256);
+
+    function pessimisticProposalThrottleCharges(address account) external view returns (uint256);
 
     function isOptimistic(uint256 proposalId) external view returns (bool);
 

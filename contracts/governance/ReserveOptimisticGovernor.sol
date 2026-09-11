@@ -110,6 +110,7 @@ contract ReserveOptimisticGovernor is
         __UUPSUpgradeable_init();
 
         _setProposalThrottle(_proposalThrottleCapacity);
+        _setPessimisticProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
 
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
@@ -117,6 +118,10 @@ contract ReserveOptimisticGovernor is
 
     function setProposalThrottle(uint256 newProposalThrottleCapacity) external onlyGovernance {
         _setProposalThrottle(newProposalThrottleCapacity);
+    }
+
+    function setPessimisticProposalThrottle(uint256 newProposalThrottleCapacity) external onlyGovernance {
+        _setPessimisticProposalThrottle(newProposalThrottleCapacity);
     }
 
     function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
@@ -132,7 +137,11 @@ contract ReserveOptimisticGovernor is
     }
 
     function pessimisticProposalThrottleCharges(address account) external view returns (uint256) {
-        return ThrottleLib.getPessimisticProposalsAvailable(account, proposalThrottle.capacity);
+        return ThrottleLib.getPessimisticProposalsAvailable(account);
+    }
+
+    function pessimisticProposalThrottleCapacity() external view returns (uint256) {
+        return ThrottleLib.getPessimisticCapacity();
     }
 
     function quorumDenominator() public pure override returns (uint256) {
@@ -194,7 +203,7 @@ contract ReserveOptimisticGovernor is
             averageVotes >= threshold, IGovernor.GovernorInsufficientProposerVotes(msg.sender, averageVotes, threshold)
         );
 
-        ThrottleLib.consumePessimisticProposalCharge(msg.sender, proposalThrottle.capacity);
+        ThrottleLib.consumePessimisticProposalCharge(msg.sender);
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
@@ -442,6 +451,16 @@ contract ReserveOptimisticGovernor is
 
         proposalThrottle.capacity = newCapacity;
         emit ProposalThrottleUpdated(newCapacity);
+    }
+
+    function _setPessimisticProposalThrottle(uint256 newCapacity) internal {
+        require(
+            newCapacity != 0 && newCapacity <= MAX_PROPOSAL_THROTTLE_CAPACITY,
+            OptimisticGovernor__InvalidProposalThrottle()
+        );
+
+        ThrottleLib.setPessimisticCapacity(newCapacity);
+        emit PessimisticProposalThrottleUpdated(newCapacity);
     }
 
     function _setVotingDelay(uint48 newVotingDelay) internal override {

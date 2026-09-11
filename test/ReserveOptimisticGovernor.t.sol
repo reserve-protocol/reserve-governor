@@ -232,6 +232,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(vetoPeriod, VETO_PERIOD);
         assertEq(vetoThreshold, VETO_THRESHOLD);
         assertEq(governor.proposalThrottleCharges(optimisticProposer), PROPOSAL_THROTTLE_CAPACITY);
+        assertEq(governor.pessimisticProposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
+        assertEq(governor.pessimisticProposalThrottleCharges(alice), PROPOSAL_THROTTLE_CAPACITY);
 
         assertEq(governor.votingDelay(), VOTING_DELAY);
         assertEq(governor.votingPeriod(), VOTING_PERIOD);
@@ -501,21 +503,26 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     function test_voteIntegral_failsClosedWhenRingCannotCoverWindow() public {
-        // More than the bounded ring's capacity of distinct timestamps in one
-        // throttle window means the oldest point is no longer available.
-        vm.warp(block.timestamp + 1);
-        for (uint256 i = 0; i < 25; ++i) {
-            vm.prank(alice);
-            stakingVault.delegate(i % 2 == 0 ? bob : carol);
-            vm.warp(block.timestamp + 1700);
-        }
-
+        // Accounts with no recorded delegation history fail closed.
         vm.expectRevert(
             abi.encodeWithSelector(
                 VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 12 hours
             )
         );
-        stakingVault.getPastVotesIntegral(bob, block.timestamp - 12 hours);
+        stakingVault.getPastVotesIntegral(makeAddr("newDelegate"), block.timestamp - 12 hours);
+    }
+
+    function test_voteIntegral_zeroTransfersCannotEvictHistory() public {
+        uint256 periodStart = block.timestamp - 12 hours;
+        uint256 integralAtStart = stakingVault.getPastVotesIntegral(alice, periodStart);
+
+        for (uint256 i = 0; i < 25; ++i) {
+            vm.warp(block.timestamp + 1);
+            vm.prank(bob);
+            stakingVault.transfer(alice, 0);
+        }
+
+        assertEq(stakingVault.getPastVotesIntegral(alice, periodStart), integralAtStart);
     }
 
     function test_standardProposal_rejectsConfirmationPrefixDescription() public {
