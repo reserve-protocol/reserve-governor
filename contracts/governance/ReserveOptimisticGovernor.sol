@@ -125,7 +125,8 @@ contract ReserveOptimisticGovernor is
     }
 
     /// @dev Initializes the added pessimistic bucket when upgrading an existing proxy.
-    function initializePessimisticProposalThrottle(uint256 initialCapacity) external reinitializer(2) onlyGovernance {
+    function initializePessimisticProposalThrottle(uint256 initialCapacity) external reinitializer(2) {
+        require(msg.sender == _executor(), GovernorOnlyExecutor(msg.sender));
         _setPessimisticProposalThrottle(initialCapacity);
     }
 
@@ -199,8 +200,7 @@ contract ReserveOptimisticGovernor is
             currentVotes >= threshold, IGovernor.GovernorInsufficientProposerVotes(msg.sender, currentVotes, threshold)
         );
 
-        uint256 periodStart =
-            block.timestamp > PROPOSAL_THROTTLE_PERIOD ? block.timestamp - PROPOSAL_THROTTLE_PERIOD : 0;
+        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
         uint256 integralEnd = IOptimisticVotes(address(token())).getPastVotesIntegral(msg.sender, block.timestamp);
         uint256 integralStart = IOptimisticVotes(address(token())).getPastVotesIntegral(msg.sender, periodStart);
         uint256 averageVotes = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;

@@ -1922,13 +1922,17 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     function test_initializePessimisticProposalThrottle_viaGovernance() public {
+        ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
+        bytes memory initializer = abi.encodeCall(governor.initializePessimisticProposalThrottle, (2));
+        bytes memory upgrade = abi.encodeCall(governor.upgradeToAndCall, (address(newImpl), initializer));
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(governor), 0, abi.encodeCall(governor.initializePessimisticProposalThrottle, (2)));
+            _singleCall(address(governor), 0, upgrade);
         (, bytes32 descriptionHash) =
             _proposePassAndQueueStandard(targets, values, calldatas, "Initialize standard throttle");
         vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
         governor.execute(targets, values, calldatas, descriptionHash);
 
+        assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).version(), "2.0.0");
         assertEq(governor.pessimisticProposalThrottleCapacity(), 2);
     }
 
