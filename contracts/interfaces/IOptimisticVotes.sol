@@ -17,6 +17,7 @@ interface IOptimisticVotes is IERC6372 {
 
     /// @notice Cumulative standard delegated vote-power integral at a past timestamp.
     function getPastVotesIntegral(address account, uint256 timepoint) external view returns (uint256);
+
     function optimisticDelegates(address account) external view returns (address);
     function delegateOptimistic(address delegatee) external;
     function delegateOptimisticBySig(address delegatee, uint256 nonce, uint256 expiry, uint8 v, bytes32 r, bytes32 s)

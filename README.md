@@ -474,6 +474,7 @@ Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but
 - Capacity recharges linearly over time (full recharge over 12 hours)
 - Standard proposals require current delegated voting power and a 12-hour average delegated voting power at least equal to `proposalThreshold`.
 - The average uses a bounded 65,535-observation ring in `StakingVault` (at most one observation per second, retaining over 18 hours); accounts with no history covering the window fail closed.
+- Existing delegates on a live vault can seed their ring by calling `delegate()` with their current delegate again; the 12-hour warmup still applies.
 
 ### StakingVault Parameters
 

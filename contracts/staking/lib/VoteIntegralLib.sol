@@ -75,8 +75,13 @@ library VoteIntegralLib {
         a.lastBalance = balance;
     }
 
-    /// @dev Record both sides of one delegate move in a single library call.
     function recordPair(address from, uint208 fromBalance, address to, uint208 toBalance) external {
+        if (from == to) {
+            if (from != address(0)) {
+                record(from, fromBalance);
+            }
+            return;
+        }
         if (from != address(0)) {
             record(from, fromBalance);
         }
