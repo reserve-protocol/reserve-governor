@@ -96,16 +96,15 @@ contract ReserveOptimisticGovernor is
         address _timelockController,
         address _selectorRegistry
     ) public initializer {
-        __Governor_init("Reserve Optimistic Governor");
-        __GovernorSettings_init(
+        __EIP712_init_unchained("Reserve Optimistic Governor", version());
+        __Governor_init_unchained("Reserve Optimistic Governor");
+        __GovernorSettings_init_unchained(
             standardGovParams.votingDelay, standardGovParams.votingPeriod, standardGovParams.proposalThreshold
         );
-        __GovernorPreventLateQuorum_init(standardGovParams.voteExtension);
-        __GovernorCountingSimple_init();
-        __GovernorVotes_init(IERC5805(_token));
-        __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
-        __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelockController)));
-        __UUPSUpgradeable_init();
+        __GovernorPreventLateQuorum_init_unchained(standardGovParams.voteExtension);
+        __GovernorVotes_init_unchained(IERC5805(_token));
+        __GovernorVotesQuorumFraction_init_unchained(standardGovParams.quorumNumerator);
+        __GovernorTimelockControl_init_unchained(TimelockControllerUpgradeable(payable(_timelockController)));
 
         _setProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
@@ -213,57 +212,9 @@ contract ReserveOptimisticGovernor is
         returns (ProposalState)
     {
         if (_isOptimistic(proposalId)) {
-            ProposalCore storage proposalCore = _proposalCore(proposalId);
-
-            if (proposalCore.executed) {
-                return ProposalState.Executed;
-            }
-
-            if (proposalCore.canceled) {
-                return ProposalState.Canceled;
-            }
-
-            // {s}
-            uint256 snapshot = proposalCore.voteStart;
-
-            if (snapshot >= block.timestamp) {
-                return ProposalState.Pending;
-            }
-
-            // D18{1}
-            uint256 _vetoThreshold = vetoThreshold(proposalId);
-
-            if (_vetoThreshold == ProposalLib.TRANSITIONED_VETO_THRESHOLD) {
-                // special-case for transitioned proposals
-                return ProposalState.Defeated;
-            }
-
-            // {tok}
-            uint256 pastSupply = IOptimisticVotes(address(token())).getPastOptimisticTotalSupply(snapshot);
-
-            if (pastSupply == 0) {
-                return ProposalState.Canceled;
-            }
-
-            // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (_vetoThreshold * pastSupply) / 1e18;
-            vetoThresholdTok = Math.max(vetoThresholdTok, 1);
-
-            // {tok}
-            (uint256 againstVotes,,) = proposalVotes(proposalId);
-
-            if (againstVotes >= vetoThresholdTok) {
-                return ProposalState.Defeated;
-            }
-
-            // {s}
-            uint256 deadline = proposalCore.voteStart + proposalCore.voteDuration;
-
-            if (deadline >= block.timestamp) {
-                return ProposalState.Active;
-            }
-
-            return ProposalState.Succeeded;
+            return ProposalLib.optimisticState(
+                _proposalCore(proposalId), vetoThreshold(proposalId), IOptimisticVotes(address(token())), proposalId
+            );
         }
 
         return super.state(proposalId);
@@ -378,6 +329,45 @@ contract ReserveOptimisticGovernor is
         ProposalState s = state(proposalId);
 
         return _isOptimistic(proposalId) ? s != ProposalState.Defeated : s == ProposalState.Pending;
+    }
+
+    function _validateVoteSig(uint256 proposalId, uint8 support, address voter, bytes memory signature)
+        internal
+        override
+        returns (bool)
+    {
+        return ProposalLib.isValidVoteSignature(
+            voter,
+            _hashTypedDataV4(keccak256(abi.encode(BALLOT_TYPEHASH, proposalId, support, voter, _useNonce(voter)))),
+            signature
+        );
+    }
+
+    function _validateExtendedVoteSig(
+        uint256 proposalId,
+        uint8 support,
+        address voter,
+        string memory reason,
+        bytes memory params,
+        bytes memory signature
+    ) internal override returns (bool) {
+        return ProposalLib.isValidVoteSignature(
+            voter,
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        EXTENDED_BALLOT_TYPEHASH,
+                        proposalId,
+                        support,
+                        voter,
+                        _useNonce(voter),
+                        keccak256(bytes(reason)),
+                        keccak256(params)
+                    )
+                )
+            ),
+            signature
+        );
     }
 
     function _countVote(uint256 proposalId, address account, uint8 support, uint256 totalWeight, bytes memory params)
