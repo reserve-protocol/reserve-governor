@@ -12,6 +12,7 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
 import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
+import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 
 /**
  * @title ERC20OptimisticVotesUpgradeable
@@ -81,6 +82,11 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
         return getPastTotalSupply(timepoint);
     }
 
+    /// @notice Return the cumulative integral of standard delegated votes at `timepoint`.
+    function getPastVotesIntegral(address account, uint256 timepoint) public view virtual returns (uint256) {
+        return VoteIntegralLib.getIntegral(account, timepoint);
+    }
+
     /// @dev Delegates optimistic votes from the sender to `delegatee`.
     function delegateOptimistic(address delegatee) public virtual {
         _delegateOptimistic(_msgSender(), delegatee);
@@ -133,6 +139,12 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     function _update(address from, address to, uint256 value) internal virtual override {
         super._update(from, to, value);
         _moveOptimisticDelegateVotes(optimisticDelegates(from), optimisticDelegates(to), value);
+    }
+
+    /// @dev Record standard delegated vote-power changes for the TWAB ring.
+    function _moveDelegateVotes(address from, address to, uint256 amount) internal virtual override {
+        super._moveDelegateVotes(from, to, amount);
+        VoteIntegralLib.recordPair(from, uint208(getVotes(from)), to, uint208(getVotes(to)));
     }
 
     /// @dev Moves delegated optimistic votes from one delegate to another.

@@ -1,0 +1,144 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+/**
+ * @title VoteIntegralLib
+ * @notice Bounded cumulative vote-power observations for time-weighted averages.
+ *
+ * The ring is updated by the token whenever a standard delegate's voting power
+ * changes.  Keeping the last balance alongside the observations lets us add
+ * the elapsed area without walking the token's unbounded ERC20Votes history.
+ */
+library VoteIntegralLib {
+    uint8 internal constant MAX_OBSERVATIONS = 24;
+
+    // keccak256(abi.encode(uint256(keccak256("reserve.storage.VoteIntegral")) - 1)) &
+    // ~bytes32(uint256(0xff))
+    bytes32 private constant VOTE_INTEGRAL_STORAGE_LOCATION =
+        0x425f8e8715bb9a492488ad70ae334ed48137651cf8872e52e69269fd6055d700;
+
+    error VoteIntegral__InsufficientHistory(uint256 timepoint);
+
+    struct Observation {
+        uint48 timestamp;
+        uint256 cumulativeIntegral;
+    }
+
+    struct Account {
+        // These fields fit in one slot.  `index` points at the newest observation.
+        uint8 index;
+        uint8 cardinality;
+        uint208 lastBalance;
+        Observation[MAX_OBSERVATIONS] observations;
+    }
+
+    /// @custom:storage-location erc7201:reserve.storage.VoteIntegral
+    struct Storage {
+        mapping(address account => Account) accounts;
+    }
+
+    /// @dev Record a vote-power change. Calls in one timestamp coalesce.
+    function record(address account, uint208 balance) private {
+        Storage storage $ = _storage();
+        Account storage a = $.accounts[account];
+        uint48 timestamp = uint48(block.timestamp);
+
+        if (a.cardinality == 0) {
+            a.cardinality = 1;
+            a.observations[0] = Observation(timestamp, 0);
+            a.lastBalance = balance;
+            return;
+        }
+
+        Observation storage latest = a.observations[a.index];
+        if (latest.timestamp == timestamp) {
+            // No time elapsed, so only the balance used by the next interval changes.
+            a.lastBalance = balance;
+            return;
+        }
+
+        uint256 elapsed = timestamp - latest.timestamp;
+        uint256 cumulative = latest.cumulativeIntegral + uint256(a.lastBalance) * elapsed;
+
+        uint8 next = a.index + 1;
+        if (next == MAX_OBSERVATIONS) {
+            next = 0;
+        }
+        a.index = next;
+        if (a.cardinality < MAX_OBSERVATIONS) {
+            ++a.cardinality;
+        }
+        a.observations[next] = Observation(timestamp, cumulative);
+        a.lastBalance = balance;
+    }
+
+    /// @dev Record both sides of one delegate move in a single library call.
+    function recordPair(address from, uint208 fromBalance, address to, uint208 toBalance) external {
+        if (from != address(0)) {
+            record(from, fromBalance);
+        }
+        if (to != address(0) && to != from) {
+            record(to, toBalance);
+        }
+    }
+
+    /// @dev Return cumulative vote-power integral at `timepoint`.
+    function getIntegral(address account, uint256 timepoint) external view returns (uint256) {
+        Account storage a = _storage().accounts[account];
+        uint8 cardinality = a.cardinality;
+        if (cardinality == 0) {
+            revert VoteIntegral__InsufficientHistory(timepoint);
+        }
+
+        uint48 timestamp = uint48(timepoint);
+        uint8 newestIndex = a.index;
+        Observation storage newest = a.observations[newestIndex];
+
+        if (timestamp >= newest.timestamp) {
+            return newest.cumulativeIntegral + uint256(a.lastBalance) * (timestamp - newest.timestamp);
+        }
+
+        uint8 oldestIndex = cardinality == MAX_OBSERVATIONS ? newestIndex + 1 : 0;
+        if (oldestIndex == MAX_OBSERVATIONS) {
+            oldestIndex = 0;
+        }
+        Observation storage oldest = a.observations[oldestIndex];
+        if (timestamp < oldest.timestamp) {
+            revert VoteIntegral__InsufficientHistory(timepoint);
+        }
+
+        uint8 currentIndex = oldestIndex;
+        for (uint8 i = 0; i < cardinality; ++i) {
+            Observation storage current = a.observations[currentIndex];
+            if (current.timestamp > timestamp) {
+                break;
+            }
+
+            uint8 nextIndex = currentIndex + 1;
+            if (nextIndex == MAX_OBSERVATIONS) {
+                nextIndex = 0;
+            }
+            if (i + 1 == cardinality || a.observations[nextIndex].timestamp > timestamp) {
+                if (current.timestamp == timestamp || i + 1 == cardinality) {
+                    return current.cumulativeIntegral;
+                }
+
+                // The area between two observations is constant balance. Deriving it
+                // from the cumulative delta keeps each observation in one storage slot.
+                Observation storage next = a.observations[nextIndex];
+                uint256 elapsed = next.timestamp - current.timestamp;
+                uint256 balance = (next.cumulativeIntegral - current.cumulativeIntegral) / elapsed;
+                return current.cumulativeIntegral + balance * (timestamp - current.timestamp);
+            }
+            currentIndex = nextIndex;
+        }
+
+        return oldest.cumulativeIntegral;
+    }
+
+    function _storage() private pure returns (Storage storage $) {
+        assembly {
+            $.slot := VOTE_INTEGRAL_STORAGE_LOCATION
+        }
+    }
+}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -42,7 +43,8 @@ import {
     MAX_VOTE_EXTENSION,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_PROPOSER_ROLE
+    OPTIMISTIC_PROPOSER_ROLE,
+    PROPOSAL_THROTTLE_PERIOD
 } from "@utils/Constants.sol";
 import { Versioned } from "@utils/Versioned.sol";
 
@@ -87,7 +89,7 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
-    /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 12h
+    /// @param _proposalThrottleCapacity Proposals-per-account, per proposal path, per 12h
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
@@ -127,6 +129,10 @@ contract ReserveOptimisticGovernor is
 
     function proposalThrottleCharges(address account) external view returns (uint256) {
         return ThrottleLib.getProposalsAvailable(proposalThrottle, account);
+    }
+
+    function pessimisticProposalThrottleCharges(address account) external view returns (uint256) {
+        return ThrottleLib.getPessimisticProposalsAvailable(account, proposalThrottle.capacity);
     }
 
     function quorumDenominator() public pure override returns (uint256) {
@@ -173,6 +179,23 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256 proposalId) {
+        uint256 threshold = proposalThreshold();
+        uint256 currentVotes = getVotes(msg.sender, block.timestamp - 1);
+        require(
+            currentVotes >= threshold, IGovernor.GovernorInsufficientProposerVotes(msg.sender, currentVotes, threshold)
+        );
+
+        uint256 periodStart =
+            block.timestamp > PROPOSAL_THROTTLE_PERIOD ? block.timestamp - PROPOSAL_THROTTLE_PERIOD : 0;
+        uint256 integralEnd = IOptimisticVotes(address(token())).getPastVotesIntegral(msg.sender, block.timestamp);
+        uint256 integralStart = IOptimisticVotes(address(token())).getPastVotesIntegral(msg.sender, periodStart);
+        uint256 averageVotes = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
+        require(
+            averageVotes >= threshold, IGovernor.GovernorInsufficientProposerVotes(msg.sender, averageVotes, threshold)
+        );
+
+        ThrottleLib.consumePessimisticProposalCharge(msg.sender, proposalThrottle.capacity);
+
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         ProposalLib.proposePessimistic(

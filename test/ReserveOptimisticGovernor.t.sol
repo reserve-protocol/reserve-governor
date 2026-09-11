@@ -25,6 +25,7 @@ import { Guardian } from "@src/Guardian.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
+import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 import {
     CANCELLER_ROLE,
     MAX_PROPOSAL_THROTTLE_CAPACITY,
@@ -454,6 +455,67 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, noVotes, 0, threshold)
         );
         governor.propose(targets, values, calldatas, "No votes proposer");
+    }
+
+    function test_standardProposal_requiresAverageDelegatedVotes() public {
+        // Drop Alice's delegated power for most of the window, then restore enough
+        // power to satisfy the instantaneous threshold at the proposal timestamp.
+        vm.prank(alice);
+        stakingVault.delegate(address(0));
+        vm.prank(alice);
+        stakingVault.transfer(bob, ALICE_STAKE);
+        vm.warp(block.timestamp + 12 hours);
+
+        uint256 topUp = 20_000e18;
+        underlying.mint(alice, topUp);
+        vm.startPrank(alice);
+        underlying.approve(address(stakingVault), topUp);
+        stakingVault.depositAndDelegate(topUp);
+        vm.stopPrank();
+        vm.warp(block.timestamp + 1);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        uint256 threshold = governor.proposalThreshold();
+        uint256 currentVotes = governor.getVotes(alice, block.timestamp - 1);
+        assertGe(currentVotes, threshold);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IGovernor.GovernorInsufficientProposerVotes.selector, alice, topUp / 12 hours, threshold
+            )
+        );
+        governor.propose(targets, values, calldatas, "Average power too low");
+    }
+
+    function test_voteIntegral_coalescesSameTimestampChanges() public {
+        uint256 integralBefore = stakingVault.getPastVotesIntegral(alice, block.timestamp);
+
+        vm.prank(alice);
+        stakingVault.delegate(bob);
+        vm.prank(alice);
+        stakingVault.delegate(alice);
+
+        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), integralBefore);
+    }
+
+    function test_voteIntegral_failsClosedWhenRingCannotCoverWindow() public {
+        // More than the bounded ring's capacity of distinct timestamps in one
+        // throttle window means the oldest point is no longer available.
+        vm.warp(block.timestamp + 1);
+        for (uint256 i = 0; i < 25; ++i) {
+            vm.prank(alice);
+            stakingVault.delegate(i % 2 == 0 ? bob : carol);
+            vm.warp(block.timestamp + 1700);
+        }
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 12 hours
+            )
+        );
+        stakingVault.getPastVotesIntegral(bob, block.timestamp - 12 hours);
     }
 
     function test_standardProposal_rejectsConfirmationPrefixDescription() public {
@@ -1367,6 +1429,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(alice);
         governor.propose(targets, values, calldatas, "standard #2");
         vm.prank(alice);
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
         governor.propose(targets, values, calldatas, "standard #3");
 
         vm.prank(optimisticProposer);

@@ -11,7 +11,7 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Fast proposals are protected by a proposer throttle that limits how many optimistic proposals each account can create per 12-hour window.
+Proposals are protected by per-account throttles that limit both optimistic and standard proposals over a 12-hour window. Standard proposers must also maintain the proposal threshold as a time-weighted average of delegated voting power over that window.
 
 ## Architecture
 
@@ -250,6 +250,7 @@ The main hybrid governor contract.
 **Proposal Creation Rules:**
 
 - `proposeOptimistic()` consumes proposer throttle charge
+- `propose()` consumes an independent proposer throttle charge and requires both current and 12-hour average delegated voting power at or above `proposalThreshold`
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -268,6 +269,7 @@ The main hybrid governor contract.
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
 - `setProposalThrottle(capacity)` -- Update optimistic proposals-per-12h throttle capacity (onlyGovernance)
 - `proposalThrottleCapacity()` -- Read current throttle capacity
+- `pessimisticProposalThrottleCharges(account)` -- Read standard proposal throttle capacity for an account
 
 ### OptimisticSelectorRegistry
 
@@ -445,7 +447,7 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 
 | Parameter                  | Type      | Description                                   |
 | -------------------------- | --------- | --------------------------------------------- |
-| `proposalThrottleCapacity` | `uint256` | Max optimistic proposals per proposer per 12h |
+| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer, per path, per 12h |
 
 ### Parameter Constraints
 
@@ -464,10 +466,12 @@ Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but
 
 ### Proposal Throttle Behavior
 
-- Throttle is tracked per proposer account for `proposeOptimistic()`
+- Throttle is tracked per proposer account independently for `proposeOptimistic()` and `propose()`
 - Capacity is measured as proposals per 12 hours
-- Each optimistic proposal consumes one unit of capacity
+- Each proposal consumes one unit of its path's capacity
 - Capacity recharges linearly over time (full recharge over 12 hours)
+- Standard proposals require current delegated voting power and a 12-hour average delegated voting power at least equal to `proposalThreshold`.
+- The average uses a bounded 24-observation ring in `StakingVault`; if more than 24 changes are needed to cover the window, the check fails closed until history is available.
 
 ### StakingVault Parameters
 

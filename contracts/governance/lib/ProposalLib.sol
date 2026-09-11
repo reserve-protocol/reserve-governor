@@ -136,19 +136,6 @@ library ProposalLib {
 
         ReserveOptimisticGovernor governor = _governor();
 
-        // validate proposer
-
-        {
-            // {tok}
-            uint256 votesThreshold = governor.proposalThreshold();
-            uint256 proposerVotes = governor.getVotes(proposal.proposer, block.timestamp - 1);
-
-            require(
-                proposerVotes >= votesThreshold,
-                IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
-            );
-        }
-
         // validate calls
 
         for (uint256 i = 0; i < proposal.targets.length; i++) {
