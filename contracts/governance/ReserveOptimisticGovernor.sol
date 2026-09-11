@@ -96,15 +96,16 @@ contract ReserveOptimisticGovernor is
         address _timelockController,
         address _selectorRegistry
     ) public initializer {
-        __EIP712_init_unchained("Reserve Optimistic Governor", version());
-        __Governor_init_unchained("Reserve Optimistic Governor");
-        __GovernorSettings_init_unchained(
+        __Governor_init("Reserve Optimistic Governor");
+        __GovernorSettings_init(
             standardGovParams.votingDelay, standardGovParams.votingPeriod, standardGovParams.proposalThreshold
         );
-        __GovernorPreventLateQuorum_init_unchained(standardGovParams.voteExtension);
-        __GovernorVotes_init_unchained(IERC5805(_token));
-        __GovernorVotesQuorumFraction_init_unchained(standardGovParams.quorumNumerator);
-        __GovernorTimelockControl_init_unchained(TimelockControllerUpgradeable(payable(_timelockController)));
+        __GovernorPreventLateQuorum_init(standardGovParams.voteExtension);
+        __GovernorCountingSimple_init();
+        __GovernorVotes_init(IERC5805(_token));
+        __GovernorVotesQuorumFraction_init(standardGovParams.quorumNumerator);
+        __GovernorTimelockControl_init(TimelockControllerUpgradeable(payable(_timelockController)));
+        __UUPSUpgradeable_init();
 
         _setProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
