@@ -91,8 +91,9 @@ library ProposalLib {
         ) storage optimisticProposals,
         IReserveOptimisticGovernor.OptimisticGovernanceParams calldata optimisticParams
     ) external {
-        // Keep payload storage writes in the library so the governor does not embed the dynamic-array copy code.
-        optimisticProposals[proposal.proposalId] = IReserveOptimisticGovernor.OptimisticProposalDetails({
+        optimisticProposals[
+            proposal.proposalId
+        ] = IReserveOptimisticGovernor.OptimisticProposalDetails({
             targets: proposal.targets,
             values: proposal.values,
             calldatas: proposal.calldatas,
