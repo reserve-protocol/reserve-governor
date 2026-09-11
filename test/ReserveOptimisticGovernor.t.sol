@@ -1819,6 +1819,20 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.proposeOptimistic(callTargets, callValues, callCalldatas, "Throttle reset should be exhausted");
     }
 
+    function test_setPessimisticProposalThrottle_viaGovernance() public {
+        uint256 newCapacity = 3;
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(governor), 0, abi.encodeCall(governor.setPessimisticProposalThrottle, (newCapacity)));
+
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Update pessimistic proposal throttle");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        assertEq(governor.pessimisticProposalThrottleCapacity(), newCapacity);
+        assertEq(governor.pessimisticProposalThrottleCharges(alice), newCapacity);
+    }
+
     function test_setProposalThrottle_revertsWhenInvalid() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(governor), 0, abi.encodeCall(governor.setProposalThrottle, (0)));
