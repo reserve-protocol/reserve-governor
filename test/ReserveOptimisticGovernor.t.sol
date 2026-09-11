@@ -1936,6 +1936,12 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(governor.pessimisticProposalThrottleCapacity(), 2);
     }
 
+    function test_initializePessimisticProposalThrottle_rejectsUnauthorized() public {
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorOnlyExecutor.selector, alice));
+        governor.initializePessimisticProposalThrottle(2);
+    }
+
     function test_cannotUpgradeGovernor_unauthorized() public {
         ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
 
