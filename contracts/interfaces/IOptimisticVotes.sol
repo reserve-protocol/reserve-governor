@@ -14,7 +14,6 @@ interface IOptimisticVotes is IERC6372 {
     function getPastOptimisticVotes(address account, uint256 timepoint) external view returns (uint256);
     function getPastOptimisticTotalSupply(uint256 timepoint) external view returns (uint256);
 
-
     /// @notice Cumulative standard delegated vote-power integral at a past timestamp.
     function getPastVotesIntegral(address account, uint256 timepoint) external view returns (uint256);
 
