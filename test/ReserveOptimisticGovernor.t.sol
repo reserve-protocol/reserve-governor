@@ -532,6 +532,24 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), before);
     }
 
+    function test_voteIntegral_uninitializedHolderCanSeedByDelegating() public {
+        address holder = makeAddr("legacyHolder");
+        underlying.mint(holder, 1_000e18);
+        vm.startPrank(holder);
+        underlying.approve(address(stakingVault), 1_000e18);
+        stakingVault.deposit(1_000e18, holder);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 12 hours
+            )
+        );
+        stakingVault.getPastVotesIntegral(holder, block.timestamp - 12 hours);
+        stakingVault.delegate(holder);
+        vm.stopPrank();
+
+        assertEq(stakingVault.getPastVotesIntegral(holder, block.timestamp), 0);
+    }
+
     function test_standardProposal_rejectsConfirmationPrefixDescription() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));

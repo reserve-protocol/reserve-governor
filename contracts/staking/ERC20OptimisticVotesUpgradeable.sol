@@ -144,7 +144,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     /// @dev Record standard delegated vote-power changes for the TWAB ring.
     function _moveDelegateVotes(address from, address to, uint256 amount) internal virtual override {
         super._moveDelegateVotes(from, to, amount);
-        if (from != to && amount > 0) {
+        if (amount > 0) {
             VoteIntegralLib.recordPair(from, uint208(getVotes(from)), to, uint208(getVotes(to)));
         }
     }
