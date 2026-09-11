@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC5805 } from "@openzeppelin/contracts/interfaces/IERC5805.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -43,8 +42,7 @@ import {
     MAX_VOTE_EXTENSION,
     MIN_OPTIMISTIC_VETO_DELAY,
     MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_PROPOSER_ROLE,
-    PROPOSAL_THROTTLE_PERIOD
+    OPTIMISTIC_PROPOSER_ROLE
 } from "@utils/Constants.sol";
 import { Versioned } from "@utils/Versioned.sol";
 
@@ -194,22 +192,6 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256 proposalId) {
-        uint256 threshold = proposalThreshold();
-        uint256 currentVotes = getVotes(msg.sender, block.timestamp - 1);
-        require(
-            currentVotes >= threshold, IGovernor.GovernorInsufficientProposerVotes(msg.sender, currentVotes, threshold)
-        );
-
-        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
-        uint256 integralEnd = IOptimisticVotes(address(token())).getPastVotesIntegral(msg.sender, block.timestamp);
-        uint256 integralStart = IOptimisticVotes(address(token())).getPastVotesIntegral(msg.sender, periodStart);
-        uint256 averageVotes = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
-        require(
-            averageVotes >= threshold, IGovernor.GovernorInsufficientProposerVotes(msg.sender, averageVotes, threshold)
-        );
-
-        ThrottleLib.consumePessimisticProposalCharge(msg.sender);
-
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         ProposalLib.proposePessimistic(

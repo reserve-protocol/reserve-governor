@@ -14,7 +14,9 @@ import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovern
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
+import { ThrottleLib } from "@governance/lib/ThrottleLib.sol";
 import { OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { PROPOSAL_THROTTLE_PERIOD } from "@utils/Constants.sol";
 
 library ProposalLib {
     string constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -135,6 +137,26 @@ library ProposalLib {
         _validateProposal(proposal, proposalCore);
 
         ReserveOptimisticGovernor governor = _governor();
+
+        uint256 threshold = governor.proposalThreshold();
+        uint256 currentVotes = governor.getVotes(proposal.proposer, block.timestamp - 1);
+        require(
+            currentVotes >= threshold,
+            IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, currentVotes, threshold)
+        );
+
+        uint256 periodStart =
+            block.timestamp > PROPOSAL_THROTTLE_PERIOD ? block.timestamp - PROPOSAL_THROTTLE_PERIOD : 0;
+        IOptimisticVotes token = IOptimisticVotes(address(governor.token()));
+        uint256 integralEnd = token.getPastVotesIntegral(proposal.proposer, block.timestamp);
+        uint256 integralStart = token.getPastVotesIntegral(proposal.proposer, periodStart);
+        uint256 averageVotes = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
+        require(
+            averageVotes >= threshold,
+            IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, threshold)
+        );
+
+        ThrottleLib.consumePessimisticProposalCharge(proposal.proposer);
 
         // validate calls
 
