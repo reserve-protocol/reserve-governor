@@ -210,8 +210,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         _setupVoter(carol, CAROL_STAKE);
 
         // Charge throttles
-        // Keep a full 24-hour integral history before proposal tests begin.
-        vm.warp(block.timestamp + 24 hours);
+        // Keep a full 12-hour integral history before proposal tests begin.
+        vm.warp(block.timestamp + 12 hours);
     }
 
     // ===== Deployment / Initialization =====
@@ -467,7 +467,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         stakingVault.delegate(address(0));
         vm.prank(alice);
         stakingVault.transfer(bob, ALICE_STAKE);
-        vm.warp(block.timestamp + 24 hours);
+        vm.warp(block.timestamp + 12 hours);
 
         uint256 topUp = 20_000e18;
         underlying.mint(alice, topUp);
@@ -486,7 +486,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IGovernor.GovernorInsufficientProposerVotes.selector, alice, topUp / 24 hours, threshold
+                IGovernor.GovernorInsufficientProposerVotes.selector, alice, topUp / 12 hours, threshold
             )
         );
         governor.propose(targets, values, calldatas, "Average power too low");
@@ -507,14 +507,14 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         // Accounts with no recorded delegation history fail closed.
         vm.expectRevert(
             abi.encodeWithSelector(
-                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 24 hours
+                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 12 hours
             )
         );
-        stakingVault.getPastVotesIntegral(makeAddr("newDelegate"), block.timestamp - 24 hours);
+        stakingVault.getPastVotesIntegral(makeAddr("newDelegate"), block.timestamp - 12 hours);
     }
 
     function test_voteIntegral_zeroTransfersCannotEvictHistory() public {
-        uint256 periodStart = block.timestamp - 24 hours;
+        uint256 periodStart = block.timestamp - 12 hours;
         uint256 integralAtStart = stakingVault.getPastVotesIntegral(alice, periodStart);
 
         for (uint256 i = 0; i < 25; ++i) {
@@ -541,10 +541,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         stakingVault.deposit(1_000e18, holder);
         vm.expectRevert(
             abi.encodeWithSelector(
-                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 24 hours
+                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 12 hours
             )
         );
-        stakingVault.getPastVotesIntegral(holder, block.timestamp - 24 hours);
+        stakingVault.getPastVotesIntegral(holder, block.timestamp - 12 hours);
         stakingVault.delegate(holder);
         vm.stopPrank();
 

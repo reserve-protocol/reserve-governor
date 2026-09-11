@@ -11,7 +11,7 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Proposals are protected by per-account throttles that limit both optimistic and standard proposals over a 12-hour window. Standard proposers must also maintain the proposal threshold as a time-weighted average of delegated voting power over a 24-hour window.
+Proposals are protected by per-account throttles that limit both optimistic and standard proposals over a 12-hour window. Standard proposers must also maintain the proposal threshold as a time-weighted average of delegated voting power over that 12-hour window.
 
 ## Architecture
 
@@ -250,7 +250,7 @@ The main hybrid governor contract.
 **Proposal Creation Rules:**
 
 - `proposeOptimistic()` consumes proposer throttle charge
-- `propose()` consumes an independent proposer throttle charge and requires both current and 24-hour average delegated voting power at or above `proposalThreshold`
+- `propose()` consumes an independent proposer throttle charge and requires both current and 12-hour average delegated voting power at or above `proposalThreshold`
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -472,9 +472,9 @@ Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but
 - Capacity is measured as proposals per 12 hours
 - Each proposal consumes one unit of its path's capacity
 - Capacity recharges linearly over time (full recharge over 12 hours)
-- Standard proposals require current delegated voting power and a 24-hour average delegated voting power at least equal to `proposalThreshold`.
-- The average uses a bounded 86,401-observation ring in `StakingVault` (at most one observation per second, guaranteeing 24-hour coverage); accounts with no history covering the window fail closed.
-- Existing delegates on a live vault can seed their ring by calling `delegate()` with their current delegate again; the 24-hour warmup still applies.
+- Standard proposals require current delegated voting power and a 12-hour average delegated voting power at least equal to `proposalThreshold`.
+- The average uses a bounded 43,201-observation ring in `StakingVault` (at most one observation per second, guaranteeing 12-hour coverage); accounts with no history covering the window fail closed.
+- Existing delegates on a live vault can seed their ring by calling `delegate()` with their current delegate again; the 12-hour warmup still applies.
 
 ### StakingVault Parameters
 
@@ -536,7 +536,7 @@ Upgrades are intended to be executed by the existing vault admin. They cannot be
 
 Only the `StakingVault` upgrade path is constrained by the version registry. This guarantees that `StakingVault` governance cannot brick the other governors that also depend on the same `StakingVault`. However, each `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` depending on a StakingVault (or governing it) can be broken either via role changes or by upgrading to a malicious implementation. 
 
-After upgrading a governor from a version without the pessimistic throttle bucket, governance can set its capacity with `setPessimisticProposalThrottle(capacity)`. Until then, the zero-valued storage is treated as capacity one. Existing delegates should repeat `delegate(currentDelegate)` after the vault upgrade to seed their integral history; they become eligible after the 24-hour warmup.
+After upgrading a governor from a version without the pessimistic throttle bucket, governance can set its capacity with `setPessimisticProposalThrottle(capacity)`. Until then, the zero-valued storage is treated as capacity one. Existing delegates should repeat `delegate(currentDelegate)` after the vault upgrade to seed their integral history; they become eligible after the 12-hour warmup.
 
 For deployments created with `deployWithExistingStakingVault()`, the new timelock does not automatically become the existing vault's admin. Any later `StakingVault` upgrade is still controlled by whichever address currently holds that vault's `DEFAULT_ADMIN_ROLE`.
 

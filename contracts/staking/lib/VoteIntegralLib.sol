@@ -11,8 +11,8 @@ pragma solidity ^0.8.28;
  */
 library VoteIntegralLib {
     // One observation per second is the densest possible history. This ring
-    // therefore always retains a full 24-hour lookback.
-    uint24 internal constant MAX_OBSERVATIONS = 86_401;
+    // therefore always retains a full 12-hour lookback.
+    uint24 internal constant MAX_OBSERVATIONS = 43_201;
 
     // The optimistic VotesUpgradeable namespace never uses its `_totalCheckpoints`
     // member. Reuse that member's slot for the integral mapping without shifting
