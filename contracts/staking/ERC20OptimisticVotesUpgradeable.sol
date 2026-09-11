@@ -32,7 +32,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     bytes32 private constant OptimisticVotesStorageLocation =
         0x70984a7d0b69c3ed645329f33455608f063bcf2582315816bc9835f4d0581600;
 
-    /// @dev Reuses {VotesUpgradeable.VotesStorage}; optimistic {_totalCheckpoints} is intentionally unused.
+    /// @dev Reuses {VotesUpgradeable.VotesStorage}; the integral ring occupies the optimistic `_totalCheckpoints` slot.
     function _getOptimisticVotesStorage() private pure returns (VotesUpgradeable.VotesStorage storage $) {
         assembly {
             $.slot := OptimisticVotesStorageLocation

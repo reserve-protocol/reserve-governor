@@ -17,6 +17,7 @@ uint256 constant MIN_OPTIMISTIC_VETO_PERIOD = 5 minutes; // not recommended
 
 // ProposalThrottle
 uint256 constant PROPOSAL_THROTTLE_PERIOD = 12 hours; // {s}
+uint256 constant PESSIMISTIC_PROPOSAL_THROTTLE_PERIOD = 24 hours; // {s}
 uint256 constant MAX_PROPOSAL_THROTTLE_CAPACITY = 12; // 12 per 12h, not recommended
 
 // StakingVault

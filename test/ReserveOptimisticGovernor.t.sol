@@ -96,7 +96,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     uint48 internal constant VOTE_EXTENSION = 1 days;
     uint256 internal constant PROPOSAL_THRESHOLD = 0.01e18; // 1%
     uint256 internal constant QUORUM_NUMERATOR = 0.1e18; // 10%
-    uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per 12h
+    uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per path per 12h
 
     uint256 internal constant TIMELOCK_DELAY = 2 days;
     string internal constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -210,7 +210,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         _setupVoter(carol, CAROL_STAKE);
 
         // Charge throttles
-        vm.warp(block.timestamp + 12 hours);
+        // Keep a full 24-hour integral history before proposal tests begin.
+        vm.warp(block.timestamp + 24 hours);
     }
 
     // ===== Deployment / Initialization =====
@@ -466,7 +467,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         stakingVault.delegate(address(0));
         vm.prank(alice);
         stakingVault.transfer(bob, ALICE_STAKE);
-        vm.warp(block.timestamp + 12 hours);
+        vm.warp(block.timestamp + 24 hours);
 
         uint256 topUp = 20_000e18;
         underlying.mint(alice, topUp);
@@ -485,7 +486,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IGovernor.GovernorInsufficientProposerVotes.selector, alice, topUp / 12 hours, threshold
+                IGovernor.GovernorInsufficientProposerVotes.selector, alice, topUp / 24 hours, threshold
             )
         );
         governor.propose(targets, values, calldatas, "Average power too low");
@@ -506,14 +507,14 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         // Accounts with no recorded delegation history fail closed.
         vm.expectRevert(
             abi.encodeWithSelector(
-                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 12 hours
+                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 24 hours
             )
         );
-        stakingVault.getPastVotesIntegral(makeAddr("newDelegate"), block.timestamp - 12 hours);
+        stakingVault.getPastVotesIntegral(makeAddr("newDelegate"), block.timestamp - 24 hours);
     }
 
     function test_voteIntegral_zeroTransfersCannotEvictHistory() public {
-        uint256 periodStart = block.timestamp - 12 hours;
+        uint256 periodStart = block.timestamp - 24 hours;
         uint256 integralAtStart = stakingVault.getPastVotesIntegral(alice, periodStart);
 
         for (uint256 i = 0; i < 25; ++i) {
@@ -540,10 +541,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         stakingVault.deposit(1_000e18, holder);
         vm.expectRevert(
             abi.encodeWithSelector(
-                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 12 hours
+                VoteIntegralLib.VoteIntegral__InsufficientHistory.selector, block.timestamp - 24 hours
             )
         );
-        stakingVault.getPastVotesIntegral(holder, block.timestamp - 12 hours);
+        stakingVault.getPastVotesIntegral(holder, block.timestamp - 24 hours);
         stakingVault.delegate(holder);
         vm.stopPrank();
 
@@ -1919,27 +1920,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
 
         assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).version(), "2.0.0");
-    }
-
-    function test_initializePessimisticProposalThrottle_viaGovernance() public {
-        ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
-        bytes memory initializer = abi.encodeCall(governor.initializePessimisticProposalThrottle, (2));
-        bytes memory upgrade = abi.encodeCall(governor.upgradeToAndCall, (address(newImpl), initializer));
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(governor), 0, upgrade);
-        (, bytes32 descriptionHash) =
-            _proposePassAndQueueStandard(targets, values, calldatas, "Initialize standard throttle");
-        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
-        governor.execute(targets, values, calldatas, descriptionHash);
-
-        assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).version(), "2.0.0");
-        assertEq(governor.pessimisticProposalThrottleCapacity(), 2);
-    }
-
-    function test_initializePessimisticProposalThrottle_rejectsUnauthorized() public {
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IGovernor.GovernorOnlyExecutor.selector, alice));
-        governor.initializePessimisticProposalThrottle(2);
     }
 
     function test_cannotUpgradeGovernor_unauthorized() public {

@@ -75,6 +75,8 @@ contract ReserveOptimisticGovernor is
 
     mapping(uint256 proposalId => OptimisticProposalDetails) private optimisticProposalDetails;
 
+    ThrottleLib.ProposalThrottleStorage private pessimisticProposalThrottle;
+
     constructor() {
         _disableInitializers();
     }
@@ -87,7 +89,7 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
-    /// @param _proposalThrottleCapacity Proposals-per-account, per proposal path, per 12h
+    /// @param _proposalThrottleCapacity Proposals-per-account, per proposal path, per 12h throttle period
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
@@ -122,12 +124,6 @@ contract ReserveOptimisticGovernor is
         _setPessimisticProposalThrottle(newProposalThrottleCapacity);
     }
 
-    /// @dev Initializes the added pessimistic bucket when upgrading an existing proxy.
-    function initializePessimisticProposalThrottle(uint256 initialCapacity) external reinitializer(2) {
-        require(msg.sender == _executor(), GovernorOnlyExecutor(msg.sender));
-        _setPessimisticProposalThrottle(initialCapacity);
-    }
-
     function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
         _setOptimisticParams(params);
     }
@@ -141,11 +137,11 @@ contract ReserveOptimisticGovernor is
     }
 
     function pessimisticProposalThrottleCharges(address account) external view returns (uint256) {
-        return ThrottleLib.getPessimisticProposalsAvailable(account);
+        return ThrottleLib.getProposalsAvailable(pessimisticProposalThrottle, account);
     }
 
     function pessimisticProposalThrottleCapacity() external view returns (uint256) {
-        return ThrottleLib.getPessimisticCapacity();
+        return pessimisticProposalThrottle.capacity;
     }
 
     function quorumDenominator() public pure override returns (uint256) {
@@ -196,7 +192,8 @@ contract ReserveOptimisticGovernor is
 
         ProposalLib.proposePessimistic(
             ProposalLib.ProposalData(proposalId, msg.sender, targets, values, calldatas, description),
-            _proposalCore(proposalId)
+            _proposalCore(proposalId),
+            pessimisticProposalThrottle
         );
     }
 
@@ -446,7 +443,7 @@ contract ReserveOptimisticGovernor is
             OptimisticGovernor__InvalidProposalThrottle()
         );
 
-        ThrottleLib.setPessimisticCapacity(newCapacity);
+        pessimisticProposalThrottle.capacity = newCapacity;
         emit PessimisticProposalThrottleUpdated(newCapacity);
     }
 

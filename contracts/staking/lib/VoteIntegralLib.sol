@@ -10,16 +10,16 @@ pragma solidity ^0.8.28;
  * the elapsed area without walking the token's unbounded ERC20Votes history.
  */
 library VoteIntegralLib {
-    // One observation per second is the densest possible history.  This ring
-    // therefore retains at least 18 hours of history, covering the 12-hour
-    // proposal lookback even under continuous activity.
-    uint16 internal constant MAX_OBSERVATIONS = 65_535;
+    // One observation per second is the densest possible history. This ring
+    // therefore always retains a full 24-hour lookback.
+    uint24 internal constant MAX_OBSERVATIONS = 86_401;
 
-    // keccak256(abi.encode(uint256(keccak256("reserve.storage.VoteIntegral")) - 1)) &
-    // ~bytes32(uint256(0xff))
-    bytes32 private constant VOTE_INTEGRAL_STORAGE_LOCATION =
-        0x425f8e8715bb9a492488ad70ae334ed48137651cf8872e52e69269fd6055d700;
-
+    // The optimistic VotesUpgradeable namespace never uses its `_totalCheckpoints`
+    // member. Reuse that member's slot for the integral mapping without shifting
+    // storage in contracts that inherit ERC20OptimisticVotesUpgradeable.
+    // keccak256(abi.encode(uint256(keccak256("reserve.storage.OptimisticVotes")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant OPTIMISTIC_VOTES_STORAGE_LOCATION =
+        0x70984a7d0b69c3ed645329f33455608f063bcf2582315816bc9835f4d0581600;
     error VoteIntegral__InsufficientHistory(uint256 timepoint);
 
     struct Observation {
@@ -29,20 +29,18 @@ library VoteIntegralLib {
 
     struct Account {
         // These fields fit in one slot.  `index` points at the newest observation.
-        uint16 index;
-        uint16 cardinality;
+        uint24 index;
+        uint24 cardinality;
         uint208 lastBalance;
         Observation[MAX_OBSERVATIONS] observations;
     }
 
-    /// @custom:storage-location erc7201:reserve.storage.VoteIntegral
     struct Storage {
         mapping(address account => Account) accounts;
     }
 
     /// @dev Record a vote-power change. Calls in one timestamp coalesce.
-    function record(address account, uint208 balance) private {
-        Storage storage $ = _storage();
+    function record(Storage storage $, address account, uint208 balance) private {
         Account storage a = $.accounts[account];
         uint48 timestamp = uint48(block.timestamp);
 
@@ -63,7 +61,7 @@ library VoteIntegralLib {
         uint256 elapsed = timestamp - latest.timestamp;
         uint256 cumulative = latest.cumulativeIntegral + uint256(a.lastBalance) * elapsed;
 
-        uint16 next = a.index + 1;
+        uint24 next = a.index + 1;
         if (next == MAX_OBSERVATIONS) {
             next = 0;
         }
@@ -76,37 +74,38 @@ library VoteIntegralLib {
     }
 
     function recordPair(address from, uint208 fromBalance, address to, uint208 toBalance) external {
+        Storage storage $ = _storage();
         if (from == to) {
             if (from != address(0)) {
-                record(from, fromBalance);
+                record($, from, fromBalance);
             }
             return;
         }
         if (from != address(0)) {
-            record(from, fromBalance);
+            record($, from, fromBalance);
         }
-        if (to != address(0) && to != from) {
-            record(to, toBalance);
+        if (to != address(0)) {
+            record($, to, toBalance);
         }
     }
 
     /// @dev Return cumulative vote-power integral at `timepoint`.
     function getIntegral(address account, uint256 timepoint) external view returns (uint256) {
         Account storage a = _storage().accounts[account];
-        uint16 cardinality = a.cardinality;
+        uint24 cardinality = a.cardinality;
         if (cardinality == 0) {
             revert VoteIntegral__InsufficientHistory(timepoint);
         }
 
         uint48 timestamp = uint48(timepoint);
-        uint16 newestIndex = a.index;
+        uint24 newestIndex = a.index;
         Observation storage newest = a.observations[newestIndex];
 
         if (timestamp >= newest.timestamp) {
             return newest.cumulativeIntegral + uint256(a.lastBalance) * (timestamp - newest.timestamp);
         }
 
-        uint16 oldestIndex = cardinality == MAX_OBSERVATIONS ? newestIndex + 1 : 0;
+        uint24 oldestIndex = cardinality == MAX_OBSERVATIONS ? newestIndex + 1 : 0;
         if (oldestIndex == MAX_OBSERVATIONS) {
             oldestIndex = 0;
         }
@@ -117,10 +116,10 @@ library VoteIntegralLib {
 
         // Binary-search the chronological virtual array. This keeps proposal
         // gas logarithmic even when the ring is full.
-        uint16 low;
-        uint16 high = cardinality - 1;
+        uint24 low;
+        uint24 high = cardinality - 1;
         while (low < high) {
-            uint16 mid = uint16((uint32(low) + uint32(high) + 1) / 2);
+            uint24 mid = uint24((uint48(low) + uint48(high) + 1) / 2);
             if (_observationAt(a, oldestIndex, mid).timestamp <= timestamp) {
                 low = mid;
             } else {
@@ -141,7 +140,7 @@ library VoteIntegralLib {
         return current.cumulativeIntegral + balance * (timestamp - current.timestamp);
     }
 
-    function _observationAt(Account storage a, uint16 oldestIndex, uint16 offset)
+    function _observationAt(Account storage a, uint24 oldestIndex, uint24 offset)
         private
         view
         returns (Observation storage observation)
@@ -155,7 +154,7 @@ library VoteIntegralLib {
 
     function _storage() private pure returns (Storage storage $) {
         assembly {
-            $.slot := VOTE_INTEGRAL_STORAGE_LOCATION
+            $.slot := add(OPTIMISTIC_VOTES_STORAGE_LOCATION, 2)
         }
     }
 }
