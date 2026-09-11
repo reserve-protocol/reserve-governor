@@ -331,45 +331,6 @@ contract ReserveOptimisticGovernor is
         return _isOptimistic(proposalId) ? s != ProposalState.Defeated : s == ProposalState.Pending;
     }
 
-    function _validateVoteSig(uint256 proposalId, uint8 support, address voter, bytes memory signature)
-        internal
-        override
-        returns (bool)
-    {
-        return ProposalLib.isValidVoteSignature(
-            voter,
-            _hashTypedDataV4(keccak256(abi.encode(BALLOT_TYPEHASH, proposalId, support, voter, _useNonce(voter)))),
-            signature
-        );
-    }
-
-    function _validateExtendedVoteSig(
-        uint256 proposalId,
-        uint8 support,
-        address voter,
-        string memory reason,
-        bytes memory params,
-        bytes memory signature
-    ) internal override returns (bool) {
-        return ProposalLib.isValidVoteSignature(
-            voter,
-            _hashTypedDataV4(
-                keccak256(
-                    abi.encode(
-                        EXTENDED_BALLOT_TYPEHASH,
-                        proposalId,
-                        support,
-                        voter,
-                        _useNonce(voter),
-                        keccak256(bytes(reason)),
-                        keccak256(params)
-                    )
-                )
-            ),
-            signature
-        );
-    }
-
     function _countVote(uint256 proposalId, address account, uint8 support, uint256 totalWeight, bytes memory params)
         internal
         override(GovernorUpgradeable, GovernorCountingSimpleUpgradeable)

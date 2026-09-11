@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
-import { SignatureChecker } from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
@@ -32,10 +31,6 @@ library ProposalLib {
     }
 
     // === External ===
-
-    function isValidVoteSignature(address voter, bytes32 digest, bytes memory signature) external view returns (bool) {
-        return SignatureChecker.isValidSignatureNow(voter, digest, signature);
-    }
 
     function optimisticState(
         GovernorUpgradeable.ProposalCore storage proposalCore,
