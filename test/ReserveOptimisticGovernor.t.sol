@@ -502,7 +502,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), integralBefore);
     }
 
-    function test_voteIntegral_failsClosedWhenRingCannotCoverWindow() public {
+    function test_voteIntegral_failsClosedWithoutHistory() public {
         // Accounts with no recorded delegation history fail closed.
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1884,6 +1884,17 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
 
         assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).version(), "2.0.0");
+    }
+
+    function test_initializePessimisticProposalThrottle_viaGovernance() public {
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(governor), 0, abi.encodeCall(governor.initializePessimisticProposalThrottle, (2)));
+        (, bytes32 descriptionHash) =
+            _proposePassAndQueueStandard(targets, values, calldatas, "Initialize standard throttle");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(targets, values, calldatas, descriptionHash);
+
+        assertEq(governor.pessimisticProposalThrottleCapacity(), 2);
     }
 
     function test_cannotUpgradeGovernor_unauthorized() public {

@@ -124,6 +124,11 @@ contract ReserveOptimisticGovernor is
         _setPessimisticProposalThrottle(newProposalThrottleCapacity);
     }
 
+    /// @dev Initializes the added pessimistic bucket when upgrading an existing proxy.
+    function initializePessimisticProposalThrottle(uint256 initialCapacity) external reinitializer(2) onlyGovernance {
+        _setPessimisticProposalThrottle(initialCapacity);
+    }
+
     function setOptimisticParams(OptimisticGovernanceParams calldata params) external onlyGovernance {
         _setOptimisticParams(params);
     }
