@@ -52,7 +52,6 @@ interface IReserveOptimisticGovernor {
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         uint256 _proposalThrottleCapacity,
-        uint256 _pessimisticProposalThrottleCapacity,
         address _token,
         address _timelock,
         address _selectorRegistry
@@ -61,7 +60,6 @@ interface IReserveOptimisticGovernor {
     function pessimisticProposalThrottleCapacity() external view returns (uint256);
     function pessimisticProposalThrottleCharges(address account) external view returns (uint256);
     function setPessimisticProposalThrottle(uint256 newCapacity) external;
-    function initializePessimisticProposalThrottle(uint256 capacity) external;
 
     function getOptimisticVotes(address account, uint256 timepoint) external view returns (uint256);
 

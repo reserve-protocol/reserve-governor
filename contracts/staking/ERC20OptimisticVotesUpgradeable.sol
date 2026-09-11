@@ -32,13 +32,10 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     bytes32 private constant OptimisticVotesStorageLocation =
         0x70984a7d0b69c3ed645329f33455608f063bcf2582315816bc9835f4d0581600;
 
-    struct OptimisticVotesStorage {
-        mapping(address account => address delegatee) _delegatee;
-        mapping(address delegatee => Checkpoints.Trace208) _delegateCheckpoints;
-        VoteIntegralLib.Storage _integrals;
-    }
+    VoteIntegralLib.Storage private voteIntegral;
 
-    function _getOptimisticVotesStorage() private pure returns (OptimisticVotesStorage storage $) {
+    /// @dev Reuses {VotesUpgradeable.VotesStorage}; optimistic {_totalCheckpoints} is intentionally unused.
+    function _getOptimisticVotesStorage() private pure returns (VotesUpgradeable.VotesStorage storage $) {
         assembly {
             $.slot := OptimisticVotesStorageLocation
         }
@@ -69,7 +66,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
      * - `timepoint` must be in the past.
      */
     function getPastOptimisticVotes(address account, uint256 timepoint) public view virtual returns (uint256) {
-        OptimisticVotesStorage storage $ = _getOptimisticVotesStorage();
+        VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
         return $._delegateCheckpoints[account].upperLookupRecent(_validateTimepoint(timepoint));
     }
 
@@ -90,7 +87,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     /// @notice Returns the cumulative delegated vote-power integral at a timestamp.
     /// @dev Timestamps before the first observation return zero.
     function getPastVotesIntegral(address account, uint256 timepoint) external view returns (uint256) {
-        return VoteIntegralLib.lookup(_getOptimisticVotesStorage()._integrals, account, timepoint);
+        return VoteIntegralLib.lookup(voteIntegral, account, timepoint);
     }
 
     /// @dev Delegates optimistic votes from the sender to `delegatee`.
@@ -134,7 +131,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
      * Emits events {OptimisticDelegateChanged} and {OptimisticDelegateVotesChanged}.
      */
     function _delegateOptimistic(address account, address delegatee) internal virtual {
-        OptimisticVotesStorage storage $ = _getOptimisticVotesStorage();
+        VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
         address oldDelegate = optimisticDelegates(account);
         $._delegatee[account] = delegatee;
 
@@ -148,15 +145,13 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
     }
 
     function _moveDelegateVotes(address from, address to, uint256 amount) internal virtual override {
-        VoteIntegralLib.update(
-            _getOptimisticVotesStorage()._integrals, from, to, amount, getVotes(from), getVotes(to), block.timestamp
-        );
+        VoteIntegralLib.update(voteIntegral, from, to, amount, getVotes(from), getVotes(to), block.timestamp);
         super._moveDelegateVotes(from, to, amount);
     }
 
     /// @dev Moves delegated optimistic votes from one delegate to another.
     function _moveOptimisticDelegateVotes(address from, address to, uint256 amount) internal virtual {
-        OptimisticVotesStorage storage $ = _getOptimisticVotesStorage();
+        VotesUpgradeable.VotesStorage storage $ = _getOptimisticVotesStorage();
         if (from != to && amount > 0) {
             uint208 safeAmount = SafeCast.toUint208(amount);
 

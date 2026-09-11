@@ -20,6 +20,7 @@ library ThrottleLib {
     }
 
     function _consumeProposalCharge(ProposalThrottle storage throttle, uint256 capacity) private {
+        capacity = capacity == 0 ? 1 : capacity;
         (uint256 proposalsAvailable, uint256 charge) = _getProposalsAvailable(throttle, capacity);
         require(proposalsAvailable >= 1, IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded());
 
@@ -45,6 +46,7 @@ library ThrottleLib {
         view
         returns (uint256 proposalsAvailable, uint256 charge)
     {
+        capacity = capacity == 0 ? 1 : capacity;
         uint256 elapsed = block.timestamp - throttle.lastUpdated;
         charge = throttle.currentCharge + (elapsed * 1e18) / PROPOSAL_THROTTLE_PERIOD;
 

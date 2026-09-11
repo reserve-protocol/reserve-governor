@@ -13,8 +13,6 @@ During a fast proposal's veto period, token holders can vote AGAINST. If enough 
 
 Proposals are protected by per-account throttles. Optimistic proposals use the existing refillable proposal-count bucket. Standard proposals use an independent count bucket and also require the proposer to have held delegated standard voting power at least equal to the proposal threshold on average over the preceding 12 hours.
 
-Accounts that held delegated votes before the integral extension was activated begin tracking when their delegated balance next moves. They must then remain above threshold for a full 12-hour warm-up before creating a standard proposal.
-
 ## Architecture
 
 The runtime system consists of five components:
@@ -449,7 +447,7 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 
 | Parameter                  | Type      | Description                                   |
 | -------------------------- | --------- | --------------------------------------------- |
-| `proposalThrottleCapacity` | `uint256` | Max optimistic proposals per proposer per 12h |
+| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer per path per 12h |
 
 ### Parameter Constraints
 
@@ -458,20 +456,21 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 | `vetoDelay`                | >= 1 second and < `MAX_OPTIMISTIC_DELAY` | `MIN_OPTIMISTIC_VETO_DELAY`, `MAX_OPTIMISTIC_DELAY` |
 | `vetoPeriod`               | >= 5 minutes                             | `MIN_OPTIMISTIC_VETO_PERIOD`                        |
 | `vetoThreshold`            | > 0 and <= 100%                          |                                                     |
-| `proposalThrottleCapacity` | >= 1 and <= 12 proposals/12h            | `MAX_PROPOSAL_THROTTLE_CAPACITY`                    |
+| `proposalThrottleCapacity` | >= 1 and <= 12 proposals/12h per path | `MAX_PROPOSAL_THROTTLE_CAPACITY`                    |
 | `votingDelay`              | < `MAX_OPTIMISTIC_DELAY`                 | `MAX_OPTIMISTIC_DELAY`                              |
 | `proposalThreshold`        | > 0 and <= 100%                          |                                                     |
 
 The contract allows a `vetoPeriod` as low as 5 minutes, but this is not recommended. The lowest recommended production value is 15 minutes.
 
-Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but not recommended. 
+Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but not recommended.
 
 ### Proposal Throttle Behavior
 
-- Throttle is tracked per proposer account for `proposeOptimistic()`
-- Capacity is measured as proposals per 12 hours
-- Each optimistic proposal consumes one unit of capacity
+- Throttle is tracked independently per proposer account for each proposal path.
+- Capacity is measured as proposals per 12 hours.
+- Each proposal consumes one unit of capacity from its path’s bucket.
 - Capacity recharges linearly over time (full recharge over 12 hours)
+- Standard proposals additionally require the proposer’s delegated standard vote power to average at least `proposalThreshold()` over the preceding 12 hours. The average is calculated from append-only cumulative integral observations updated on every delegated vote movement.
 
 ### StakingVault Parameters
 

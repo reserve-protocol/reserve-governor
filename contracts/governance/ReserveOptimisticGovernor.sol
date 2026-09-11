@@ -94,7 +94,6 @@ contract ReserveOptimisticGovernor is
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
         uint256 _proposalThrottleCapacity,
-        uint256 _pessimisticProposalThrottleCapacity,
         address _token,
         address _timelockController,
         address _selectorRegistry
@@ -111,7 +110,7 @@ contract ReserveOptimisticGovernor is
         __UUPSUpgradeable_init();
 
         _setProposalThrottle(_proposalThrottleCapacity);
-        _setPessimisticProposalThrottle(_pessimisticProposalThrottleCapacity);
+        _setPessimisticProposalThrottle(_proposalThrottleCapacity);
         _setOptimisticParams(optimisticGovParams);
 
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
@@ -143,11 +142,6 @@ contract ReserveOptimisticGovernor is
 
     function pessimisticProposalThrottleCharges(address account) external view returns (uint256) {
         return ThrottleLib.getProposalsAvailable(pessimisticProposalThrottle, account);
-    }
-
-    function initializePessimisticProposalThrottle(uint256 capacity) external reinitializer(2) {
-        require(msg.sender == _executor(), GovernorOnlyExecutor(msg.sender));
-        _setPessimisticProposalThrottle(capacity);
     }
 
     function quorumDenominator() public pure override returns (uint256) {

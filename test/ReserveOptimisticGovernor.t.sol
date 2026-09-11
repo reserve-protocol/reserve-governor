@@ -169,8 +169,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                 optimisticProposers: optimisticProposers,
                 additionalGuardians: _additionalGuardians(),
                 timelockDelay: TIMELOCK_DELAY,
-                proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY,
-                pessimisticProposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
+                proposalThrottleCapacity: PROPOSAL_THROTTLE_CAPACITY
             });
 
         IReserveOptimisticGovernorDeployer.NewStakingVaultParams memory newStakingVaultParams =
@@ -1426,6 +1425,20 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.propose(targets, values, calldatas, "bob standard #1");
     }
 
+    function test_pessimisticProposalThrottle_usesOneWhenUpgradeStorageIsZero() public {
+        vm.store(address(governor), bytes32(uint256(6)), bytes32(0));
+        assertEq(governor.pessimisticProposalThrottleCharges(alice), 1);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        governor.propose(targets, values, calldatas, "zero-storage standard #1");
+        vm.prank(alice);
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
+        governor.propose(targets, values, calldatas, "zero-storage standard #2");
+    }
+
     function test_proposalThrottle_rechargesLinearlyOverTime() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
@@ -1871,26 +1884,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.execute(targets, values, calldatas, descriptionHash);
 
         assertEq(ReserveOptimisticGovernorV2Mock(payable(address(governor))).version(), "2.0.0");
-    }
-
-    function test_upgradeGovernor_initializesPessimisticThrottle() public {
-        ReserveOptimisticGovernorV2Mock newImpl = new ReserveOptimisticGovernorV2Mock();
-        uint256 newCapacity = 3;
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) = _singleCall(
-            address(governor),
-            0,
-            abi.encodeCall(
-                governor.upgradeToAndCall,
-                (address(newImpl), abi.encodeCall(governor.initializePessimisticProposalThrottle, (newCapacity)))
-            )
-        );
-
-        (, bytes32 descriptionHash) =
-            _proposePassAndQueueStandard(targets, values, calldatas, "Initialize pessimistic proposal throttle");
-        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
-        governor.execute(targets, values, calldatas, descriptionHash);
-
-        assertEq(governor.pessimisticProposalThrottleCapacity(), newCapacity);
     }
 
     function test_cannotUpgradeGovernor_unauthorized() public {

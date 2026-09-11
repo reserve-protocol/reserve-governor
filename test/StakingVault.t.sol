@@ -106,8 +106,7 @@ contract StakingVaultTest is Test {
                 optimisticProposers: new address[](0),
                 additionalGuardians: new address[](0),
                 timelockDelay: 2 days,
-                proposalThrottleCapacity: 12,
-                pessimisticProposalThrottleCapacity: 12
+                proposalThrottleCapacity: 12
             });
 
         IReserveOptimisticGovernorDeployer.NewStakingVaultParams memory newStakingVaultParams =
