@@ -9,7 +9,7 @@ library OptimisticSelectorRegistryDeployer {
      *
      * @notice Source Contract: contracts/governance/OptimisticSelectorRegistry.sol
      * - solc: 0.8.33+commit.64118f21
-     * - optimizer_runs: 149
+     * - optimizer_runs: 156
      * - viaIR: false
      * - evm_version: cancun
      * - bytecodeHash: none
