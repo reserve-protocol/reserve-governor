@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { PROPOSAL_THROTTLE_PERIOD } from "@utils/Constants.sol";
 
 library ThrottleLib {
@@ -21,7 +20,6 @@ library ThrottleLib {
     }
 
     function _consumeProposalCharge(ProposalThrottle storage throttle, uint256 capacity) private {
-        capacity = Math.max(capacity, 1);
         (uint256 proposalsAvailable, uint256 charge) = _getProposalsAvailable(throttle, capacity);
         require(proposalsAvailable >= 1, IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded());
 
@@ -47,7 +45,6 @@ library ThrottleLib {
         view
         returns (uint256 proposalsAvailable, uint256 charge)
     {
-        capacity = Math.max(capacity, 1);
         uint256 elapsed = block.timestamp - throttle.lastUpdated;
         charge = throttle.currentCharge + (elapsed * 1e18) / PROPOSAL_THROTTLE_PERIOD;
 

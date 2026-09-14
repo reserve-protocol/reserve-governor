@@ -84,7 +84,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.optimisticProposers Addresses granted optimistic proposer role.
     /// @param baseParams.additionalGuardians Additional addresses granted guardian role.
     /// @param baseParams.timelockDelay {s} Timelock execution delay.
-    /// @param baseParams.proposalThrottleCapacity Proposal throttle capacity per path.
+    /// @param baseParams.proposalThrottleCapacity Proposal throttle capacity.
     /// @param newStakingVaultParams.underlying Underlying token for the newly deployed vault.
     /// @param newStakingVaultParams.rewardTokens Additional reward tokens for the new vault, must already be registered
     /// @param newStakingVaultParams.rewardHalfLife {s} Reward streaming half-life for the new vault.
@@ -149,7 +149,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
     /// @param baseParams.optimisticProposers Addresses granted optimistic proposer role.
     /// @param baseParams.additionalGuardians Additional addresses granted guardian role.
     /// @param baseParams.timelockDelay {s} Timelock execution delay.
-    /// @param baseParams.proposalThrottleCapacity Proposals-per-account per path per 12h.
+    /// @param baseParams.proposalThrottleCapacity Proposals-per-account per 12h.
     /// @param existingStakingVault Address of a pre-deployed StakingVault to use as governance token.
     /// @param deploymentNonce Arbitrary nonce used to derive deterministic deployment salt.
     /// @return governor The deployed Governor address.

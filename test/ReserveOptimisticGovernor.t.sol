@@ -226,7 +226,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(fields, hex"0f");
         assertEq(name, "Reserve Optimistic Governor");
         assertEq(governor.name(), name);
-        assertEq(version, "1.0.0");
+        assertEq(version, "1.1.0");
         assertEq(chainId, block.chainid);
         assertEq(verifier, address(governor));
     }
@@ -237,7 +237,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(vetoPeriod, VETO_PERIOD);
         assertEq(vetoThreshold, VETO_THRESHOLD);
         assertEq(governor.proposalThrottleCharges(optimisticProposer), PROPOSAL_THROTTLE_CAPACITY);
-        assertEq(governor.pessimisticProposalThrottleCapacity(), PROPOSAL_THROTTLE_CAPACITY);
 
         assertEq(governor.votingDelay(), VOTING_DELAY);
         assertEq(governor.votingPeriod(), VOTING_PERIOD);
@@ -1417,7 +1416,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     // ===== Proposal Throttle =====
 
-    function test_proposalThrottles_areIndependentAcrossOptimisticAndStandard() public {
+    function test_proposalThrottle_isSharedAcrossOptimisticAndStandard() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
@@ -1428,40 +1427,23 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.proposeOptimistic(targets, values, calldatas, "optimistic #1");
         vm.prank(optimisticProposer);
         governor.propose(targets, values, calldatas, "standard #1");
-        vm.prank(optimisticProposer);
-        governor.propose(targets, values, calldatas, "standard #2");
-        vm.prank(optimisticProposer);
-        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
-        governor.propose(targets, values, calldatas, "standard #3");
 
         vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
         governor.proposeOptimistic(targets, values, calldatas, "optimistic #2");
         vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic #3");
+        governor.propose(targets, values, calldatas, "standard #2");
 
         vm.warp(block.timestamp + 6 hours);
         vm.prank(optimisticProposer);
-        governor.propose(targets, values, calldatas, "standard #3 after recharge");
+        governor.propose(targets, values, calldatas, "standard #2 after recharge");
         vm.prank(optimisticProposer);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic #3 after recharge");
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #2 after shared consume");
 
         vm.prank(bob);
         governor.propose(targets, values, calldatas, "bob standard #1");
-    }
-
-    function test_pessimisticProposalThrottle_usesOneWhenUpgradeStorageIsZero() public {
-        vm.store(address(governor), bytes32(uint256(6)), bytes32(0));
-        assertEq(governor.pessimisticProposalThrottleCharges(alice), 1);
-
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "zero-storage standard #1");
-        vm.prank(alice);
-        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
-        governor.propose(targets, values, calldatas, "zero-storage standard #2");
     }
 
     function test_proposalThrottle_rechargesLinearlyOverTime() public {
@@ -1857,20 +1839,6 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.proposeOptimistic(callTargets, callValues, callCalldatas, "Throttle reset should be exhausted");
     }
 
-    function test_setPessimisticProposalThrottle_viaGovernance() public {
-        uint256 newCapacity = 3;
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(governor), 0, abi.encodeCall(governor.setPessimisticProposalThrottle, (newCapacity)));
-
-        (, bytes32 descriptionHash) =
-            _proposePassAndQueueStandard(targets, values, calldatas, "Update pessimistic proposal throttle");
-        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
-        governor.execute(targets, values, calldatas, descriptionHash);
-
-        assertEq(governor.pessimisticProposalThrottleCapacity(), newCapacity);
-        assertEq(governor.pessimisticProposalThrottleCharges(alice), newCapacity);
-    }
-
     function test_setProposalThrottle_revertsWhenInvalid() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(governor), 0, abi.encodeCall(governor.setProposalThrottle, (0)));
@@ -2038,7 +2006,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256("Reserve Optimistic Governor"),
-                keccak256("1.0.0"),
+                keccak256("1.1.0"),
                 block.chainid,
                 address(governor)
             )
