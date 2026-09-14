@@ -148,15 +148,26 @@ library ProposalLib {
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
             );
 
+            uint256 periodStart =
+                block.timestamp > PROPOSAL_THROTTLE_PERIOD ? block.timestamp - PROPOSAL_THROTTLE_PERIOD : 0;
             IOptimisticVotes votes = IOptimisticVotes(address(governor.token()));
-            uint256 averageVotes =
-                (votes.getPastVotesIntegral(proposal.proposer, block.timestamp)
-                        - votes.getPastVotesIntegral(proposal.proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD))
+            uint256 integralEnd = votes.getPastVotesIntegral(proposal.proposer, block.timestamp);
+
+            if (integralEnd == 0) {
+                // Existing vaults may have standard vote history but no integral observations yet.
+                uint256 historicalVotes = governor.getVotes(proposal.proposer, periodStart);
+                require(
+                    historicalVotes >= votesThreshold,
+                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, historicalVotes, votesThreshold)
+                );
+            } else {
+                uint256 averageVotes = (integralEnd - votes.getPastVotesIntegral(proposal.proposer, periodStart))
                     / PROPOSAL_THROTTLE_PERIOD;
-            require(
-                averageVotes >= votesThreshold,
-                IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
-            );
+                require(
+                    averageVotes >= votesThreshold,
+                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
+                );
+            }
         }
 
         // validate calls
