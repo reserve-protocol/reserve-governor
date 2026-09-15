@@ -78,3 +78,54 @@ Unit tests compare fuzzed histories to a direct segment-sum reference and cover
 zero-vote intervals, same-timestamp movements, maximum arithmetic, no-ops,
 redelegation, and rollback when OZ rejects a movement. Forks exercise actual
 upgrades with legacy checkpoints from earlier and identical timestamps.
+
+## Gas comparison
+
+Both implementations below use Solidity 0.8.33, optimizer runs **1**, no IR,
+and the same token harness and state sequence. The baseline is PR #48 at
+`982f284c1aea5f34dca32c0f15880402d829d1fc`; it uses the external integral library.
+Holding the optimizer setting constant isolates the accounting change.
+
+| Operation | External library | Checkpoint mapping | Change |
+| --- | ---: | ---: | ---: |
+| Fresh mint, no delegation | 111,691 | 105,395 | -6,296 |
+| Initial delegation | 126,296 | 98,425 | -27,871 |
+| Later mint to delegated account | 146,198 | 113,223 | -32,975 |
+| Transfer across distinct delegates | 201,737 | 141,443 | -60,294 |
+| Same-timestamp coalesced transfer | 68,612 | 52,431 | -16,181 |
+| Later burn from delegated account | 146,406 | 113,431 | -32,975 |
+| Historical integral lookup, cold | 27,362 | 27,698 | +336 |
+| Historical integral lookup, warm | 7,357 | 9,693 | +2,336 |
+| Current integral lookup, cold | 25,240 | 24,875 | -365 |
+| Current integral lookup, warm | 7,240 | 8,875 | +1,635 |
+
+These are gross `gasleft()` differences around test-contract-to-token calls,
+including CALL/calldata overhead and excluding intrinsic transaction gas and
+refunds. They are not end-to-end StakingVault deposit costs. Cold measurements
+use `vm.cool(token)` to cool the token address and its storage; the baseline
+also cools the linked integral library. Earlier state transitions remain in
+the same Foundry test execution, so storage original/dirty accounting is not
+claimed to match independent transaction receipts. Warm lookups immediately
+repeat the same query. The lookup fixture has 65 checkpoints; the historical
+query selects checkpoint 33 and the current query is ten seconds after the
+last checkpoint. The coalescing measurement follows an earlier transfer at the
+same timestamp.
+
+Run the retained [benchmark](../test/bench/IntegralGasBenchmark.t.sol) with:
+
+```sh
+forge test --match-contract IntegralGasBenchmarkTest --optimizer-runs 1 -vv
+```
+
+To reproduce the baseline, copy that harness into a separate checkout of the
+baseline commit, import its `VoteIntegralLib`, and add
+`vm.cool(address(VoteIntegralLib));` to `_coolIntegralCall()`. Keep the same
+optimizer setting and command. No copy of the old library is needed in this
+branch.
+
+The mutation savings are substantial in this fixture, especially when two
+delegates change. Warm lookups become more expensive. Also, legacy delegates'
+lookups search their full OZ checkpoint history, which can be longer than a
+new post-upgrade observation array. This comparison does not characterize all
+history lengths or the effect of lowering optimizer runs on unrelated vault
+and governor operations.
