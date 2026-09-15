@@ -1,9 +1,6 @@
-# Experimental checkpoint-indexed vote integrals
+# Checkpoint-indexed vote integrals
 
-This is an alternative implementation of the unreleased proposal-integral
-feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48).
-It retains a small linked `VoteIntegralLib` and removes duplicate observation
-arrays. Governor eligibility and throttle behavior are inherited from that PR.
+This document describes the checkpoint-indexed implementation of the proposal-integral feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48). It retains a small linked `VoteIntegralLib` and removes duplicate observation arrays. Governor eligibility and shared-throttle behavior are defined in that PR.
 
 ## Storage and updates
 
@@ -53,11 +50,11 @@ coalesces into a checkpoint written by the old implementation at the same
 timestamp. Earlier history is not backfilled. No-op delegation and zero-value
 movements do not start tracking. No reinitializer is needed.
 
-This experiment does **not** migrate integral arrays from an already deployed
-version of #48's alternative, unreleased observation-array implementation. If
-that implementation is deployed first, a separate integral-history migration
-design would be required. The four [fork cases](../test/fork/README.md) target
-the two real 1.0.0 vaults backing the six identified DTFs.
+This release does **not** migrate integral arrays from the earlier, unreleased
+observation-array prototype that was previously developed in #48. If that
+prototype is deployed first, a separate integral-history migration design is
+required. The four [fork cases](../test/fork/README.md) target the two real
+1.0.0 vaults backing the six identified DTFs.
 
 ## Bounds and tradeoffs
 
@@ -74,11 +71,12 @@ standard checkpoint history, including pre-upgrade entries, through typed
 storage references. Fewer writes do not imply cheaper reads; both paths must
 be measured.
 
-Keeping the accounting in a library lets this implementation use the parent's
-compiler settings: Solidity 0.8.33, no IR, and **156 optimizer runs**. The vault
-is **24,509 bytes**, **67 bytes** below EIP-170, and the integral library is
-**1,104 bytes**. The parent uses 24,573 vault bytes plus a 1,300-byte integral
-library. Size headroom remains limited and must be checked after future edits.
+Keeping the accounting in a library lets this implementation use Solidity
+0.8.33, no IR, and **156 optimizer runs**. The vault is **24,509 bytes**,
+**67 bytes** below EIP-170, and the integral library is **1,104 bytes**. The
+earlier observation-array prototype used 24,573 vault bytes plus a 1,300-byte
+integral library. Size headroom remains limited and must be checked after future
+edits.
 
 Unit tests compare fuzzed histories to a direct segment-sum reference and cover
 zero-vote intervals, same-timestamp movements, maximum arithmetic, no-ops,
@@ -88,9 +86,11 @@ upgrades with legacy checkpoints from earlier and identical timestamps.
 ## Gas comparison
 
 Both implementations below use Solidity 0.8.33, optimizer runs **156**, no IR,
-and the same token harness and state sequence. The baseline is PR #48 at
-`982f284c1aea5f34dca32c0f15880402d829d1fc`; its external integral library maintains
-a separate observation array. Holding the optimizer setting constant isolates the accounting change.
+and the same token harness and state sequence. The baseline is the earlier
+observation-array implementation at
+`982f284c1aea5f34dca32c0f15880402d829d1fc`; its external integral library
+maintains a separate observation array. Holding the optimizer setting constant
+isolates the accounting change.
 
 | Operation | Separate observations | Shared checkpoints | Change |
 | --- | ---: | ---: | ---: |

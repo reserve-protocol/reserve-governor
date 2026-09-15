@@ -19,7 +19,7 @@
 ### Upgrade notes
 
 - Upgrade the vault to an implementation supporting `getPastVotesIntegral` before upgrading its governor or deploying a new governor against it. Follow the existing version-registry and vault-admin authorization flow.
-- No reinitializer or new governor throttle storage is required. Integral state uses the new `reserve.storage.VotesIntegral` ERC-7201 namespace, leaving all deployed 1.0.0 vote checkpoints and ordinary storage intact. This experimental layout does not migrate the alternative, unreleased integral arrays.
+- No reinitializer or new governor throttle storage is required. Integral state uses the new `reserve.storage.VotesIntegral` ERC-7201 namespace, leaving all deployed 1.0.0 vote checkpoints and ordinary storage intact. It does not migrate integral arrays from the earlier, unreleased observation-array prototype.
 - Historical fallback is a single-point approximation. Once a real delegated-vote movement starts accumulating a nonzero integral, only recorded vote-seconds count; existing delegates may need time to rebuild eligibility. Old history is not backfilled.
 - Fresh governor EIP-712 domains use version `1.1.0`. Existing governor proxies retain their stored domain version on upgrade; signing clients should query `eip712Domain()`.
 
