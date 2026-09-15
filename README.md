@@ -524,14 +524,14 @@ Three contracts are UUPS upgradeable, but they do not share a central onchain up
 | Contract                       | Upgrade Authorization                                         | Additional Guardrail |
 | ------------------------------ | ------------------------------------------------------------- | -------------------- |
 | `StakingVault`                 | `DEFAULT_ADMIN_ROLE`                                | Upgrade must be executed through the timelock via standard governance path AND update StakingVault to latest release |
-| `ReserveOptimisticGovernor`    | `onlyGovernance`                                              | Upgrade must be executed through the timelock via standard governance path |
-| `TimelockControllerOptimistic` | `DEFAULT_ADMIN_ROLE`                                | Upgrade must be executed through the timelock via standard governance path            |
+| `ReserveOptimisticGovernor`    | `onlyGovernance`                                              | Upgrade must be executed through the timelock via standard governance path and match the latest non-deprecated registry entry |
+| `TimelockControllerOptimistic` | `DEFAULT_ADMIN_ROLE`                                | Upgrade must be executed through the timelock via standard governance path and match the latest non-deprecated registry entry |
 
 `OptimisticSelectorRegistry` is clone-initialized and is not upgradeable.
 
-### Version Registry (StakingVault)
+### Version Registry
 
-`ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple. Only `StakingVault` upgrades are currently tied to the version registry. 
+`ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple. Upgrades for all three UUPS components are tied to the registry. Governor and timelock store the registry address in their proxy storage.
 
 - `registerVersion(deployer)` can only be called by a `RoleRegistry` owner
 - `getLatestVersion()` returns the latest registered version metadata
@@ -549,12 +549,12 @@ Upgrades are intended to be executed by the existing vault admin. They cannot be
 2. Register that deployer in `ReserveOptimisticGovernanceVersionRegistry` from a `RoleRegistry` owner account.
 3. Apply upgrades per component:
    1. `StakingVault`: call `upgradeToAndCall(newStakingVaultImpl, data)` from `DEFAULT_ADMIN_ROLE` (usually timelock). The `newStakingVaultImpl.version()` must be the latest registered (non-deprecated) version.
-   2. `ReserveOptimisticGovernor`: call `governor.upgradeToAndCall(newGovernorImpl, data)` from timelock.
-   3. `TimelockControllerOptimistic`: call `timelock.upgradeToAndCall(newTimelockImpl, data)` from timelock.
+   2. `ReserveOptimisticGovernor`: call `governor.upgradeToAndCall(newGovernorImpl, data)` from timelock. The implementation must be the registered governor implementation for the latest non-deprecated version.
+   3. `TimelockControllerOptimistic`: call `timelock.upgradeToAndCall(newTimelockImpl, data)` from timelock. The implementation must be the registered timelock implementation for the latest non-deprecated version.
 
-Only the `StakingVault` upgrade path is constrained by the version registry. This guarantees that `StakingVault` governance cannot brick the other governors that also depend on the same `StakingVault`. However, each `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` depending on a StakingVault (or governing it) can be broken either via role changes or by upgrading to a malicious implementation. 
+Each component must use the implementation registered for the latest non-deprecated version. This keeps the staking vault, governor, and timelock implementation set aligned across deployments.
 
-For deployments created with `deployWithExistingStakingVault()`, the new timelock does not automatically become the existing vault's admin. Any later `StakingVault` upgrade is still controlled by whichever address currently holds that vault's `DEFAULT_ADMIN_ROLE`.
+Existing governor and timelock proxies must call their one-time `initializeVersionRegistry(versionRegistry)` reinitializer as part of the first upgrade to an implementation with these checks. Deployments created with `deployWithExistingStakingVault()` do not automatically make the new timelock the existing vault's admin; any later `StakingVault` upgrade remains controlled by its current `DEFAULT_ADMIN_ROLE` holder.
 
 ### Upgrading to 1.1.0
 

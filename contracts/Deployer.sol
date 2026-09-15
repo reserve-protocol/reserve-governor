@@ -189,7 +189,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
         // Step 2.1: Deploy Timelock proxy with Deployer as temporary admin
         bytes memory timelockInitData = abi.encodeCall(
             TimelockControllerOptimistic.initialize,
-            (baseParams.timelockDelay, new address[](0), new address[](0), address(this))
+            (baseParams.timelockDelay, new address[](0), new address[](0), address(this), versionRegistry)
         );
         timelock = address(new ERC1967Proxy{ salt: deploymentSalt }(timelockImpl, timelockInitData));
 
@@ -205,7 +205,8 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
                 baseParams.proposalThrottleCapacity,
                 stakingVault,
                 timelock,
-                selectorRegistry
+                selectorRegistry,
+                versionRegistry
             )
         );
         governor = address(new ERC1967Proxy{ salt: deploymentSalt }(governorImpl, governorInitData));

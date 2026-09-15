@@ -53,7 +53,8 @@ interface IReserveOptimisticGovernor {
         uint256 _proposalThrottleCapacity,
         address _token,
         address _timelock,
-        address _selectorRegistry
+        address _selectorRegistry,
+        address _versionRegistry
     ) external;
 
     function getOptimisticVotes(address account, uint256 timepoint) external view returns (uint256);
