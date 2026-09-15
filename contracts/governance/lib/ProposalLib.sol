@@ -14,7 +14,7 @@ import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovern
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
-import { OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { OPTIMISTIC_PROPOSER_ROLE, PROPOSAL_THROTTLE_PERIOD } from "@utils/Constants.sol";
 
 library ProposalLib {
     string constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -147,6 +147,27 @@ library ProposalLib {
                 proposerVotes >= votesThreshold,
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
             );
+
+            uint256 periodStart =
+                block.timestamp > PROPOSAL_THROTTLE_PERIOD ? block.timestamp - PROPOSAL_THROTTLE_PERIOD : 0;
+            IOptimisticVotes votes = IOptimisticVotes(address(governor.token()));
+            uint256 integralStart = votes.getPastVotesIntegral(proposal.proposer, periodStart);
+
+            if (integralStart == 0) {
+                // Existing vaults may have standard vote history but no integral observations at the window start.
+                uint256 historicalVotes = governor.getVotes(proposal.proposer, periodStart);
+                require(
+                    historicalVotes >= votesThreshold,
+                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, historicalVotes, votesThreshold)
+                );
+            } else {
+                uint256 integralEnd = votes.getPastVotesIntegral(proposal.proposer, block.timestamp);
+                uint256 averageVotes = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
+                require(
+                    averageVotes >= votesThreshold,
+                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
+                );
+            }
         }
 
         // validate calls

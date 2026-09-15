@@ -87,7 +87,7 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
-    /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 12h
+    /// @param _proposalThrottleCapacity Proposals-per-account per 12h
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
@@ -173,6 +173,8 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256 proposalId) {
+        ThrottleLib.consumeProposalCharge(proposalThrottle, msg.sender);
+
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         ProposalLib.proposePessimistic(

@@ -18,6 +18,7 @@ import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { IOptimisticSelectorRegistry } from "@interfaces/IOptimisticSelectorRegistry.sol";
+import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
@@ -29,7 +30,8 @@ import {
     CANCELLER_ROLE,
     MAX_PROPOSAL_THROTTLE_CAPACITY,
     MIN_OPTIMISTIC_VETO_PERIOD,
-    OPTIMISTIC_PROPOSER_ROLE
+    OPTIMISTIC_PROPOSER_ROLE,
+    PROPOSAL_THROTTLE_PERIOD
 } from "@utils/Constants.sol";
 
 import { MockERC20 } from "@mocks/MockERC20.sol";
@@ -96,6 +98,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     uint256 internal constant PROPOSAL_THRESHOLD = 0.01e18; // 1%
     uint256 internal constant QUORUM_NUMERATOR = 0.1e18; // 10%
     uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per 12h
+
+    // ERC-7201 VotesIntegral namespace; nested mapping stores cumulative + 1 per checkpoint.
+    bytes32 internal constant VOTE_INTEGRALS_MAPPING_SLOT =
+        0x6c8ef2534ba8916a427dbfc162fbce2a165f7cccf4d86d45f25d2b245ed73b00;
 
     uint256 internal constant TIMELOCK_DELAY = 2 days;
     string internal constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -220,7 +226,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(fields, hex"0f");
         assertEq(name, "Reserve Optimistic Governor");
         assertEq(governor.name(), name);
-        assertEq(version, "1.0.0");
+        assertEq(version, "1.1.0");
         assertEq(chainId, block.chainid);
         assertEq(verifier, address(governor));
     }
@@ -454,6 +460,87 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, noVotes, 0, threshold)
         );
         governor.propose(targets, values, calldatas, "No votes proposer");
+    }
+
+    function test_standardProposal_legacyBalanceUsesStandardLookbackWhenIntegralHistoryEmpty() public {
+        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
+        _clearVoteIntegral(alice);
+
+        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), 0);
+        assertGe(governor.getVotes(alice, periodStart), governor.proposalThreshold());
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, "Legacy integral history");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_standardProposal_legacyBalanceRemainsEligibleAfterDustStartsIntegral() public {
+        _clearVoteIntegral(alice);
+        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
+        uint256 threshold = governor.proposalThreshold();
+        address dustHolder = makeAddr("dustHolder");
+
+        underlying.mint(dustHolder, 1);
+        vm.startPrank(dustHolder);
+        underlying.approve(address(stakingVault), 1);
+        stakingVault.depositAndDelegate(1, alice, dustHolder);
+        vm.stopPrank();
+        vm.warp(block.timestamp + 1);
+
+        IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
+        uint256 integralStart = votes.getPastVotesIntegral(alice, periodStart + 1);
+        uint256 integralEnd = votes.getPastVotesIntegral(alice, block.timestamp);
+        uint256 recordedAverage = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
+        assertEq(integralStart, 0);
+        assertGt(integralEnd, 0);
+        assertLt(recordedAverage, threshold);
+        assertGe(governor.getVotes(alice, periodStart + 1), threshold);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, "Legacy delegate after dust");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_standardProposal_recentNewAccountWaitsForFullLookback() public {
+        address recentVoter = makeAddr("recentVoter");
+        uint256 amount = 100_000e18;
+        underlying.mint(recentVoter, amount);
+
+        vm.startPrank(recentVoter);
+        underlying.approve(address(stakingVault), amount);
+        stakingVault.depositAndDelegate(amount);
+        vm.stopPrank();
+        vm.warp(block.timestamp + 1);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        uint256 threshold = governor.proposalThreshold();
+        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
+        IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
+        uint256 historicalVotes = governor.getVotes(recentVoter, periodStart);
+
+        assertGe(governor.getVotes(recentVoter, block.timestamp - 1), threshold);
+        assertEq(votes.getPastVotesIntegral(recentVoter, periodStart), 0);
+        assertEq(historicalVotes, 0);
+        vm.prank(recentVoter);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, historicalVotes, threshold
+            )
+        );
+        governor.propose(targets, values, calldatas, "Recent delegated voter");
+
+        // The same delegation becomes eligible after 12 hours, without another transfer.
+        vm.warp(block.timestamp + PROPOSAL_THROTTLE_PERIOD - 1);
+        vm.prank(recentVoter);
+        uint256 proposalId = governor.propose(targets, values, calldatas, "Recent delegated voter warmed up");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
     }
 
     function test_standardProposal_rejectsConfirmationPrefixDescription() public {
@@ -1358,29 +1445,34 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     // ===== Proposal Throttle =====
 
-    function test_proposalThrottle_isIsolatedPerAccountAcrossOptimisticAndStandard() public {
+    function test_proposalThrottle_isSharedAcrossOptimisticAndStandard() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "standard #1");
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "standard #2");
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "standard #3");
+        _setupVoter(optimisticProposer, ALICE_STAKE);
+        vm.warp(block.timestamp + PROPOSAL_THROTTLE_PERIOD);
 
         vm.prank(optimisticProposer);
         governor.proposeOptimistic(targets, values, calldatas, "optimistic #1");
         vm.prank(optimisticProposer);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic #2");
+        governor.propose(targets, values, calldatas, "standard #1");
 
         vm.prank(optimisticProposer);
         vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic #3");
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #2");
+        vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
+        governor.propose(targets, values, calldatas, "standard #2");
 
-        // Throttling is account-specific.
-        vm.prank(optimisticProposer2);
-        governor.proposeOptimistic(targets, values, calldatas, "optimistic proposer2 #1");
+        vm.warp(block.timestamp + 6 hours);
+        vm.prank(optimisticProposer);
+        governor.propose(targets, values, calldatas, "standard #2 after recharge");
+        vm.prank(optimisticProposer);
+        vm.expectRevert(IReserveOptimisticGovernor.OptimisticGovernor__ProposalThrottleExceeded.selector);
+        governor.proposeOptimistic(targets, values, calldatas, "optimistic #2 after shared consume");
+
+        vm.prank(bob);
+        governor.propose(targets, values, calldatas, "bob standard #1");
     }
 
     function test_proposalThrottle_rechargesLinearlyOverTime() public {
@@ -1943,7 +2035,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256("Reserve Optimistic Governor"),
-                keccak256("1.0.0"),
+                keccak256("1.1.0"),
                 block.chainid,
                 address(governor)
             )
@@ -1983,6 +2075,13 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                 proposalId, support, voter, "Signed reason", hex"1234", signature
             )
             : governor.castVoteBySig(proposalId, support, voter, signature);
+    }
+
+    function _clearVoteIntegral(address account) internal {
+        bytes32 accountSlot = keccak256(abi.encode(account, VOTE_INTEGRALS_MAPPING_SLOT));
+        for (uint32 i; i < stakingVault.numCheckpoints(account); ++i) {
+            vm.store(address(stakingVault), keccak256(abi.encode(i, accountSlot)), bytes32(0));
+        }
     }
 
     function _setupVoter(address voter, uint256 amount) internal {

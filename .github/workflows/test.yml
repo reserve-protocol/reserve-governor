@@ -38,3 +38,7 @@ jobs:
 
       - name: Core Tests
         run: pnpm test
+
+      - name: Fork upgrade tests
+        timeout-minutes: 10
+        run: pnpm test:fork
