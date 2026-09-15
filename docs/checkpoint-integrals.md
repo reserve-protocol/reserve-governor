@@ -50,6 +50,22 @@ coalesces into a checkpoint written by the old implementation at the same
 timestamp. Earlier history is not backfilled. No-op delegation and zero-value
 movements do not start tracking. No reinitializer is needed.
 
+Governor migration fallback is keyed to the integral at the **start** of the
+12-hour lookback. While that value is zero, the governor checks standard votes
+at the lookback start instead of subtracting a partially tracked integral. A
+first dust movement therefore cannot switch a legacy delegate to a near-zero
+average as soon as the end integral begins growing. A new delegate still waits
+a full lookback because its start-point vote checkpoint is zero until the
+window reaches the delegation.
+
+This fallback deliberately approximates unavailable legacy history with one
+point. Together with the independent current-vote check, it verifies votes at
+the window start and at the previous timestamp, but cannot see an intervening
+dip. The fallback also applies when the lookback lands exactly on the first
+tracked checkpoint because that checkpoint has zero accumulated area. These
+are accepted migration limits; exact averaging begins once the lookback-start
+integral is nonzero.
+
 This release does **not** migrate integral arrays from the earlier, unreleased
 observation-array prototype that was previously developed in #48. If that
 prototype is deployed first, a separate integral-history migration design is

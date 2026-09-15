@@ -477,7 +477,37 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
     }
 
-    function test_standardProposal_requiresAverageDelegatedVotes() public {
+    function test_standardProposal_legacyBalanceRemainsEligibleAfterDustStartsIntegral() public {
+        _clearVoteIntegral(alice);
+        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
+        uint256 threshold = governor.proposalThreshold();
+        address dustHolder = makeAddr("dustHolder");
+
+        underlying.mint(dustHolder, 1);
+        vm.startPrank(dustHolder);
+        underlying.approve(address(stakingVault), 1);
+        stakingVault.depositAndDelegate(1, alice, dustHolder);
+        vm.stopPrank();
+        vm.warp(block.timestamp + 1);
+
+        IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
+        uint256 integralStart = votes.getPastVotesIntegral(alice, periodStart + 1);
+        uint256 integralEnd = votes.getPastVotesIntegral(alice, block.timestamp);
+        uint256 recordedAverage = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
+        assertEq(integralStart, 0);
+        assertGt(integralEnd, 0);
+        assertLt(recordedAverage, threshold);
+        assertGe(governor.getVotes(alice, periodStart + 1), threshold);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, "Legacy delegate after dust");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_standardProposal_recentNewAccountWaitsForFullLookback() public {
         address recentVoter = makeAddr("recentVoter");
         uint256 amount = 100_000e18;
         underlying.mint(recentVoter, amount);
@@ -491,18 +521,17 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
         uint256 threshold = governor.proposalThreshold();
+        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
         IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
-        uint256 averageVotes =
-            (votes.getPastVotesIntegral(recentVoter, block.timestamp)
-                    - votes.getPastVotesIntegral(recentVoter, block.timestamp - PROPOSAL_THROTTLE_PERIOD))
-                / PROPOSAL_THROTTLE_PERIOD;
+        uint256 historicalVotes = governor.getVotes(recentVoter, periodStart);
 
         assertGe(governor.getVotes(recentVoter, block.timestamp - 1), threshold);
-        assertLt(averageVotes, threshold);
+        assertEq(votes.getPastVotesIntegral(recentVoter, periodStart), 0);
+        assertEq(historicalVotes, 0);
         vm.prank(recentVoter);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, averageVotes, threshold
+                IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, historicalVotes, threshold
             )
         );
         governor.propose(targets, values, calldatas, "Recent delegated voter");
