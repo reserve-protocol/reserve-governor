@@ -15,6 +15,13 @@ Proposals are protected by a shared per-account throttle. Both proposal paths co
 
 The shared `Versioned` mixin reports `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release changes and upgrade notes.
 
+## Tests
+
+- `pnpm test` runs the non-fork suite, including all six component upgrade orders.
+- `pnpm test:fork` exercises the deployed PHOTON, BUILDOUT, NEOCLOUD, POWER, ROBOTS,
+  and MAG7 governance systems at pinned BSC/Base blocks. See the [fork fixtures
+  and assumptions](test/fork/README.md).
+
 ## Architecture
 
 The runtime system consists of five components:

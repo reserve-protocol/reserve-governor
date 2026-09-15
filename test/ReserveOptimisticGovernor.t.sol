@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { StdStorage, stdStorage } from "forge-std/StdStorage.sol";
 import { Test } from "forge-std/Test.sol";
 
 import {
@@ -69,7 +68,6 @@ contract GovernorSignatureWallet is IERC1271 {
 }
 
 abstract contract ReserveOptimisticGovernorTestBase is Test {
-    using stdStorage for StdStorage;
     // Contracts
     MockERC20 public underlying;
     StakingVault public stakingVault;
@@ -1936,7 +1934,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                     continue;
                 }
                 uint8 third = 3 - first - second;
-                vm.revertToState(snapshotId);
+                assertTrue(vm.revertToState(snapshotId));
 
                 _upgradeComponent(first, address(stakingVaultImpl), address(governorImpl), address(timelockImpl));
                 _upgradeComponent(second, address(stakingVaultImpl), address(governorImpl), address(timelockImpl));
