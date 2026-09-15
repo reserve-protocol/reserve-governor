@@ -23,11 +23,6 @@ contract TimelockControllerOptimistic is
     UUPSUpgradeable,
     ITimelockControllerOptimistic
 {
-    error TimelockControllerOptimistic__InvalidVersionRegistry();
-    error TimelockControllerOptimistic__VersionRegistryAlreadySet();
-
-    event VersionRegistrySet(address versionRegistry);
-
     ReserveOptimisticGovernanceVersionRegistry public versionRegistry;
 
     constructor() {

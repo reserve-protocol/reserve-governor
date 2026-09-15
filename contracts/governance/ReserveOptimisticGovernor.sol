@@ -69,11 +69,6 @@ contract ReserveOptimisticGovernor is
     UUPSUpgradeable,
     IReserveOptimisticGovernor
 {
-    error OptimisticGovernor__InvalidVersionRegistry();
-    error OptimisticGovernor__VersionRegistryAlreadySet();
-
-    event VersionRegistrySet(address versionRegistry);
-
     OptimisticGovernanceParams public optimisticParams;
 
     OptimisticSelectorRegistry public selectorRegistry;

@@ -4,8 +4,12 @@ pragma solidity ^0.8.28;
 interface ITimelockControllerOptimistic {
     error TimelockControllerOptimistic__OperationConflict();
     error TimelockControllerOptimistic__UnauthorizedUpgrade();
+    error TimelockControllerOptimistic__InvalidVersionRegistry();
+    error TimelockControllerOptimistic__VersionRegistryAlreadySet();
 
     // === Events ===
+
+    event VersionRegistrySet(address versionRegistry);
 
     function initialize(
         uint256 minDelay,

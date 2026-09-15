@@ -15,6 +15,8 @@ interface IReserveOptimisticGovernor {
     error OptimisticGovernor__InvalidDelay();
     error OptimisticGovernor__OptimisticProposalCanOnlyBeVetoed(uint256 proposalId);
     error OptimisticGovernor__TimelockCannotBeUpdated();
+    error OptimisticGovernor__InvalidVersionRegistry();
+    error OptimisticGovernor__VersionRegistryAlreadySet();
 
     // === Events ===
 
@@ -22,6 +24,7 @@ interface IReserveOptimisticGovernor {
     event OptimisticProposalCreated(uint256 indexed proposalId, uint256 vetoThreshold);
     event ProposalThrottleUpdated(uint256 throttleCapacity);
     event OptimisticParamsUpdated(OptimisticGovernanceParams optimisticParams);
+    event VersionRegistrySet(address versionRegistry);
 
     // === Data ===
 
