@@ -11,7 +11,9 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require the proposer to have held delegated standard voting power at least equal to the proposal threshold on average over the preceding 12 hours.
+Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and on average over the preceding 12 hours, with a historical-vote fallback for accounts whose cumulative integral is still zero (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
+
+The shared `Versioned` mixin reports `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release changes and upgrade notes.
 
 ## Architecture
 
@@ -118,6 +120,8 @@ When AGAINST votes reach the veto threshold, the governor creates a **new** stan
 3. The confirmation proposal follows normal standard timing (`Pending` for `votingDelay`, then `Active`)
 4. Voting starts fresh on the confirmation proposal (votes and `hasVoted` do **not** carry over from veto phase)
 
+Creating the confirmation proposal consumes no additional throttle charge and bypasses proposer threshold and integral checks. Vetoes therefore still create confirmation proposals when the optimistic proposer's bucket is empty or they have no standard votes.
+
 ### Fast Proposal Paths
 
 | Path | Name              | Flow                                                                                                 | Outcome                                            |
@@ -188,7 +192,7 @@ Use `isOptimistic(proposalId)` to determine if a proposal is optimistic or stand
 
 **IMPORTANT**: Roles held exclusively by the Governor contract (`PROPOSER_ROLE`/`EXECUTOR_ROLE`) should NEVER be granted to other addresses. This could result in executing actions through the timelock without a delay.
 
-> **Note:** Standard (slow) proposals are created via `propose()` by any account meeting `proposalThreshold`. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself -- it allows the governor to schedule operations, not individual users to create proposals.
+> **Note:** Standard (slow) proposals are created via `propose()` by any account meeting the vote-power eligibility checks with a shared throttle charge available. The `PROPOSER_ROLE` on the timelock is held by the governor contract itself -- it allows the governor to schedule operations, not individual users to create proposals.
 
 > **Guardian Architecture:** Each governance timelock grants `CANCELLER_ROLE` to a shared `Guardian` singleton. A deployment may also grant the role directly to additional per-instance cancellers. The shared `Guardian` uses `DEFAULT_ADMIN_ROLE` for break-glass authority, `OPTIMISTIC_GUARDIAN_MANAGER_ROLE` for routine optimistic guardian additions, and `OPTIMISTIC_GUARDIAN_ROLE` for optimistic-only bot keys. Rotating optimistic guardian keys therefore only requires updating the shared `Guardian`, not each governance instance. Separately, `RoleRegistry` may still model an emergency council that serves as an admin/controller for the shared `Guardian`.
 
@@ -236,12 +240,12 @@ The main hybrid governor contract.
 
 **Fast Proposal Functions:**
 
-- `proposeOptimistic(targets, values, calldatas, description)` -- Create a fast proposal (requires `OPTIMISTIC_PROPOSER_ROLE`)
+- `proposeOptimistic(targets, values, calldatas, description)` -- Create a fast proposal (requires `OPTIMISTIC_PROPOSER_ROLE` and a shared throttle charge)
 - `execute(targets, values, calldatas, descriptionHash)` -- Execute a succeeded fast proposal (bypass path, no queue step)
 
 **Standard Proposal Functions (inherited from OZ Governor):**
 
-- `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires `proposalThreshold`)
+- `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires current and historical vote-power eligibility plus a shared throttle charge)
 - `castVote(proposalId, support)` -- Cast a vote (works on both fast and slow proposals; optimistic proposals only allow `support = 0` / `Against`)
 - `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal (optimistic proposals cannot be queued)
 - `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal or a succeeded optimistic proposal
@@ -249,8 +253,8 @@ The main hybrid governor contract.
 
 **Proposal Creation Rules:**
 
-- `proposeOptimistic()` consumes proposer throttle charge
-- `propose()` consumes proposer throttle charge and requires the proposer’s delegated standard voting power to meet the proposal threshold on average over the preceding 12 hours
+- `proposeOptimistic()` and `propose()` consume charges from the same per-account bucket
+- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour average against the current `proposalThreshold()`; when the cumulative integral is zero, it uses standard votes at the start of the window instead of the average
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -267,8 +271,9 @@ The main hybrid governor contract.
 **Configuration:**
 
 - `setOptimisticParams(params)` -- Update optimistic governance parameters (onlyGovernance)
-- `setProposalThrottle(capacity)` -- Update proposal-count throttle capacity for both proposal paths (onlyGovernance)
+- `setProposalThrottle(capacity)` -- Update the shared proposal-count throttle capacity (onlyGovernance; accepts 1 through 12)
 - `proposalThrottleCapacity()` -- Read the current throttle capacity
+- `proposalThrottleCharges(account)` -- Read the charges currently available to an account across both proposal paths
 
 ### OptimisticSelectorRegistry
 
@@ -323,7 +328,7 @@ Versioned factory for full system deployments.
 
 - Stores immutable pointers to `versionRegistry`, `rewardTokenRegistry`, `guardian`, `stakingVaultImpl`, `governorImpl`, `timelockImpl`, and `selectorRegistryImpl`
 - `deployWithNewStakingVault(baseParams, newStakingVaultParams, deploymentNonce)` -- Deploy a new `StakingVault` proxy and the timelock/governor/selector-registry stack
-- `deployWithExistingStakingVault(baseParams, existingStakingVault, deploymentNonce)` -- Deploy the timelock/governor/selector-registry stack around an already deployed vault
+- `deployWithExistingStakingVault(baseParams, existingStakingVault, deploymentNonce)` -- Deploy the timelock/governor/selector-registry stack around an already deployed vault; its implementation must already support `getPastVotesIntegral` for standard proposals to work
 - During deployment, grants `CANCELLER_ROLE` on each timelock to the governor contract, the shared `Guardian`, and every address in `baseParams.additionalGuardians`
 - `BaseDeploymentParams` includes optimistic proposers and optional direct per-instance cancellers; optimistic-only guardian management remains centralized in `Guardian`
 
@@ -371,6 +376,7 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - `optimisticDelegates(account)` -- Return the current optimistic delegate for an account
 - `getOptimisticVotes(account)` -- Return the latest optimistic delegated voting weight
 - `getPastOptimisticVotes(account, timepoint)` -- Return optimistic voting weight at a past timestamp snapshot
+- `getPastVotesIntegral(account, timepoint)` -- Return cumulative standard delegated vote-seconds, extrapolated from the most recent observation at or before the timestamp; returns zero before the first observation or when none exists
 - `rewardTokenRegistry()` -- Reward token registry wired in during initialization
 - `versionRegistry()` -- Version registry wired in during initialization
 
@@ -381,6 +387,10 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - Creates an `UnstakingManager` during initialization
 - Standard and optimistic delegatees are tracked independently on the same share balance
 - `addRewardToken()` only accepts tokens that are currently registered in `RewardTokenRegistry`
+
+Standard delegated vote movements update an append-only cumulative integral through the linked `VoteIntegralLib`. Updates at the same timestamp coalesce; lookups use binary search, so they do not scan every vote change in the window. History is retained indefinitely, at the cost of an additional observation for each affected delegate at a new timestamp. Zero-value movements and movements between accounts with the same standard delegate do not add observations.
+
+Each observation uses two storage slots: `uint48 timestamp` and `uint208 value` share one slot, and `uint256 cumulative` occupies the other. The value is delegated vault-share voting power, whose upper bound is enforced by OpenZeppelin's `ERC20Votes` supply cap. The narrowing cast relies on that invariant; the cumulative vote-seconds value remains `uint256`.
 
 #### Token Support
 
@@ -446,7 +456,7 @@ Time-locked withdrawal manager, created by StakingVault during initialization.
 
 | Parameter                  | Type      | Description                                   |
 | -------------------------- | --------- | --------------------------------------------- |
-| `proposalThrottleCapacity` | `uint256` | Max proposals per proposer across both paths per 12h |
+| `proposalThrottleCapacity` | `uint256` | Shared bucket capacity per proposer; refills fully over 12h |
 
 ### Parameter Constraints
 
@@ -466,11 +476,23 @@ Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but
 ### Proposal Throttle Behavior
 
 - One throttle bucket is tracked per proposer account and shared across both proposal paths.
-- Capacity is measured as proposals per 12 hours.
-- Each proposal consumes one unit of capacity from the shared bucket.
-- Capacity recharges linearly over time (full recharge over 12 hours)
+- A full bucket permits a burst of `capacity` proposals. It recharges linearly at `capacity` proposals per 12 hours; this is not a strict cap on every rolling 12-hour window.
+- Each successful call to `propose()` or `proposeOptimistic()` consumes one charge. A reverted proposal attempt consumes none, and canceling a proposal does not refund its charge.
+- For example, with capacity 2, one optimistic proposal and one standard proposal from the same account exhaust the bucket; one charge returns after 6 hours.
 - The bucket refill period and standard vote-power lookback are fixed at `PROPOSAL_THROTTLE_PERIOD` (12 hours).
-- Standard proposals additionally require the proposer’s delegated standard vote power to average at least `proposalThreshold()` over the preceding 12 hours. The average is calculated from append-only cumulative integral observations updated on every delegated vote movement.
+- Governance can set capacity from 1 through 12; zero is rejected. There is one capacity input at deployment and no separate pessimistic configuration.
+- Automatic confirmation proposals are exempt from both the throttle and proposer vote-power checks.
+
+For a standard proposal at time `t`, the governor evaluates `proposalThreshold()` once, using the current configured supply fraction and total supply at `t - 1`. Standard votes at `t - 1` must meet that threshold. It then checks the integral:
+
+```text
+start = max(0, t - PROPOSAL_THROTTLE_PERIOD)
+averageVotes = floor((integral(t) - integral(start)) / PROPOSAL_THROTTLE_PERIOD)
+```
+
+When `integral(t)` is nonzero, `averageVotes` must meet the same threshold. Higher vote power can compensate for shorter holding time; this is an average requirement, not continuous ownership of particular shares. Deposits or delegations after tracking begins accumulate vote-seconds automatically, so an account can become eligible as time passes without another transaction.
+
+When `integral(t)` is zero, the governor instead requires standard `getPastVotes(account, start)` to meet the threshold. This covers unchanged delegates on upgraded vaults without backfilling the integral or requiring a transfer. It checks one historical point and does not detect intervening dips. The condition is a zero cumulative value, not an explicit upgrade flag, so it can also apply at the timestamp of an account's first integral observation. See [Upgrading to 1.1.0](#upgrading-to-110) for the transition behavior.
 
 ### StakingVault Parameters
 
@@ -533,6 +555,20 @@ Upgrades are intended to be executed by the existing vault admin. They cannot be
 Only the `StakingVault` upgrade path is constrained by the version registry. This guarantees that `StakingVault` governance cannot brick the other governors that also depend on the same `StakingVault`. However, each `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` depending on a StakingVault (or governing it) can be broken either via role changes or by upgrading to a malicious implementation. 
 
 For deployments created with `deployWithExistingStakingVault()`, the new timelock does not automatically become the existing vault's admin. Any later `StakingVault` upgrade is still controlled by whichever address currently holds that vault's `DEFAULT_ADMIN_ROLE`.
+
+### Upgrading to 1.1.0
+
+Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastVotesIntegral` unconditionally for eligible standard proposers; a vault without that API makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate that API during deployment.
+
+This release needs no reinitializer or additional throttle configuration. The governor reuses the existing capacity and per-account charge state for both proposal paths. Its storage layout is unchanged. Integral observations reuse the intentionally unused `_totalCheckpoints` field in the existing optimistic votes ERC-7201 namespace, preserving the vault's standard checkpoints, optimistic delegation mappings, and ordinary storage slots.
+
+An upgraded delegate whose integral remains zero can qualify immediately if their standard votes at both `t - 1` and `t - 12 hours` meet the current threshold and a throttle charge is available. A delegate that acquired votes more recently can qualify through this fallback once the historical lookup reaches that acquisition, without another transfer.
+
+The first nonzero movement between different standard delegatees starts integral tracking for the affected accounts. Previous vote-seconds are not backfilled. Once the cumulative integral becomes nonzero, the governor uses its average instead of the historical fallback; this can temporarily make a previously eligible delegate ineligible while the recorded history builds. Holding at least the threshold for 12 hours after tracking begins is sufficient, assuming the threshold and votes stay constant; larger positions can qualify sooner. Calling `delegate()` with the same delegate does not start tracking in this implementation.
+
+The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
+
+The build uses Solidity 0.8.33, optimizer runs 156, and `via_ir = false`. At these settings the governor runtime is 23,106 bytes and the vault runtime is 24,573 bytes, leaving the vault 3 bytes below the 24,576-byte EIP-170 limit. Recheck sizes after contract or compiler changes.
 
 
 ## Flow Summary
