@@ -104,9 +104,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     uint256 internal constant QUORUM_NUMERATOR = 0.1e18; // 10%
     uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per 12h
 
-    // ERC-7201 OptimisticVotes namespace; `_integrals` is its third field (slot +2).
-    bytes32 internal constant OPTIMISTIC_INTEGRALS_MAPPING_SLOT =
-        bytes32(uint256(0x70984a7d0b69c3ed645329f33455608f063bcf2582315816bc9835f4d0581600) + 2);
+    // ERC-7201 VotesIntegral namespace; nested mapping stores cumulative + 1 per checkpoint.
+    bytes32 internal constant VOTE_INTEGRALS_MAPPING_SLOT =
+        0x6c8ef2534ba8916a427dbfc162fbce2a165f7cccf4d86d45f25d2b245ed73b00;
 
     uint256 internal constant TIMELOCK_DELAY = 2 days;
     string internal constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -2239,7 +2239,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     function _clearVoteIntegral(address account) internal {
-        vm.store(address(stakingVault), keccak256(abi.encode(account, OPTIMISTIC_INTEGRALS_MAPPING_SLOT)), bytes32(0));
+        bytes32 accountSlot = keccak256(abi.encode(account, VOTE_INTEGRALS_MAPPING_SLOT));
+        for (uint32 i; i < stakingVault.numCheckpoints(account); ++i) {
+            vm.store(address(stakingVault), keccak256(abi.encode(i, accountSlot)), bytes32(0));
+        }
     }
 
     function _setupVoter(address voter, uint256 amount) internal {

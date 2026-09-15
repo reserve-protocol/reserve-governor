@@ -1,6 +1,6 @@
 # Live governance upgrade tests
 
-Run `pnpm test:fork` (equivalent to `forge test --match-path 'test/fork/*' --threads 1 --compute-units-per-second 50`).
+Run all ten fork cases with `pnpm test:fork` (equivalent to `forge test --match-path 'test/fork/*' --threads 1 --compute-units-per-second 50`).
 `pnpm test` runs the non-fork suite, including all six upgrade permutations from
 current implementations to V2 implementations in both deployment modes. CI runs
 both commands.
@@ -47,3 +47,22 @@ The DTF token contract itself is not an upgrade target here: the three component
 are the staking vault, governor, and timelock. For 1.0.0 migrations, upgrade the
 vault first because the new governor reads its vote-integral API. Current-to-V2
 upgrade permutations are separately covered by the non-fork suite.
+
+## Checkpoint integral migration tests
+
+`VoteIntegralUpgrade.t.sol` adds four vault-focused cases: earlier legacy
+checkpoints and same-timestamp legacy checkpoints for each of the two vaults
+above. They use the same pinned blocks and RPC settings. The BSC share holder
+is `0xb209Eed4D80fB47E5C16577e44DaD1073c5C5015`; the Base share holder is
+`0x49B4564cb533E092D43C628386258F0B78D86c52`.
+
+These cases impersonate the existing registry owner and vault admin directly
+and use actual share holders to move delegated votes before/after upgrading.
+They preserve the deployed governor/timelock implementations and test only the
+vault upgrade. No proxy storage, code, balances, roles or votes are patched.
+
+Assertions cover ordinary storage, balances, supply, standard and optimistic
+checkpoint samples, historical votes, the implementation slot, zero integral
+before the first tracked movement, same-timestamp coalescing and subsequent
+integral accumulation. The six `DtfUpgrade.t.sol` cases above separately prove
+upgrades of all three components through real governance paths.
