@@ -496,19 +496,60 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.propose(targets, values, calldatas, "No votes proposer");
     }
 
-    function test_standardProposal_legacyBalanceUsesStandardLookbackWhenIntegralHistoryEmpty() public {
+    function test_standardProposal_usesCurrentVotesWhenIntegralHistoryEmpty() public {
+        address recentVoter = makeAddr("recentVoter");
+        _setupVoter(recentVoter, 100_000e18);
+        vm.warp(block.timestamp + 1);
         uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
-        _clearVoteIntegral(alice);
+        _clearVoteIntegral(recentVoter);
 
-        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), 0);
-        assertGe(governor.getVotes(alice, periodStart), governor.proposalThreshold());
+        assertEq(stakingVault.getPastVotesIntegral(recentVoter, block.timestamp), 0);
+        assertEq(governor.getVotes(recentVoter, periodStart), 0);
+        assertGe(stakingVault.getVotes(recentVoter), governor.proposalThreshold());
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
 
-        vm.prank(alice);
+        vm.prank(recentVoter);
         uint256 proposalId = governor.propose(targets, values, calldatas, "Legacy integral history");
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_standardProposal_zeroIntegralRejectsVotesRemovedThisTimestamp() public {
+        _clearVoteIntegral(alice);
+        vm.prank(alice);
+        stakingVault.delegate(bob);
+
+        uint256 threshold = governor.proposalThreshold();
+        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), 0);
+        assertGe(governor.getVotes(alice, block.timestamp - 1), threshold);
+        assertGe(governor.getVotes(alice, block.timestamp - PROPOSAL_THROTTLE_PERIOD), threshold);
+        assertEq(stakingVault.getVotes(alice), 0);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, alice, 0, threshold)
+        );
+        vm.prank(alice);
+        governor.propose(targets, values, calldatas, "Removed current votes");
+    }
+
+    function test_standardProposal_zeroIntegralStillRequiresPreviousTimestampVotes() public {
+        address recentVoter = makeAddr("recentVoter");
+        _setupVoter(recentVoter, 100_000e18);
+        uint256 threshold = governor.proposalThreshold();
+        assertEq(stakingVault.getPastVotesIntegral(recentVoter, block.timestamp), 0);
+        assertGe(stakingVault.getVotes(recentVoter), threshold);
+        assertEq(governor.getVotes(recentVoter, block.timestamp - 1), 0);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, 0, threshold)
+        );
+        vm.prank(recentVoter);
+        governor.propose(targets, values, calldatas, "New votes this timestamp");
     }
 
     function test_standardProposal_requiresAverageDelegatedVotes() public {

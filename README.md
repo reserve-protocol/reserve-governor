@@ -11,7 +11,7 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and on average over the preceding 12 hours, with a historical-vote fallback for accounts whose cumulative integral is still zero (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
+Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power at the previous timestamp and on average over the preceding 12 hours, with a current-vote fallback for accounts whose cumulative integral is still zero (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
 
 The shared `Versioned` mixin reports `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release changes and upgrade notes.
 
@@ -252,7 +252,7 @@ The main hybrid governor contract.
 
 **Standard Proposal Functions (inherited from OZ Governor):**
 
-- `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires current and historical vote-power eligibility plus a shared throttle charge)
+- `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires vote-power eligibility plus a shared throttle charge; see Proposal Creation Rules below)
 - `castVote(proposalId, support)` -- Cast a vote (works on both fast and slow proposals; optimistic proposals only allow `support = 0` / `Against`)
 - `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal (optimistic proposals cannot be queued)
 - `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal or a succeeded optimistic proposal
@@ -261,7 +261,7 @@ The main hybrid governor contract.
 **Proposal Creation Rules:**
 
 - `proposeOptimistic()` and `propose()` consume charges from the same per-account bucket
-- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour average against the current `proposalThreshold()`; when the cumulative integral is zero, it uses standard votes at the start of the window instead of the average
+- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour average against the current `proposalThreshold()`; when the cumulative integral is zero, it uses current standard votes instead of the average
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -499,7 +499,7 @@ averageVotes = floor((integral(t) - integral(start)) / PROPOSAL_THROTTLE_PERIOD)
 
 When `integral(t)` is nonzero, `averageVotes` must meet the same threshold. Higher vote power can compensate for shorter holding time; this is an average requirement, not continuous ownership of particular shares. Deposits or delegations after tracking begins accumulate vote-seconds automatically, so an account can become eligible as time passes without another transaction.
 
-When `integral(t)` is zero, the governor instead requires standard `getPastVotes(account, start)` to meet the threshold. This covers unchanged delegates on upgraded vaults without backfilling the integral or requiring a transfer. It checks one historical point and does not detect intervening dips. The condition is a zero cumulative value, not an explicit upgrade flag, so it can also apply at the timestamp of an account's first integral observation. See [Upgrading to 1.1.0](#upgrading-to-110) for the transition behavior.
+When `integral(t)` is zero, the governor instead requires the token's current standard `getVotes(account)` to meet the threshold, in addition to the `t - 1` check. This covers unchanged delegates on upgraded vaults without backfilling the integral or requiring a transfer. It does not require 12 hours of vote history. The condition is a zero cumulative value, not an explicit upgrade flag, so it can also apply at the timestamp of an account's first integral observation; votes first acquired at `t` still fail the `t - 1` check. See [Upgrading to 1.1.0](#upgrading-to-110) for the transition behavior.
 
 ### StakingVault Parameters
 
@@ -571,9 +571,9 @@ When upgrading an existing governor or timelock, pass `abi.encodeCall(component.
 
 No additional throttle configuration is required. The governor reuses the existing capacity and per-account charge state for both proposal paths. Integral observations reuse the intentionally unused `_totalCheckpoints` field in the existing optimistic votes ERC-7201 namespace, preserving the vault's standard checkpoints, optimistic delegation mappings, and ordinary storage slots.
 
-An upgraded delegate whose integral remains zero can qualify immediately if their standard votes at both `t - 1` and `t - 12 hours` meet the current threshold and a throttle charge is available. A delegate that acquired votes more recently can qualify through this fallback once the historical lookup reaches that acquisition, without another transfer.
+An upgraded delegate whose integral remains zero can qualify immediately if their standard votes at both `t - 1` and the current timestamp `t` meet the current threshold and a throttle charge is available. No 12-hour holding period is required while the cumulative integral remains zero.
 
-The first nonzero movement between different standard delegatees starts integral tracking for the affected accounts. Previous vote-seconds are not backfilled. Once the cumulative integral becomes nonzero, the governor uses its average instead of the historical fallback; this can temporarily make a previously eligible delegate ineligible while the recorded history builds. Holding at least the threshold for 12 hours after tracking begins is sufficient, assuming the threshold and votes stay constant; larger positions can qualify sooner. Calling `delegate()` with the same delegate does not start tracking in this implementation.
+The first nonzero movement between different standard delegatees starts integral tracking for the affected accounts. Previous vote-seconds are not backfilled. Once the cumulative integral becomes nonzero, the governor uses its average instead of the current-vote fallback; this can temporarily make a previously eligible delegate ineligible while the recorded history builds. Holding at least the threshold for 12 hours after tracking begins is sufficient, assuming the threshold and votes stay constant; larger positions can qualify sooner. Calling `delegate()` with the same delegate does not start tracking in this implementation.
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 

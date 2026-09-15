@@ -155,10 +155,11 @@ library ProposalLib {
 
             if (integralEnd == 0) {
                 // Existing vaults may have standard vote history but no integral observations yet.
-                uint256 historicalVotes = governor.getVotes(proposal.proposer, periodStart);
+                // getPastVotes rejects the current timestamp; getVotes reads the latest checkpoint.
+                uint256 currentVotes = governor.token().getVotes(proposal.proposer);
                 require(
-                    historicalVotes >= votesThreshold,
-                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, historicalVotes, votesThreshold)
+                    currentVotes >= votesThreshold,
+                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, currentVotes, votesThreshold)
                 );
             } else {
                 uint256 averageVotes = (integralEnd - votes.getPastVotesIntegral(proposal.proposer, periodStart))
