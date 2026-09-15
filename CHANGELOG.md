@@ -8,7 +8,8 @@
 - Standard proposals require votes at the previous timestamp and a 12-hour average of standard delegated vote power to meet the current proposal threshold. Both lookback and throttle refill use `PROPOSAL_THROTTLE_PERIOD` (12 hours).
 - When the current cumulative vote integral is zero, standard proposal eligibility falls back to the existing standard vote checkpoint at the start of the lookback window. This permits unchanged delegates on upgraded vaults to qualify without a transfer when their historical votes meet the threshold.
 - The shared `Versioned` mixin returns `1.1.0` instead of `1.0.0`.
-- Optimizer runs increased from 149 to 156 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 23,106 bytes; StakingVault runtime: 24,573 bytes (3 bytes below EIP-170).
+- Governor and timelock upgrades now require the exact implementation registered for the latest non-deprecated release, using `GovernanceUpgradeLib` while preserving the existing caller authorization.
+- Optimizer runs increased from 149 to 156 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 23,740 bytes; StakingVault runtime: 24,573 bytes (3 bytes below EIP-170).
 
 ### Added
 
@@ -18,7 +19,8 @@
 ### Upgrade notes
 
 - Upgrade the vault to an implementation supporting `getPastVotesIntegral` before upgrading its governor or deploying a new governor against it. Follow the existing version-registry and vault-admin authorization flow.
-- No reinitializer or new governor throttle storage is required. Integral state reuses the previously unused field in the existing optimistic votes ERC-7201 namespace, leaving the vault's ordinary storage layout intact.
+- Existing governors and timelocks must initialize their appended version-registry pointer using `initializeVersionRegistry(registryAddress)` as `upgradeToAndCall` data. Each migration uses `reinitializer(2)` and cannot replace a configured registry. New deployments initialize this pointer directly.
+- No new governor throttle storage is required. Integral state reuses the previously unused field in the existing optimistic votes ERC-7201 namespace, leaving the vault's ordinary storage layout intact.
 - Historical fallback is a single-point approximation. Once a real delegated-vote movement starts accumulating a nonzero integral, only recorded vote-seconds count; existing delegates may need time to rebuild eligibility. Old history is not backfilled.
 - Fresh governor EIP-712 domains use version `1.1.0`. Existing governor proxies retain their stored domain version on upgrade; signing clients should query `eip712Domain()`.
 

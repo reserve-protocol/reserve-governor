@@ -560,7 +560,9 @@ Existing governor and timelock proxies must call their one-time `initializeVersi
 
 Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastVotesIntegral` unconditionally for eligible standard proposers; a vault without that API makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate that API during deployment.
 
-This release needs no reinitializer or additional throttle configuration. The governor reuses the existing capacity and per-account charge state for both proposal paths. Its storage layout is unchanged. Integral observations reuse the intentionally unused `_totalCheckpoints` field in the existing optimistic votes ERC-7201 namespace, preserving the vault's standard checkpoints, optimistic delegation mappings, and ordinary storage slots.
+When upgrading an existing governor or timelock, pass `abi.encodeCall(component.initializeVersionRegistry, (registryAddress))` as that component's `upgradeToAndCall` data. Each proxy appends a version-registry pointer; `reinitializer(2)` records migration version 2 in that proxy and prevents the setup from running again. The upgrade and registry setup are atomic: if setup fails, the implementation change also reverts. Fresh deployments receive the registry during initialization and cannot replace it through the migration hook.
+
+No additional throttle configuration is required. The governor reuses the existing capacity and per-account charge state for both proposal paths. Integral observations reuse the intentionally unused `_totalCheckpoints` field in the existing optimistic votes ERC-7201 namespace, preserving the vault's standard checkpoints, optimistic delegation mappings, and ordinary storage slots.
 
 An upgraded delegate whose integral remains zero can qualify immediately if their standard votes at both `t - 1` and `t - 12 hours` meet the current threshold and a throttle charge is available. A delegate that acquired votes more recently can qualify through this fallback once the historical lookup reaches that acquisition, without another transfer.
 
@@ -568,7 +570,7 @@ The first nonzero movement between different standard delegatees starts integral
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 
-The build uses Solidity 0.8.33, optimizer runs 156, and `via_ir = false`. At these settings the governor runtime is 23,106 bytes and the vault runtime is 24,573 bytes, leaving the vault 3 bytes below the 24,576-byte EIP-170 limit. Recheck sizes after contract or compiler changes.
+The build uses Solidity 0.8.33, optimizer runs 156, and `via_ir = false`. At these settings the governor runtime is 23,740 bytes and the vault runtime is 24,573 bytes, leaving the vault 3 bytes below the 24,576-byte EIP-170 limit. Recheck sizes after contract or compiler changes.
 
 
 ## Flow Summary
