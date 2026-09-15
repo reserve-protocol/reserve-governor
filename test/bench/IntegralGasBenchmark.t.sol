@@ -8,6 +8,7 @@ import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 import { Test } from "forge-std/Test.sol";
 
 import { ERC20OptimisticVotesUpgradeable } from "@staking/ERC20OptimisticVotesUpgradeable.sol";
+import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 
 contract IntegralGasToken is ERC20Upgradeable, ERC20OptimisticVotesUpgradeable {
     function initialize() external initializer {
@@ -56,7 +57,7 @@ contract IntegralGasBenchmarkTest is Test {
 
     function _coolIntegralCall() private {
         vm.cool(address(token));
-        // When running against the parent, also cool its linked VoteIntegralLib (see design notes).
+        vm.cool(address(VoteIntegralLib));
     }
 
     /// @dev Each measured mutating call starts after vm.cool(token), so the target account and

@@ -2,15 +2,20 @@
 
 This is an alternative implementation of the unreleased proposal-integral
 feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48).
-It removes `VoteIntegralLib` and its duplicate observation arrays. Governor
-eligibility and throttle behavior are inherited from that PR.
+It retains a small linked `VoteIntegralLib` and removes duplicate observation
+arrays. Governor eligibility and throttle behavior are inherited from that PR.
 
 ## Storage and updates
 
-`ERC20VotesIntegralUpgradeable` extends OZ `ERC20VotesUpgradeable` without
-modifying OZ. Standard checkpoints remain packed `uint48` timestamps plus
-`uint208` votes, occupying one storage slot each. A separate ERC-7201 namespace,
-`reserve.storage.VotesIntegral`, contains:
+`ERC20VotesIntegralUpgradeable` extends OZ `ERC20VotesUpgradeable` and delegates
+integral lookup/update calls to `VoteIntegralLib`. The library reads the fixed
+OZ 5.4 `openzeppelin.storage.Votes` namespace using OZ's `VotesStorage` type.
+OZ continues to write standard checkpoints; the library never changes them.
+Changes to that namespace or its checkpoint layout require compatibility review.
+
+Standard checkpoints remain packed `uint48` timestamps plus `uint208` votes,
+occupying one storage slot each. The library writes a separate ERC-7201 namespace,
+`reserve.storage.VotesIntegral`, containing:
 
 ```solidity
 mapping(address account => mapping(uint256 checkpointIndex => uint256)) cumulative;
@@ -22,8 +27,8 @@ checkpoint from a tracked checkpoint with zero cumulative area, without a
 separate tracking-start marker or array length.
 
 Before a nonzero movement between different standard delegates, the extension
-reads each affected delegate's latest OZ checkpoint. For a later timestamp it
-stores `previousCumulative + previousVotes * elapsed` at the next checkpoint
+calls the library to read each affected delegate's latest OZ checkpoint. For a
+later timestamp it stores `previousCumulative + previousVotes * elapsed` at the next checkpoint
 index. At the same timestamp it leaves the existing cumulative value intact.
 OZ then appends/coalesces the corresponding voting checkpoint. A failure in
 OZ's movement or timestamp checks reverts the entire transaction, including the
@@ -49,7 +54,7 @@ timestamp. Earlier history is not backfilled. No-op delegation and zero-value
 movements do not start tracking. No reinitializer is needed.
 
 This experiment does **not** migrate integral arrays from an already deployed
-version of the alternative, unreleased `VoteIntegralLib` implementation. If
+version of #48's alternative, unreleased observation-array implementation. If
 that implementation is deployed first, a separate integral-history migration
 design would be required. The four [fork cases](../test/fork/README.md) target
 the two real 1.0.0 vaults backing the six identified DTFs.
@@ -63,16 +68,17 @@ use unchecked operations under those constraints. Lookup multiplication and
 addition stay checked because the public query accepts a uint256 timepoint.
 
 Each new tracked checkpoint adds one companion storage word instead of two
-observation words, and there is no second array length or linked-library call.
-Lookup now searches the full standard checkpoint history, including pre-upgrade
-entries, through OZ's protected checkpoint accessor. Fewer writes do not imply
-cheaper reads; both paths must be measured.
+observation words, with no second array length. The linked library performs
+lookup and accounting in the vault's storage context. Lookup searches the full
+standard checkpoint history, including pre-upgrade entries, through typed
+storage references. Fewer writes do not imply cheaper reads; both paths must
+be measured.
 
-Inlining the accounting increases vault code size. With Solidity 0.8.33, no IR,
-and one optimizer run, the vault is **24,567 bytes**, only **9 bytes** below
-EIP-170. At the parent's 156 runs this approach exceeds the limit. Lowering the
-optimizer setting affects the other contracts' gas/bytecode too. This remains
-a material constraint when deciding whether to adopt the experiment.
+Keeping the accounting in a library lets this implementation use the parent's
+compiler settings: Solidity 0.8.33, no IR, and **156 optimizer runs**. The vault
+is **24,509 bytes**, **67 bytes** below EIP-170, and the integral library is
+**1,104 bytes**. The parent uses 24,573 vault bytes plus a 1,300-byte integral
+library. Size headroom remains limited and must be checked after future edits.
 
 Unit tests compare fuzzed histories to a direct segment-sum reference and cover
 zero-vote intervals, same-timestamp movements, maximum arithmetic, no-ops,
@@ -81,30 +87,30 @@ upgrades with legacy checkpoints from earlier and identical timestamps.
 
 ## Gas comparison
 
-Both implementations below use Solidity 0.8.33, optimizer runs **1**, no IR,
+Both implementations below use Solidity 0.8.33, optimizer runs **156**, no IR,
 and the same token harness and state sequence. The baseline is PR #48 at
-`982f284c1aea5f34dca32c0f15880402d829d1fc`; it uses the external integral library.
-Holding the optimizer setting constant isolates the accounting change.
+`982f284c1aea5f34dca32c0f15880402d829d1fc`; its external integral library maintains
+a separate observation array. Holding the optimizer setting constant isolates the accounting change.
 
-| Operation | External library | Checkpoint mapping | Change |
+| Operation | Separate observations | Shared checkpoints | Change |
 | --- | ---: | ---: | ---: |
-| Fresh mint, no delegation | 111,691 | 105,395 | -6,296 |
-| Initial delegation | 126,296 | 98,425 | -27,871 |
-| Later mint to delegated account | 146,198 | 113,223 | -32,975 |
-| Transfer across distinct delegates | 201,737 | 141,443 | -60,294 |
-| Same-timestamp coalesced transfer | 68,612 | 52,431 | -16,181 |
-| Later burn from delegated account | 146,406 | 113,431 | -32,975 |
-| Historical integral lookup, cold | 27,362 | 27,698 | +336 |
-| Historical integral lookup, warm | 7,357 | 9,693 | +2,336 |
-| Current integral lookup, cold | 25,240 | 24,875 | -365 |
-| Current integral lookup, warm | 7,240 | 8,875 | +1,635 |
+| Fresh mint, no delegation | 111,583 | 108,838 | -2,745 |
+| Initial delegation | 126,058 | 98,940 | -27,118 |
+| Later mint to delegated account | 146,049 | 113,423 | -32,626 |
+| Transfer across distinct delegates | 201,194 | 140,693 | -60,501 |
+| Same-timestamp coalesced transfer | 68,069 | 51,454 | -16,615 |
+| Later burn from delegated account | 145,904 | 113,278 | -32,626 |
+| Historical integral lookup, cold | 26,749 | 23,676 | -3,073 |
+| Historical integral lookup, warm | 6,744 | 5,671 | -1,073 |
+| Current integral lookup, cold | 24,690 | 21,421 | -3,269 |
+| Current integral lookup, warm | 6,690 | 5,421 | -1,269 |
 
 These are gross `gasleft()` differences around test-contract-to-token calls,
 including CALL/calldata overhead and excluding intrinsic transaction gas and
 refunds. They are not end-to-end StakingVault deposit costs. Cold measurements
-use `vm.cool(token)` to cool the token address and its storage; the baseline
-also cools the linked integral library. Earlier state transitions remain in
-the same Foundry test execution, so storage original/dirty accounting is not
+use `vm.cool(token)` to cool the token address and its storage, and cool the
+linked integral library in both implementations. Earlier state transitions
+remain in the same Foundry test execution, so storage original/dirty accounting is not
 claimed to match independent transaction receipts. Warm lookups immediately
 repeat the same query. The lookup fixture has 65 checkpoints; the historical
 query selects checkpoint 33 and the current query is ten seconds after the
@@ -114,18 +120,14 @@ same timestamp.
 Run the retained [benchmark](../test/bench/IntegralGasBenchmark.t.sol) with:
 
 ```sh
-forge test --match-contract IntegralGasBenchmarkTest --optimizer-runs 1 -vv
+forge test --match-contract IntegralGasBenchmarkTest --optimizer-runs 156 -vv
 ```
 
-To reproduce the baseline, copy that harness into a separate checkout of the
-baseline commit, import its `VoteIntegralLib`, and add
-`vm.cool(address(VoteIntegralLib));` to `_coolIntegralCall()`. Keep the same
-optimizer setting and command. No copy of the old library is needed in this
-branch.
+To reproduce the baseline, copy the unchanged harness into a separate checkout
+of the baseline commit and run the same command.
 
-The mutation savings are substantial in this fixture, especially when two
-delegates change. Warm lookups become more expensive. Also, legacy delegates'
-lookups search their full OZ checkpoint history, which can be longer than a
-new post-upgrade observation array. This comparison does not characterize all
-history lengths or the effect of lowering optimizer runs on unrelated vault
-and governor operations.
+Both mutations and lookups cost less in this fixture, with the largest saving
+on transfers between different delegates. Legacy delegates' lookups search
+their full OZ checkpoint history, which can be longer than a new post-upgrade
+observation array. These measurements do not characterize all history lengths
+or transaction sequences.
