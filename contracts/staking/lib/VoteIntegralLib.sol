@@ -47,16 +47,21 @@ library VoteIntegralLib {
             return;
         }
 
-        Observation storage latest = observations[observations.length - 1];
-        uint256 cumulative = latest.cumulative + uint256(latest.value) * (timestamp - latest.timestamp);
+        // Updates use nondecreasing uint48 timestamps and uint208 votes, enforced by the vault's
+        // OZ checkpoints. The entire integral is bounded by (2^208 - 1) * (2^48 - 1) < 2^256.
+        // The empty-array case above also guarantees length - 1 cannot underflow.
+        unchecked {
+            Observation storage latest = observations[observations.length - 1];
+            uint256 cumulative = latest.cumulative + uint256(latest.value) * (timestamp - latest.timestamp);
 
-        if (latest.timestamp == timestamp) {
-            // Multiple vote movements can happen in one timestamp. Keep one
-            // observation and expose the final vote power for that timestamp.
-            latest.value = uint208(newValue);
-            latest.cumulative = cumulative;
-        } else {
-            observations.push(Observation(uint48(timestamp), uint208(newValue), cumulative));
+            if (latest.timestamp == timestamp) {
+                // Multiple vote movements can happen in one timestamp. Keep one
+                // observation and expose the final vote power for that timestamp.
+                latest.value = uint208(newValue);
+                latest.cumulative = cumulative;
+            } else {
+                observations.push(Observation(uint48(timestamp), uint208(newValue), cumulative));
+            }
         }
     }
 
@@ -71,19 +76,21 @@ library VoteIntegralLib {
             return 0;
         }
 
-        uint256 low;
-        uint256 high = length;
-        while (low < high) {
-            uint256 mid = (low + high) / 2;
-            if (observations[mid].timestamp <= timestamp) {
-                low = mid + 1;
-            } else {
-                high = mid;
-            }
-        }
-
-        Observation storage observation = observations[low - 1];
+        // Coalescing leaves at most one observation per uint48 timestamp, so low + high and
+        // mid + 1 fit uint256. The first observation is <= timestamp, so the upper bound is >= 1.
         unchecked {
+            uint256 low;
+            uint256 high = length;
+            while (low < high) {
+                uint256 mid = (low + high) / 2;
+                if (observations[mid].timestamp <= timestamp) {
+                    low = mid + 1;
+                } else {
+                    high = mid;
+                }
+            }
+
+            Observation storage observation = observations[low - 1];
             return observation.cumulative + uint256(observation.value) * (timestamp - observation.timestamp);
         }
     }
