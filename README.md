@@ -11,9 +11,16 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and on average over the preceding 12 hours, with a historical-vote fallback for accounts whose cumulative integral is still zero (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
+Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power at the previous timestamp and on average over the preceding 12 hours, with a current-vote fallback for accounts whose cumulative integral is still zero (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
 
 The shared `Versioned` mixin reports `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release changes and upgrade notes.
+
+## Tests
+
+- `pnpm test` runs the non-fork suite, including all six component upgrade orders.
+- `pnpm test:fork` exercises the deployed PHOTON, BUILDOUT, NEOCLOUD, POWER, ROBOTS,
+  and MAG7 governance systems at pinned BSC/Base blocks. See the [fork fixtures
+  and assumptions](test/fork/README.md).
 
 ## Architecture
 
@@ -245,7 +252,7 @@ The main hybrid governor contract.
 
 **Standard Proposal Functions (inherited from OZ Governor):**
 
-- `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires current and historical vote-power eligibility plus a shared throttle charge)
+- `propose(targets, values, calldatas, description)` -- Create a standard proposal (requires vote-power eligibility plus a shared throttle charge; see Proposal Creation Rules below)
 - `castVote(proposalId, support)` -- Cast a vote (works on both fast and slow proposals; optimistic proposals only allow `support = 0` / `Against`)
 - `queue(targets, values, calldatas, descriptionHash)` -- Queue a succeeded standard proposal (optimistic proposals cannot be queued)
 - `execute(targets, values, calldatas, descriptionHash)` -- Execute a queued standard proposal or a succeeded optimistic proposal
@@ -254,7 +261,7 @@ The main hybrid governor contract.
 **Proposal Creation Rules:**
 
 - `proposeOptimistic()` and `propose()` consume charges from the same per-account bucket
-- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour average against the current `proposalThreshold()`; when the cumulative integral is zero, it uses standard votes at the start of the window instead of the average
+- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour average against the current `proposalThreshold()`; when the cumulative integral is zero, it uses current standard votes instead of the average
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -492,7 +499,7 @@ averageVotes = floor((integral(t) - integral(start)) / PROPOSAL_THROTTLE_PERIOD)
 
 When `integral(t)` is nonzero, `averageVotes` must meet the same threshold. Higher vote power can compensate for shorter holding time; this is an average requirement, not continuous ownership of particular shares. Deposits or delegations after tracking begins accumulate vote-seconds automatically, so an account can become eligible as time passes without another transaction.
 
-When `integral(t)` is zero, the governor instead requires standard `getPastVotes(account, start)` to meet the threshold. This covers unchanged delegates on upgraded vaults without backfilling the integral or requiring a transfer. It checks one historical point and does not detect intervening dips. The condition is a zero cumulative value, not an explicit upgrade flag, so it can also apply at the timestamp of an account's first integral observation. See [Upgrading to 1.1.0](#upgrading-to-110) for the transition behavior.
+When `integral(t)` is zero, the governor instead requires the token's current standard `getVotes(account)` to meet the threshold, in addition to the `t - 1` check. This covers unchanged delegates on upgraded vaults without backfilling the integral or requiring a transfer. It does not require 12 hours of vote history. The condition is a zero cumulative value, not an explicit upgrade flag, so it can also apply at the timestamp of an account's first integral observation; votes first acquired at `t` still fail the `t - 1` check. See [Upgrading to 1.1.0](#upgrading-to-110) for the transition behavior.
 
 ### StakingVault Parameters
 
@@ -524,14 +531,14 @@ Three contracts are UUPS upgradeable, but they do not share a central onchain up
 | Contract                       | Upgrade Authorization                                         | Additional Guardrail |
 | ------------------------------ | ------------------------------------------------------------- | -------------------- |
 | `StakingVault`                 | `DEFAULT_ADMIN_ROLE`                                | Upgrade must be executed through the timelock via standard governance path AND update StakingVault to latest release |
-| `ReserveOptimisticGovernor`    | `onlyGovernance`                                              | Upgrade must be executed through the timelock via standard governance path |
-| `TimelockControllerOptimistic` | `DEFAULT_ADMIN_ROLE`                                | Upgrade must be executed through the timelock via standard governance path            |
+| `ReserveOptimisticGovernor`    | `onlyGovernance`                                              | Upgrade must be executed through the timelock via standard governance path and match the latest non-deprecated registry entry |
+| `TimelockControllerOptimistic` | `DEFAULT_ADMIN_ROLE`                                | Upgrade must be executed through the timelock via standard governance path and match the latest non-deprecated registry entry |
 
 `OptimisticSelectorRegistry` is clone-initialized and is not upgradeable.
 
-### Version Registry (StakingVault)
+### Version Registry
 
-`ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple. Only `StakingVault` upgrades are currently tied to the version registry. 
+`ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple. Upgrades for all three UUPS components are tied to the registry. Governor and timelock store the registry address in their proxy storage.
 
 - `registerVersion(deployer)` can only be called by a `RoleRegistry` owner
 - `getLatestVersion()` returns the latest registered version metadata
@@ -549,26 +556,28 @@ Upgrades are intended to be executed by the existing vault admin. They cannot be
 2. Register that deployer in `ReserveOptimisticGovernanceVersionRegistry` from a `RoleRegistry` owner account.
 3. Apply upgrades per component:
    1. `StakingVault`: call `upgradeToAndCall(newStakingVaultImpl, data)` from `DEFAULT_ADMIN_ROLE` (usually timelock). The `newStakingVaultImpl.version()` must be the latest registered (non-deprecated) version.
-   2. `ReserveOptimisticGovernor`: call `governor.upgradeToAndCall(newGovernorImpl, data)` from timelock.
-   3. `TimelockControllerOptimistic`: call `timelock.upgradeToAndCall(newTimelockImpl, data)` from timelock.
+   2. `ReserveOptimisticGovernor`: call `governor.upgradeToAndCall(newGovernorImpl, data)` from timelock. The implementation must be the registered governor implementation for the latest non-deprecated version.
+   3. `TimelockControllerOptimistic`: call `timelock.upgradeToAndCall(newTimelockImpl, data)` from timelock. The implementation must be the registered timelock implementation for the latest non-deprecated version.
 
-Only the `StakingVault` upgrade path is constrained by the version registry. This guarantees that `StakingVault` governance cannot brick the other governors that also depend on the same `StakingVault`. However, each `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` depending on a StakingVault (or governing it) can be broken either via role changes or by upgrading to a malicious implementation. 
+Each component must use the implementation registered for the latest non-deprecated version. This keeps the staking vault, governor, and timelock implementation set aligned across deployments.
 
-For deployments created with `deployWithExistingStakingVault()`, the new timelock does not automatically become the existing vault's admin. Any later `StakingVault` upgrade is still controlled by whichever address currently holds that vault's `DEFAULT_ADMIN_ROLE`.
+Existing governor and timelock proxies must call their one-time `initializeVersionRegistry(versionRegistry)` reinitializer as part of the first upgrade to an implementation with these checks. Deployments created with `deployWithExistingStakingVault()` do not automatically make the new timelock the existing vault's admin; any later `StakingVault` upgrade remains controlled by its current `DEFAULT_ADMIN_ROLE` holder.
 
 ### Upgrading to 1.1.0
 
 Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastVotesIntegral` unconditionally for eligible standard proposers; a vault without that API makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate that API during deployment.
 
-This release needs no reinitializer or additional throttle configuration. The governor reuses the existing capacity and per-account charge state for both proposal paths. Its storage layout is unchanged. The companion cumulative mapping occupies a new `reserve.storage.VotesIntegral` ERC-7201 namespace. Existing standard and optimistic checkpoints, delegation mappings, and ordinary storage slots retain their layout. This experimental implementation supports upgrades from deployed 1.0.0 vaults; it does not migrate integral arrays from the alternative, unreleased observation-array implementation.
+When upgrading an existing governor or timelock, pass `abi.encodeCall(component.initializeVersionRegistry, (registryAddress))` as that component's `upgradeToAndCall` data. Each proxy appends a version-registry pointer; `reinitializer(2)` records migration version 2 in that proxy and prevents the setup from running again. The upgrade and registry setup are atomic: if setup fails, the implementation change also reverts. Fresh deployments receive the registry during initialization and cannot replace it through the migration hook.
 
-An upgraded delegate whose integral remains zero can qualify immediately if their standard votes at both `t - 1` and `t - 12 hours` meet the current threshold and a throttle charge is available. A delegate that acquired votes more recently can qualify through this fallback once the historical lookup reaches that acquisition, without another transfer.
+No additional throttle configuration is required. The governor reuses the existing capacity and per-account charge state for both proposal paths. The companion cumulative mapping occupies a new `reserve.storage.VotesIntegral` ERC-7201 namespace. Existing standard and optimistic checkpoints, delegation mappings, and ordinary vault storage slots retain their layout. No vault reinitializer is needed. This implementation supports upgrades from deployed 1.0.0 vaults; it does not migrate integral arrays from the alternative, unreleased observation-array implementation.
 
-The first nonzero movement between different standard delegatees starts integral tracking for the affected accounts. Previous vote-seconds are not backfilled. Once the cumulative integral becomes nonzero, the governor uses its average instead of the historical fallback; this can temporarily make a previously eligible delegate ineligible while the recorded history builds. Holding at least the threshold for 12 hours after tracking begins is sufficient, assuming the threshold and votes stay constant; larger positions can qualify sooner. Calling `delegate()` with the same delegate does not start tracking in this implementation.
+An upgraded delegate whose integral remains zero can qualify immediately if their standard votes at both `t - 1` and the current timestamp `t` meet the current threshold and a throttle charge is available. No 12-hour holding period is required while the cumulative integral remains zero.
+
+The first nonzero movement between different standard delegatees starts integral tracking for the affected accounts. Previous vote-seconds are not backfilled. Once the cumulative integral becomes nonzero, the governor uses its average instead of the current-vote fallback; this can temporarily make a previously eligible delegate ineligible while the recorded history builds. Holding at least the threshold for 12 hours after tracking begins is sufficient, assuming the threshold and votes stay constant; larger positions can qualify sooner. Calling `delegate()` with the same delegate does not start tracking in this implementation.
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 
-The build uses Solidity 0.8.33, optimizer runs 156, and `via_ir = false`. At these settings the governor runtime is 23,106 bytes and the vault runtime is 24,509 bytes, leaving the vault 67 bytes below the 24,576-byte EIP-170 limit. Recheck sizes after contract or compiler changes.
+The build uses Solidity 0.8.33, optimizer runs 156, and `via_ir = false`. At these settings the governor runtime is 23,740 bytes and the vault runtime is 24,509 bytes, leaving the vault 67 bytes below the 24,576-byte EIP-170 limit. Recheck sizes after contract or compiler changes.
 
 
 ## Flow Summary

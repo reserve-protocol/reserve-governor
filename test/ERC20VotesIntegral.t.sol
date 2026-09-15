@@ -174,6 +174,54 @@ contract ERC20VotesIntegralTest is Test {
         assertEq(token.getVotes(ALICE), values[11]);
     }
 
+    function test_longHistoryAppendCoalesceAndLookup() public {
+        for (uint256 i = 1; i <= 64; ++i) {
+            vm.warp(i * 10);
+            token.mint(ALICE, 1);
+        }
+
+        vm.warp(650);
+        token.mint(ALICE, 1);
+        assertEq(token.numCheckpoints(ALICE), 65);
+        assertEq(token.getPastVotesIntegral(ALICE, 650), 20_800);
+
+        token.mint(ALICE, 1);
+        assertEq(token.numCheckpoints(ALICE), 65);
+        assertEq(token.getVotes(ALICE), 66);
+        assertEq(token.getPastVotesIntegral(ALICE, 650), 20_800);
+        assertEq(token.getPastVotesIntegral(ALICE, 455), 10_125);
+        assertEq(token.getPastVotesIntegral(ALICE, 9), 0);
+        assertEq(token.getPastVotesIntegral(ALICE, 10), 0);
+        assertEq(token.getPastVotesIntegral(ALICE, 655), 21_130);
+    }
+
+    function testFuzz_integralAcrossFullTimestampRange(uint208[4] memory values, uint48[4] memory times, uint48 query)
+        public
+    {
+        for (uint256 i = 1; i < times.length; ++i) {
+            for (uint256 j = i; j > 0 && times[j] < times[j - 1]; --j) {
+                (times[j - 1], times[j]) = (times[j], times[j - 1]);
+            }
+        }
+
+        for (uint256 i; i < times.length; ++i) {
+            vm.warp(times[i]);
+            uint256 balance = token.balanceOf(ALICE);
+            if (values[i] >= balance) {
+                token.mint(ALICE, values[i] - balance);
+            } else {
+                token.burn(ALICE, balance - values[i]);
+            }
+        }
+
+        uint256 expected;
+        for (uint256 i; i < times.length && times[i] < query; ++i) {
+            uint256 end = i + 1 < times.length && times[i + 1] < query ? times[i + 1] : query;
+            expected += uint256(values[i]) * (end - times[i]);
+        }
+        assertEq(token.getPastVotesIntegral(ALICE, query), expected);
+    }
+
     function _entry(address account, uint32 index) private pure returns (bytes32) {
         return keccak256(abi.encode(index, keccak256(abi.encode(account, INTEGRAL_SLOT))));
     }

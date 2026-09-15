@@ -3,7 +3,8 @@
 This is an alternative implementation of the unreleased proposal-integral
 feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48).
 It retains a small linked `VoteIntegralLib` and removes duplicate observation
-arrays. Governor eligibility and throttle behavior are inherited from that PR.
+arrays. See the [proposal eligibility and throttle rules](../README.md#proposal-throttle-behavior)
+for the governor behavior, including the current-vote fallback.
 
 ## Storage and updates
 
@@ -51,12 +52,12 @@ Existing delegates remain untracked until their first real vote movement.
 The first cumulative entry is one (zero area). This also works if the movement
 coalesces into a checkpoint written by the old implementation at the same
 timestamp. Earlier history is not backfilled. No-op delegation and zero-value
-movements do not start tracking. No reinitializer is needed.
+movements do not start tracking. No vault reinitializer is needed.
 
 This experiment does **not** migrate integral arrays from an already deployed
 version of #48's alternative, unreleased observation-array implementation. If
 that implementation is deployed first, a separate integral-history migration
-design would be required. The four [fork cases](../test/fork/README.md) target
+design would be required. The four vault-focused [fork cases](../test/fork/README.md) target
 the two real 1.0.0 vaults backing the six identified DTFs.
 
 ## Bounds and tradeoffs
