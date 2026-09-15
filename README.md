@@ -388,9 +388,9 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - Standard and optimistic delegatees are tracked independently on the same share balance
 - `addRewardToken()` only accepts tokens that are currently registered in `RewardTokenRegistry`
 
-Standard delegated vote movements update an append-only cumulative integral through the linked `VoteIntegralLib`. Updates at the same timestamp coalesce; lookups use binary search, so they do not scan every vote change in the window. History is retained indefinitely, at the cost of an additional observation for each affected delegate at a new timestamp. Zero-value movements and movements between accounts with the same standard delegate do not add observations.
+Standard delegated vote movements update cumulative vote-seconds through `ERC20VotesIntegralUpgradeable`. The extension reuses OZ standard voting checkpoints and stores a cumulative value for each tracked checkpoint in a companion mapping. Updates at the same timestamp coalesce; lookups binary-search the existing checkpoints. History is retained indefinitely. Zero-value movements and movements between accounts with the same standard delegate do not start tracking or add checkpoints.
 
-Each observation uses two storage slots: `uint48 timestamp` and `uint208 value` share one slot, and `uint256 cumulative` occupies the other. The value is delegated vault-share voting power, whose upper bound is enforced by OpenZeppelin's `ERC20Votes` supply cap. The narrowing cast relies on that invariant; the cumulative vote-seconds value remains `uint256`.
+OZ retains its existing one-slot checkpoints (`uint48` timestamp and `uint208` votes). The companion mapping adds one slot per tracked checkpoint, storing `cumulative + 1`; zero means tracking has not started for that checkpoint. This preserves existing vote history without duplicating timestamps or vote values. The supply cap and timestamp range bound the integral plus its sentinel below `uint256.max`. The extension needs a timestamp clock, as used by StakingVault. See [the experimental design and tradeoffs](docs/checkpoint-integrals.md).
 
 #### Token Support
 
@@ -560,7 +560,7 @@ For deployments created with `deployWithExistingStakingVault()`, the new timeloc
 
 Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastVotesIntegral` unconditionally for eligible standard proposers; a vault without that API makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate that API during deployment.
 
-This release needs no reinitializer or additional throttle configuration. The governor reuses the existing capacity and per-account charge state for both proposal paths. Its storage layout is unchanged. Integral observations reuse the intentionally unused `_totalCheckpoints` field in the existing optimistic votes ERC-7201 namespace, preserving the vault's standard checkpoints, optimistic delegation mappings, and ordinary storage slots.
+This release needs no reinitializer or additional throttle configuration. The governor reuses the existing capacity and per-account charge state for both proposal paths. Its storage layout is unchanged. The companion cumulative mapping occupies a new `reserve.storage.VotesIntegral` ERC-7201 namespace. Existing standard and optimistic checkpoints, delegation mappings, and ordinary storage slots retain their layout. This experimental implementation supports upgrades from deployed 1.0.0 vaults; it does not migrate integral arrays from the alternative, unreleased `VoteIntegralLib` implementation.
 
 An upgraded delegate whose integral remains zero can qualify immediately if their standard votes at both `t - 1` and `t - 12 hours` meet the current threshold and a throttle charge is available. A delegate that acquired votes more recently can qualify through this fallback once the historical lookup reaches that acquisition, without another transfer.
 
@@ -568,7 +568,7 @@ The first nonzero movement between different standard delegatees starts integral
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 
-The build uses Solidity 0.8.33, optimizer runs 156, and `via_ir = false`. At these settings the governor runtime is 23,106 bytes and the vault runtime is 24,573 bytes, leaving the vault 3 bytes below the 24,576-byte EIP-170 limit. Recheck sizes after contract or compiler changes.
+The build uses Solidity 0.8.33, optimizer runs 1, and `via_ir = false`. At these settings the governor runtime is 22,764 bytes and the vault runtime is 24,567 bytes, leaving the vault 9 bytes below the 24,576-byte EIP-170 limit. Recheck sizes after contract or compiler changes.
 
 
 ## Flow Summary
