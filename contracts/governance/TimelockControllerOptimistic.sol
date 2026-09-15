@@ -29,6 +29,11 @@ contract TimelockControllerOptimistic is
         _disableInitializers();
     }
 
+    /// @dev The inherited initializer omits the required version registry.
+    function initialize(uint256, address[] memory, address[] memory, address) public pure override {
+        revert InvalidInitialization();
+    }
+
     function initialize(
         uint256 minDelay,
         address[] memory proposers,

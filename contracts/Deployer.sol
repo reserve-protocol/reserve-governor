@@ -10,6 +10,7 @@ import {
 } from "@reserve-protocol/trusted-fillers/contracts/interfaces/ITrustedFillerRegistry.sol";
 
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
+import { ITimelockControllerOptimistic } from "@interfaces/ITimelockControllerOptimistic.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
@@ -188,7 +189,7 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
 
         // Step 2.1: Deploy Timelock proxy with Deployer as temporary admin
         bytes memory timelockInitData = abi.encodeCall(
-            TimelockControllerOptimistic.initialize,
+            ITimelockControllerOptimistic.initialize,
             (baseParams.timelockDelay, new address[](0), new address[](0), address(this), versionRegistry)
         );
         timelock = address(new ERC1967Proxy{ salt: deploymentSalt }(timelockImpl, timelockInitData));

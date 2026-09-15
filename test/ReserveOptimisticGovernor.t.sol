@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { Test } from "forge-std/Test.sol";
 
 import {
@@ -222,6 +224,33 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     // ===== Deployment / Initialization =====
+
+    function test_timelockInitialization_requiresVersionRegistry() public {
+        TimelockControllerOptimistic freshTimelock = TimelockControllerOptimistic(
+            payable(address(new ERC1967Proxy(address(new TimelockControllerOptimistic()), "")))
+        );
+        address[] memory proposers = new address[](1);
+        address[] memory executors = new address[](1);
+        proposers[0] = alice;
+        executors[0] = bob;
+
+        // An uninitialized proxy must reject the inherited selector too.
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        TimelockControllerUpgradeable(payable(address(freshTimelock)))
+            .initialize(TIMELOCK_DELAY, proposers, executors, alice);
+        assertFalse(freshTimelock.hasRole(freshTimelock.DEFAULT_ADMIN_ROLE(), alice));
+
+        address versionRegistry = deployer.versionRegistry();
+        freshTimelock.initialize(TIMELOCK_DELAY, proposers, executors, alice, versionRegistry);
+        assertEq(address(freshTimelock.versionRegistry()), versionRegistry);
+        assertEq(freshTimelock.getMinDelay(), TIMELOCK_DELAY);
+        assertTrue(freshTimelock.hasRole(freshTimelock.DEFAULT_ADMIN_ROLE(), alice));
+        assertTrue(freshTimelock.hasRole(freshTimelock.PROPOSER_ROLE(), alice));
+        assertTrue(freshTimelock.hasRole(freshTimelock.EXECUTOR_ROLE(), bob));
+
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        freshTimelock.initialize(TIMELOCK_DELAY, proposers, executors, alice, versionRegistry);
+    }
 
     function test_deployment_initializesSigningDomain() public view {
         (bytes1 fields, string memory name, string memory version, uint256 chainId, address verifier,,) =
