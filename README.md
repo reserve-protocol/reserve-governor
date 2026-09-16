@@ -120,7 +120,7 @@ When AGAINST votes reach the veto threshold, the governor creates a **new** stan
 3. The confirmation proposal follows normal standard timing (`Pending` for `votingDelay`, then `Active`)
 4. Voting starts fresh on the confirmation proposal (votes and `hasVoted` do **not** carry over from veto phase)
 
-Creating the confirmation proposal consumes no additional throttle charge and bypasses proposer threshold and integral checks. Vetoes therefore still create confirmation proposals when the optimistic proposer's bucket is empty or they have no standard votes.
+Creating the confirmation proposal consumes no additional throttle charge and bypasses proposer threshold and average-vote checks. Vetoes therefore still create confirmation proposals when the optimistic proposer's bucket is empty or they have no standard votes.
 
 ### Fast Proposal Paths
 
@@ -254,7 +254,7 @@ The main hybrid governor contract.
 **Proposal Creation Rules:**
 
 - `proposeOptimistic()` and `propose()` consume charges from the same per-account bucket
-- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour integral average against the current `proposalThreshold()`
+- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour vote average against the current `proposalThreshold()`
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -369,7 +369,7 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - `removeRewardToken(rewardToken)` -- Remove a reward token from distribution
 - `setUnstakingDelay(delay)` -- Set the delay before unstaked tokens can be claimed
 - `setRewardRatio(rewardHalfLife)` -- Set the exponential decay half-life for reward distribution
-- `initializeVoteIntegral()` -- Activate integral accounting once when upgrading a legacy vault
+- `initializeAverageVotes()` -- Activate average-vote accounting once when upgrading a legacy vault
 
 **Other:**
 
@@ -389,9 +389,9 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - Standard and optimistic delegatees are tracked independently on the same share balance
 - `addRewardToken()` only accepts tokens that are currently registered in `RewardTokenRegistry`
 
-Standard delegated vote movements update cumulative vote-seconds through `ERC20VotesIntegralUpgradeable` and the linked `VoteIntegralLib`. The library reads OZ standard voting checkpoints and stores a raw cumulative value for each post-activation checkpoint in a companion mapping; OZ continues to write the voting checkpoints. Updates at the same timestamp coalesce; lookups binary-search the existing checkpoints. History is retained indefinitely. The vault-wide activation makes unchanged legacy balances accrue automatically. Zero-value movements and movements between accounts with the same standard delegate do not add checkpoints.
+Standard delegated vote movements update cumulative vote-seconds through `ERC20AverageVotesUpgradeable` and the linked `VoteIntegralLib`. The library reads OZ standard voting checkpoints and stores a raw cumulative value for each post-activation checkpoint in a companion mapping; OZ continues to write the voting checkpoints. Updates at the same timestamp coalesce; lookups binary-search the existing checkpoints. History is retained indefinitely. The vault-wide activation makes unchanged legacy balances accrue automatically. Zero-value movements and movements between accounts with the same standard delegate do not add checkpoints.
 
-OZ retains its existing one-slot checkpoints (`uint48` timestamp and `uint208` votes). The companion mapping adds one slot per post-activation checkpoint and stores the exact cumulative value without a sentinel offset. One namespace slot records the global activation timestamp; zero means inactive. This preserves existing vote history without duplicating timestamps or vote values. The supply cap and timestamp range bound the integral below `uint256.max`. The extension requires the block-timestamp clock used by StakingVault. See [the checkpoint-integral design and tradeoffs](docs/checkpoint-integrals.md).
+OZ retains its existing one-slot checkpoints (`uint48` timestamp and `uint208` votes). The companion mapping adds one slot per post-activation checkpoint and stores the exact cumulative value without a sentinel offset. One namespace slot records the global activation timestamp; zero means inactive. This preserves existing vote history without duplicating timestamps or vote values. The supply cap and timestamp range bound the integral below `uint256.max`. The extension requires the block-timestamp clock used by StakingVault. See [the average-votes design and tradeoffs](docs/average-votes.md).
 
 #### Token Support
 
@@ -484,14 +484,14 @@ Similarly, `proposalThrottleCapacity` as high as 12 proposals/12h is allowed but
 - Governance can set capacity from 1 through 12; zero is rejected. There is one capacity input at deployment and no separate pessimistic configuration.
 - Automatic confirmation proposals are exempt from both the throttle and proposer vote-power checks.
 
-For a standard proposal at time `t`, the governor evaluates `proposalThreshold()` once, using the current configured supply fraction and total supply at `t - 1`. Standard votes at `t - 1` must meet that threshold. It then checks the integral:
+For a standard proposal at time `t`, the governor evaluates `proposalThreshold()` once, using the current configured supply fraction and total supply at `t - 1`. Standard votes at `t - 1` must meet that threshold. It then checks the average:
 
 ```text
-start = max(0, t - PROPOSAL_THROTTLE_PERIOD)
+start = t - PROPOSAL_THROTTLE_PERIOD
 averageVotes = token.getPastAverageVotes(account, start, t)
 ```
 
-The token returns average votes for the requested range, handling cumulative subtraction, activation clipping, and division internally. The governor always requires this returned average to meet the threshold. Time before activation contributes zero but remains in the requested duration used as the denominator. The governor requests twelve hours, clamped to timestamp zero if the chain clock itself is younger. There is no historical-vote fallback.
+The token returns average votes for the requested range, handling cumulative subtraction, activation clipping, and division internally. The governor always requires this returned average to meet the threshold. Time before activation contributes zero but remains in the requested duration used as the denominator. The governor requests twelve hours directly; supported chain timestamps exceed that period. There is no historical-vote fallback.
 
 An unchanged legacy holder therefore accrues eligibility automatically: after six hours its recognized average is half its voting weight; after twelve hours it is the full weight. No transfer or delegation is needed. Higher vote power can compensate for shorter holding time, so larger holders may qualify earlier. Transfers and delegation changes preserve the vote-seconds each delegate actually earned; they cannot duplicate accrued credit or reset activation.
 
@@ -566,10 +566,10 @@ Upgrade the `StakingVault` before its governor, following the registration and a
 Activate the upgraded vault atomically by passing the new admin-only initializer to `upgradeToAndCall`:
 
 ```solidity
-vault.upgradeToAndCall(newVaultImpl, abi.encodeCall(StakingVault.initializeVoteIntegral, ()));
+vault.upgradeToAndCall(newVaultImpl, abi.encodeCall(StakingVault.initializeAverageVotes, ()));
 ```
 
-Fresh vaults activate during ordinary initialization. Activation is one-shot and cannot be reset. Zero denotes inactive accounting, so initialization at timestamp zero reverts. If an upgrade omits this call, integral lookups return zero and integral writes remain disabled while ordinary vote checkpoints continue. An admin can initialize later, but accrual begins at that actual activation time; earlier activity earns no credit.
+Fresh vaults activate during ordinary initialization. Activation is one-shot under the supported-chain assumption of positive timestamps. Zero denotes inactive accounting. If an upgrade omits this call, average-vote lookups return zero and history updates remain disabled while ordinary vote checkpoints continue. An admin can initialize later, but accrual begins at that actual activation time; earlier activity earns no credit.
 
 The governor reuses the existing capacity and per-account charge state, with no additional throttle configuration or governor storage. The `reserve.storage.VotesIntegral` ERC-7201 namespace holds a raw cumulative mapping plus one slot for the activation timestamp. Existing standard and optimistic checkpoints, delegation mappings, and ordinary storage retain their layouts. This supports deployed 1.0.0 vaults; earlier unreleased PR prototypes require a separate migration of their integral state.
 

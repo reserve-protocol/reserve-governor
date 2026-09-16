@@ -9,6 +9,7 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 
+import { IAverageVotes } from "@interfaces/IAverageVotes.sol";
 import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
@@ -148,10 +149,9 @@ library ProposalLib {
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
             );
 
-            uint256 periodStart =
-                block.timestamp > PROPOSAL_THROTTLE_PERIOD ? block.timestamp - PROPOSAL_THROTTLE_PERIOD : 0;
-            IOptimisticVotes votes = IOptimisticVotes(address(governor.token()));
-            uint256 averageVotes = votes.getPastAverageVotes(proposal.proposer, periodStart, block.timestamp);
+            uint256 averageVotes = IAverageVotes(address(governor.token()))
+                .getPastAverageVotes(proposal.proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD, block.timestamp);
+
             require(
                 averageVotes >= votesThreshold,
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)

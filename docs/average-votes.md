@@ -1,13 +1,13 @@
-# Checkpoint-indexed vote integrals
+# Checkpoint-based average votes
 
-The proposal-integral feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48)
+The average-vote eligibility feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48)
 uses existing OZ standard vote checkpoints and a linked `VoteIntegralLib`.
 Standard proposals require current voting power and a 12-hour average. Both
 proposal paths share the existing proposal throttle.
 
 ## Storage and activation
 
-`ERC20VotesIntegralUpgradeable` extends OZ `ERC20VotesUpgradeable` and delegates
+`ERC20AverageVotesUpgradeable` extends OZ `ERC20VotesUpgradeable` and delegates
 integral lookup/update calls to `VoteIntegralLib`. Both require a block-timestamp
 clock. The library reads the fixed OZ 5.4 `openzeppelin.storage.Votes` namespace
 using OZ's `VotesStorage` type. OZ continues to write standard checkpoints;
@@ -25,12 +25,12 @@ uint48 activation; // zero means inactive
 
 The mapping stores plain cumulative vote-seconds. Activation occupies one
 additional slot for the entire vault, with zero denoting inactive accounting.
-Initialization at timestamp zero reverts, so a successful activation is always
-nonzero and cannot be reset. No integral offset or missing-history sentinel is
+The supported chains use positive timestamps, so activation becomes nonzero
+and cannot be reset. No integral offset or missing-history sentinel is
 needed: every integral is zero before activation.
 
 Fresh vaults activate during initialization. Legacy vault admins activate via
-`upgradeToAndCall(newImpl, abi.encodeCall(StakingVault.initializeVoteIntegral, ()))`.
+`upgradeToAndCall(newImpl, abi.encodeCall(StakingVault.initializeAverageVotes, ()))`.
 The timestamp is read inside the library; callers cannot select an earlier time
 or reset activation. If activation is omitted, lookups return zero and integral
 updates are skipped while ordinary OZ voting checkpoints continue. Later
@@ -88,13 +88,12 @@ latest checkpoint's votes; arithmetic overflow reverts rather than wrapping.
 The governor always calculates:
 
 ```text
-start = max(0, now - 12 hours)
+start = now - 12 hours
 averageVotes = token.getPastAverageVotes(account, start, now)
 ```
 
 Both this average and votes at `now - 1` must meet the current proposal threshold.
-If the chain clock itself is younger than twelve hours, the requested interval
-starts at timestamp zero and uses that shorter duration.
+The governor assumes the chain timestamp exceeds the twelve-hour lookback.
 There is no historical endpoint fallback. For a full twelve-hour request during
 the activation ramp, pre-activation time contributes zero while the denominator
 remains twelve hours. For a constant balance of 100 votes, the recognized average is
@@ -135,7 +134,7 @@ array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
 Solidity 0.8.33 is used with IR disabled and 35 optimizer runs. Runtime sizes
 are 24,562 bytes for the vault (14 bytes below EIP-170), 22,813 for the governor,
-9,836 for ProposalLib, and 1,696 for VoteIntegralLib. Runs 36–40 exceed the vault
+9,811 for ProposalLib, and 1,653 for VoteIntegralLib. Runs 36–40 exceed the vault
 limit by 16 bytes. Run `pnpm size` after any contract or compiler change.
 
 Unit tests compare arbitrary histories to a segment-sum reference clipped at
@@ -148,11 +147,11 @@ earlier eligibility for larger balances.
 
 ## Gas measurements
 
-The retained [benchmark](../test/bench/IntegralGasBenchmark.t.sol) measures token
+The retained [benchmark](../test/bench/AverageVotesGasBenchmark.t.sol) measures token
 mutations and historical/current lookups with the configured optimizer setting:
 
 ```sh
-forge test --match-contract IntegralGasBenchmarkTest -vv
+forge test --match-contract AverageVotesGasBenchmarkTest -vv
 ```
 
 It reports gross `gasleft()` differences around test-contract-to-token calls,

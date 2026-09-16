@@ -1,4 +1,4 @@
-# Vote-integral upgrade forks
+# Average-votes upgrade forks
 
 Run `pnpm test:fork` for the four pinned upgrade cases. `pnpm test` runs the
 non-fork suite. CI runs both. Fork tests fail rather than skip if historical
@@ -20,12 +20,12 @@ Each vault is tested with both earlier legacy checkpoints and a legacy
 checkpoint created at the exact upgrade timestamp. The fixture registers the
 new vault implementation through the existing registry owner, then calls the
 actual vault's `upgradeToAndCall` from its existing admin with
-`abi.encodeCall(StakingVault.initializeVoteIntegral, ())`. Real share holders
+`abi.encodeCall(StakingVault.initializeAverageVotes, ())`. Real share holders
 move their delegated votes before/after the upgrade. No proxy storage, code,
 balances, roles or votes are patched.
 
 Assertions cover ordinary storage, balances, supply, standard and optimistic
-checkpoint samples, historical votes, the implementation slot, zero integral
+checkpoint samples, historical votes, the implementation slot, zero average voting power
 at activation, automatic accrual without new checkpoints, and preservation of
 that accrued area on the first later movement. The same-timestamp cases also
 coalesce post-upgrade movements into checkpoints written by the legacy

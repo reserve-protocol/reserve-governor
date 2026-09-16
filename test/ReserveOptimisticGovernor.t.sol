@@ -463,8 +463,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.propose(targets, values, calldatas, "No votes proposer");
     }
 
-    function test_standardProposal_uninitializedIntegralFailsClosed() public {
-        _clearVoteIntegral(alice);
+    function test_standardProposal_uninitializedAverageVotesFailsClosed() public {
+        _clearAverageVoteHistory(alice);
         vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(0));
 
         assertEq(stakingVault.getPastAverageVotes(alice, 0, block.timestamp), 0);
@@ -478,14 +478,14 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, alice, 0, threshold)
         );
-        governor.propose(targets, values, calldatas, "Uninitialized integral history");
+        governor.propose(targets, values, calldatas, "Uninitialized average voting history");
     }
 
     function test_standardProposal_unchangedLegacyBalanceRampsFromGlobalActivation() public {
         uint256 threshold = governor.proposalThreshold();
         vm.prank(alice);
         stakingVault.transfer(bob, ALICE_STAKE - threshold);
-        _restartVoteIntegral(alice);
+        _restartAverageVotes(alice);
         uint256 activation = block.timestamp;
 
         assertEq(stakingVault.getPastAverageVotes(alice, 0, activation), 0);
@@ -514,7 +514,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     }
 
     function test_standardProposal_dustDoesNotResetLegacyRampOrEraseArea() public {
-        _restartVoteIntegral(alice);
+        _restartAverageVotes(alice);
         uint256 activation = block.timestamp;
         address dustHolder = makeAddr("dustHolder");
 
@@ -552,7 +552,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         stakingVault.transfer(proposer, threshold);
         vm.warp(block.timestamp + 3 hours);
 
-        _restartVoteIntegral(proposer);
+        _restartAverageVotes(proposer);
         vm.warp(block.timestamp + 6 hours);
         assertEq(governor.getVotes(proposer, block.timestamp - 1), threshold);
         assertGe(governor.getVotes(proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD), threshold);
@@ -2207,15 +2207,15 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             : governor.castVoteBySig(proposalId, support, voter, signature);
     }
 
-    function _clearVoteIntegral(address account) internal {
+    function _clearAverageVoteHistory(address account) internal {
         bytes32 accountSlot = keccak256(abi.encode(account, VOTE_INTEGRALS_MAPPING_SLOT));
         for (uint32 i; i < stakingVault.numCheckpoints(account); ++i) {
             vm.store(address(stakingVault), keccak256(abi.encode(i, accountSlot)), bytes32(0));
         }
     }
 
-    function _restartVoteIntegral(address account) internal {
-        _clearVoteIntegral(account);
+    function _restartAverageVotes(address account) internal {
+        _clearAverageVoteHistory(account);
         vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(uint256(uint48(block.timestamp))));
     }
 

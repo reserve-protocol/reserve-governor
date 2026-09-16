@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import { IVotesIntegral } from "@interfaces/IVotesIntegral.sol";
+import { IAverageVotes } from "@interfaces/IAverageVotes.sol";
 import { IERC6372 } from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
-interface IOptimisticVotes is IERC6372, IVotesIntegral {
+interface IOptimisticVotes is IERC6372, IAverageVotes {
     event OptimisticDelegateChanged(
         address indexed delegator, address indexed fromDelegate, address indexed toDelegate
     );

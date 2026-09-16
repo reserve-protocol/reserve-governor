@@ -9,7 +9,7 @@ import { StakingVault } from "@staking/StakingVault.sol";
 import { Test } from "forge-std/Test.sol";
 
 /// @dev Uses real 1.0.0 vaults and authorized registry/admin accounts. No storage, code, balances or votes are patched.
-contract VoteIntegralUpgradeForkTest is Test {
+contract AverageVotesUpgradeForkTest is Test {
     address private constant BSC_HOLDER = 0xb209Eed4D80fB47E5C16577e44DaD1073c5C5015;
     address private constant FRESH_DELEGATE = address(0x123456789);
     bytes32 private constant IMPLEMENTATION_SLOT = bytes32(uint256(keccak256("eip1967.proxy.implementation")) - 1);
@@ -123,7 +123,7 @@ contract VoteIntegralUpgradeForkTest is Test {
         registry.registerVersion(next);
         address admin = vault.getRoleMember(bytes32(0), 0);
         vm.prank(admin);
-        vault.upgradeToAndCall(implementation, abi.encodeCall(StakingVault.initializeVoteIntegral, ()));
+        vault.upgradeToAndCall(implementation, abi.encodeCall(StakingVault.initializeAverageVotes, ()));
         assertEq(address(uint160(uint256(vm.load(address(vault), IMPLEMENTATION_SLOT)))), implementation);
     }
 

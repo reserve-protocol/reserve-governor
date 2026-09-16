@@ -645,7 +645,7 @@ contract StakingVaultTest is Test {
         assertEq(vault.getPastOptimisticVotes(ACTOR_BOB, snapshot), 1000e18);
     }
 
-    function test_standardDelegatedVoteIntegral_tracksTimeAndCoalescesTimestamp() public {
+    function test_standardAverageVotes_tracksTimeAndCoalescesTimestamp() public {
         token.mint(address(this), 1000e18);
         token.approve(address(vault), 1000e18);
 
@@ -666,7 +666,7 @@ contract StakingVaultTest is Test {
         assertEq(vault.getPastAverageVotes(ACTOR_BOB, start, block.timestamp), 500e18);
     }
 
-    function test_standardDelegatedVoteIntegral_ignoresNoopDelegateMovements() public {
+    function test_standardAverageVotes_ignoresNoopDelegateMovements() public {
         token.mint(address(this), 1000e18);
         token.approve(address(vault), 1000e18);
         vault.depositAndDelegate(1000e18, ACTOR_BOB, ACTOR_BOB);
@@ -1453,7 +1453,7 @@ contract StakingVaultTest is Test {
         vault.initialize("New Name", "NEW", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0, address(0));
     }
 
-    function test_initializeVoteIntegral_requiresAdmin() public {
+    function test_initializeAverageVotes_requiresAdmin() public {
         // Simulate a legacy vault whose integral namespace has not been initialized.
         vm.store(address(vault), VOTE_INTEGRAL_STATE_SLOT, bytes32(0));
         bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
@@ -1462,16 +1462,16 @@ contract StakingVaultTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
         );
-        vault.initializeVoteIntegral();
+        vault.initializeAverageVotes();
 
         vm.prank(address(timelock));
-        vault.initializeVoteIntegral();
+        vault.initializeAverageVotes();
     }
 
-    function test_initializeVoteIntegral_cannotResetFreshVault() public {
+    function test_initializeAverageVotes_cannotResetFreshVault() public {
         vm.prank(address(timelock));
-        vm.expectRevert(VoteIntegralLib.VoteIntegral__AlreadyInitialized.selector);
-        vault.initializeVoteIntegral();
+        vm.expectRevert(VoteIntegralLib.AverageVotes__AlreadyInitialized.selector);
+        vault.initializeAverageVotes();
     }
 
     function test_implementationCannotBeInitialized() public {

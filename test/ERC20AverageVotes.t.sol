@@ -2,14 +2,14 @@
 pragma solidity ^0.8.28;
 
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
-import { ERC20VotesIntegralUpgradeable } from "@staking/ERC20VotesIntegralUpgradeable.sol";
+import { ERC20AverageVotesUpgradeable } from "@staking/ERC20AverageVotesUpgradeable.sol";
 import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 import { stdError } from "forge-std/StdError.sol";
 import { Test } from "forge-std/Test.sol";
 
-contract IntegralTokenHarness is ERC20VotesIntegralUpgradeable {
-    function initializeVoteIntegral() external {
-        _initializeVoteIntegral();
+contract AverageVotesTokenHarness is ERC20AverageVotesUpgradeable {
+    function initializeAverageVotes() external {
+        _initializeAverageVotes();
     }
 
     function mint(address account, uint256 amount) external {
@@ -33,16 +33,16 @@ contract IntegralTokenHarness is ERC20VotesIntegralUpgradeable {
     }
 }
 
-contract ERC20VotesIntegralTest is Test {
-    IntegralTokenHarness private token;
+contract ERC20AverageVotesTest is Test {
+    AverageVotesTokenHarness private token;
     address private constant ALICE = address(0xa11ce);
     address private constant BOB = address(0xb0b);
     bytes32 private constant INTEGRAL_SLOT = 0x6c8ef2534ba8916a427dbfc162fbce2a165f7cccf4d86d45f25d2b245ed73b00;
 
     function setUp() public {
         vm.warp(1000);
-        token = new IntegralTokenHarness();
-        token.initializeVoteIntegral();
+        token = new AverageVotesTokenHarness();
+        token.initializeAverageVotes();
         vm.prank(ALICE);
         token.delegate(ALICE);
     }
@@ -130,8 +130,8 @@ contract ERC20VotesIntegralTest is Test {
 
     function test_maximumIntegralFits() public {
         vm.warp(1);
-        token = new IntegralTokenHarness();
-        token.initializeVoteIntegral();
+        token = new AverageVotesTokenHarness();
+        token.initializeAverageVotes();
         vm.prank(ALICE);
         token.delegate(ALICE);
         token.mint(ALICE, type(uint208).max);
@@ -164,7 +164,7 @@ contract ERC20VotesIntegralTest is Test {
     }
 
     function test_uninitializedHistoryIsZeroAndLateInitializationDoesNotBackfill() public {
-        token = new IntegralTokenHarness();
+        token = new AverageVotesTokenHarness();
         vm.prank(ALICE);
         token.delegate(ALICE);
         token.mint(ALICE, 10);
@@ -174,7 +174,7 @@ contract ERC20VotesIntegralTest is Test {
         assertEq(token.getPastAverageVotes(ALICE, 0, 1100), 0);
         assertEq(vm.load(address(token), _entry(ALICE, 1)), bytes32(0));
 
-        token.initializeVoteIntegral();
+        token.initializeAverageVotes();
         assertEq(token.getPastAverageVotes(ALICE, 0, 1100), 0);
         vm.warp(1200);
         assertEq(token.getPastAverageVotes(ALICE, 1100, 1200), 15);
@@ -184,27 +184,20 @@ contract ERC20VotesIntegralTest is Test {
         assertEq(token.getPastAverageVotes(ALICE, 1100, 1300), 12);
     }
 
-    function test_zeroTimestampCannotActivateAndActivationCannotReset() public {
-        vm.warp(0);
-        token = new IntegralTokenHarness();
-        vm.expectRevert(VoteIntegralLib.VoteIntegral__InvalidActivationTimestamp.selector);
-        token.initializeVoteIntegral();
+    function test_activationCannotReset() public {
+        vm.warp(block.timestamp + 100);
 
-        vm.warp(1);
-        token.initializeVoteIntegral();
-
-        vm.warp(100);
-        vm.expectRevert(VoteIntegralLib.VoteIntegral__AlreadyInitialized.selector);
-        token.initializeVoteIntegral();
+        vm.expectRevert(VoteIntegralLib.AverageVotes__AlreadyInitialized.selector);
+        token.initializeAverageVotes();
     }
 
     function test_rangesClipActivationAndFollowVoteChanges() public {
-        token = new IntegralTokenHarness();
+        token = new AverageVotesTokenHarness();
         vm.prank(ALICE);
         token.delegate(ALICE);
         token.mint(ALICE, 10);
         vm.warp(1100);
-        token.initializeVoteIntegral();
+        token.initializeAverageVotes();
         vm.warp(1200);
         token.mint(ALICE, 10);
         vm.warp(1300);
@@ -226,12 +219,12 @@ contract ERC20VotesIntegralTest is Test {
         assertEq(token.getPastAverageVotes(ALICE, 999, 999), 0);
         assertEq(token.getPastAverageVotes(ALICE, 1000, 1000), 0);
         assertEq(token.getPastAverageVotes(ALICE, type(uint256).max, type(uint256).max), 0);
-        vm.expectRevert(VoteIntegralLib.VoteIntegral__InvalidTimeRange.selector);
+        vm.expectRevert(VoteIntegralLib.AverageVotes__InvalidTimeRange.selector);
         token.getPastAverageVotes(ALICE, 1001, 1000);
 
-        token = new IntegralTokenHarness();
+        token = new AverageVotesTokenHarness();
         assertEq(token.getPastAverageVotes(ALICE, 1000, 1200), 0);
-        vm.expectRevert(VoteIntegralLib.VoteIntegral__InvalidTimeRange.selector);
+        vm.expectRevert(VoteIntegralLib.AverageVotes__InvalidTimeRange.selector);
         token.getPastAverageVotes(ALICE, 999, 998);
     }
 
@@ -284,7 +277,7 @@ contract ERC20VotesIntegralTest is Test {
     function testFuzz_averageMatchesSegmentSum(uint208[12] memory values, uint32[12] memory elapsed, uint256 seed)
         public
     {
-        token = new IntegralTokenHarness();
+        token = new AverageVotesTokenHarness();
         vm.prank(ALICE);
         token.delegate(ALICE);
 
@@ -298,7 +291,7 @@ contract ERC20VotesIntegralTest is Test {
             times[i] = timestamp;
             if (i == activationIndex) {
                 activation = timestamp;
-                token.initializeVoteIntegral();
+                token.initializeAverageVotes();
             }
             uint256 balance = token.balanceOf(ALICE);
             if (values[i] >= balance) {

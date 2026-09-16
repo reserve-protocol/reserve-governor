@@ -10,10 +10,10 @@ import { Test } from "forge-std/Test.sol";
 import { ERC20OptimisticVotesUpgradeable } from "@staking/ERC20OptimisticVotesUpgradeable.sol";
 import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 
-contract IntegralGasToken is ERC20Upgradeable, ERC20OptimisticVotesUpgradeable {
+contract AverageVotesGasToken is ERC20Upgradeable, ERC20OptimisticVotesUpgradeable {
     function initialize() external initializer {
-        __ERC20_init("Integral Gas Token", "IGT");
-        __EIP712_init("Integral Gas Token", "1");
+        __ERC20_init("Average Votes Gas Token", "AVG");
+        __EIP712_init("Average Votes Gas Token", "1");
         __ERC20OptimisticVotes_init();
     }
 
@@ -41,8 +41,8 @@ contract IntegralGasToken is ERC20Upgradeable, ERC20OptimisticVotesUpgradeable {
     }
 }
 
-contract IntegralGasBenchmarkTest is Test {
-    IntegralGasToken private token;
+contract AverageVotesGasBenchmarkTest is Test {
+    AverageVotesGasToken private token;
 
     address private constant ALICE = address(0xA11CE);
     address private constant BOB = address(0xB0B);
@@ -51,11 +51,11 @@ contract IntegralGasBenchmarkTest is Test {
 
     function setUp() public {
         vm.warp(1_000_000);
-        token = new IntegralGasToken();
+        token = new AverageVotesGasToken();
         token.initialize();
     }
 
-    function _coolIntegralCall() private {
+    function _coolAverageVotesCall() private {
         vm.cool(address(token));
         vm.cool(address(VoteIntegralLib));
     }
@@ -64,13 +64,13 @@ contract IntegralGasBenchmarkTest is Test {
     ///      its previously touched storage are cold. gasleft includes the test-to-token CALL
     ///      opcode and calldata cost, which are identical for both source snapshots.
     function testGas_mutations() public {
-        _coolIntegralCall();
+        _coolAverageVotesCall();
         uint256 gasBefore = gasleft();
         token.mint(ALICE, 1_000 ether);
         uint256 gasUsed = gasBefore - gasleft();
         emit log_named_uint("cold fresh mint", gasUsed);
 
-        _coolIntegralCall();
+        _coolAverageVotesCall();
         vm.prank(ALICE);
         gasBefore = gasleft();
         token.delegate(DELEGATE_A);
@@ -82,14 +82,14 @@ contract IntegralGasBenchmarkTest is Test {
         token.delegate(DELEGATE_B);
 
         vm.warp(block.timestamp + 10);
-        _coolIntegralCall();
+        _coolAverageVotesCall();
         gasBefore = gasleft();
         token.mint(ALICE, 100 ether);
         gasUsed = gasBefore - gasleft();
         emit log_named_uint("cold later mint to delegated account", gasUsed);
 
         vm.warp(block.timestamp + 10);
-        _coolIntegralCall();
+        _coolAverageVotesCall();
         vm.prank(ALICE);
         gasBefore = gasleft();
         token.transfer(BOB, 10 ether);
@@ -101,7 +101,7 @@ contract IntegralGasBenchmarkTest is Test {
         vm.warp(block.timestamp + 10);
         vm.prank(ALICE);
         token.transfer(BOB, 1 ether);
-        _coolIntegralCall();
+        _coolAverageVotesCall();
         vm.prank(ALICE);
         gasBefore = gasleft();
         token.transfer(BOB, 1 ether);
@@ -109,7 +109,7 @@ contract IntegralGasBenchmarkTest is Test {
         emit log_named_uint("cold same-timestamp coalesced transfer", gasUsed);
 
         vm.warp(block.timestamp + 10);
-        _coolIntegralCall();
+        _coolAverageVotesCall();
         gasBefore = gasleft();
         token.burn(ALICE, 10 ether);
         gasUsed = gasBefore - gasleft();
@@ -139,7 +139,7 @@ contract IntegralGasBenchmarkTest is Test {
         vm.warp(block.timestamp + 10);
 
         uint256 periodStart = midpoint - 100;
-        _coolIntegralCall();
+        _coolAverageVotesCall();
         uint256 gasBefore = gasleft();
         uint256 historical = token.getPastAverageVotes(DELEGATE_A, periodStart, midpoint);
         uint256 gasUsed = gasBefore - gasleft();
@@ -150,7 +150,7 @@ contract IntegralGasBenchmarkTest is Test {
         gasUsed = gasBefore - gasleft();
         emit log_named_uint("warm historical lookup, 65 checkpoints", gasUsed);
 
-        _coolIntegralCall();
+        _coolAverageVotesCall();
         gasBefore = gasleft();
         uint256 current = token.getPastAverageVotes(DELEGATE_A, periodStart, block.timestamp);
         gasUsed = gasBefore - gasleft();

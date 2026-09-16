@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface IVotesIntegral {
+interface IAverageVotes {
     /// @notice Returns average delegated votes over [start, end), rounded down.
     /// @dev Divides by the full requested interval, including time before activation, which contributes zero.
     ///      Equal bounds return zero; start > end reverts.
