@@ -15,15 +15,21 @@ import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 abstract contract ERC20AverageVotesUpgradeable is ERC20VotesUpgradeable, IAverageVotes {
     /// @inheritdoc IAverageVotes
     function getPastAverageVotes(address account, uint256 start, uint256 end) external view returns (uint256) {
-        return VoteIntegralLib.averageVotes(account, start, end);
+        require(start <= end, AverageVotes__InvalidTimeRange());
+
+        if (start == end) {
+            return 0;
+        }
+
+        return (VoteIntegralLib.lookup(account, end) - VoteIntegralLib.lookup(account, start)) / (end - start);
     }
 
     function _initializeAverageVotes() internal {
-        VoteIntegralLib.initialize();
+        VoteIntegralLib.initialize(clock());
     }
 
     function _moveDelegateVotes(address from, address to, uint256 amount) internal virtual override {
-        VoteIntegralLib.update(from, to, amount);
+        VoteIntegralLib.update(from, to, amount, clock());
 
         // OZ appends/coalesces the checkpoint whose integral was just recorded. Its supply, vote and
         // timestamp checks apply to both updates: a failure here also reverts the library's writes.

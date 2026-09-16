@@ -31,8 +31,8 @@ needed: every integral is zero before activation.
 
 Fresh vaults activate during initialization. Legacy vault admins activate via
 `upgradeToAndCall(newImpl, abi.encodeCall(StakingVault.initializeAverageVotes, ()))`.
-The timestamp is read inside the library; callers cannot select an earlier time
-or reset activation. If activation is omitted, lookups return zero and integral
+The token passes its `clock()` to the library; vault callers cannot select an earlier
+time or reset activation. If activation is omitted, lookups return zero and integral
 updates are skipped while ordinary OZ voting checkpoints continue. Later
 initialization starts accrual at that actual call's timestamp.
 
@@ -42,9 +42,8 @@ Let `a` be activation and `V(t)` an account's standard delegated votes. Its
 integral is zero for `t <= a`, and otherwise the area under `V` from `a` to `t`.
 
 Before a nonzero movement between different standard delegates, the extension
-calls the library, which reads the current block timestamp and each affected
-delegate's latest OZ checkpoint. At a later timestamp it writes the next
-checkpoint's integral as:
+passes `clock()` to the library, which reads each affected delegate's latest OZ
+checkpoint. At a later timestamp it writes the next checkpoint's integral as:
 
 ```text
 previousCumulative + previousVotes * (now - max(previousTimestamp, activation))
@@ -64,13 +63,15 @@ average delegated votes over `[start, end)`, rounded down:
 averageVotes = floor((cumulative(end) - cumulative(start)) / (end - start))
 ```
 
-The cumulative endpoints are private implementation details. The denominator
-is the full requested duration, including time before activation.
+`getPastAverageVotes()` validates the range, calls `VoteIntegralLib.lookup()` for
+each endpoint, and subtracts and divides in the token. The cumulative endpoints
+are not exposed on the token's public interface. The denominator is the full
+requested duration, including time before activation.
 All activation handling stays inside the token: inactive accounting and
 pre-activation time contribute zero. Equal bounds return zero; reversed bounds
 revert, even while inactive.
 
-Each private cumulative lookup returns zero at/before activation or before the
+Each library cumulative lookup returns zero at/before activation or before the
 first vote checkpoint. Otherwise it binary-searches the standard checkpoints
 and computes:
 
@@ -126,15 +127,16 @@ The maximum integral within that clock domain is bounded by
 `(2^208 - 1) * (2^48 - 1) < 2^256`. One-shot current-time activation means every
 subsequent update occurs at or after activation. The private integral-update
 helper uses unchecked operations under these constraints. All arithmetic in
-the average lookup and its private cumulative lookups remains checked, including
-index arithmetic, elapsed time, extrapolation, endpoint subtraction, and division.
+the token's average calculation and the library's cumulative lookups remains
+checked, including index arithmetic, elapsed time, extrapolation, endpoint
+subtraction, and division.
 
 Each new checkpoint uses at most one companion storage word, with no second
 array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
-Solidity 0.8.33 is used with IR disabled and 833 optimizer runs. Runtime sizes
-are 24,441 bytes for the vault (135 bytes below EIP-170), 24,284 for the governor,
-10,112 for ProposalLib, and 1,790 for VoteIntegralLib. At 834 runs the optimizer
+Solidity 0.8.33 is used with IR disabled and 723 optimizer runs. Runtime sizes
+are 24,547 bytes for the vault (29 bytes below EIP-170), 24,385 for the governor,
+9,365 for ProposalLib, and 1,659 for VoteIntegralLib. At 724 runs the optimizer
 produces a vault larger than the limit. UnstakingManager creation runs through the
 linked upgrade library to preserve this headroom. Run `pnpm size` after any contract
 or compiler change.
@@ -143,7 +145,8 @@ Unit tests compare arbitrary histories to a segment-sum reference clipped at
 activation and the requested range. They cover reversed/empty ranges, ranges
 straddling activation, zero-area intervals, same-timestamp movements, maximum
 arithmetic, no-ops, redelegation, conservation, delayed initialization, reset
-protection, pre-activation endpoint replay, and rollback on an OZ failure.
+protection, token-clock consistency, pre-activation endpoint replay, and rollback
+on an OZ failure.
 Governor tests verify the unchanged legacy holder's ramp and proportionally
 earlier eligibility for larger balances.
 

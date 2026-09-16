@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IAverageVotes } from "@interfaces/IAverageVotes.sol";
 import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 import { ERC20AverageVotesUpgradeable } from "@staking/ERC20AverageVotesUpgradeable.sol";
 import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
@@ -24,12 +25,18 @@ contract AverageVotesTokenHarness is ERC20AverageVotesUpgradeable {
         _moveDelegateVotes(from, to, amount);
     }
 
-    function clock() public view override returns (uint48) {
+    function clock() public view virtual override returns (uint48) {
         return Time.timestamp();
     }
 
     function CLOCK_MODE() public pure override returns (string memory) {
         return "mode=timestamp";
+    }
+}
+
+contract OffsetClockAverageVotesTokenHarness is AverageVotesTokenHarness {
+    function clock() public view override returns (uint48) {
+        return super.clock() + 1 days;
     }
 }
 
@@ -45,6 +52,25 @@ contract ERC20AverageVotesTest is Test {
         token.initializeAverageVotes();
         vm.prank(ALICE);
         token.delegate(ALICE);
+    }
+
+    function test_activationAndUpdatesUseTokenClock() public {
+        token = new OffsetClockAverageVotesTokenHarness();
+        vm.prank(ALICE);
+        token.delegate(ALICE);
+        token.mint(ALICE, 10);
+
+        vm.warp(block.timestamp + 100);
+        token.initializeAverageVotes();
+        uint256 start = token.clock();
+
+        vm.warp(block.timestamp + 100);
+        token.mint(ALICE, 10);
+        vm.warp(block.timestamp + 100);
+
+        assertEq(token.getPastAverageVotes(ALICE, start - 100, start), 0);
+        assertEq(token.getPastAverageVotes(ALICE, start, token.clock()), 15);
+        assertEq(token.getPastAverageVotes(ALICE, start - 100, token.clock()), 10);
     }
 
     function test_emptyHistoryAndZeroVoteIntervals() public {
@@ -219,12 +245,12 @@ contract ERC20AverageVotesTest is Test {
         assertEq(token.getPastAverageVotes(ALICE, 999, 999), 0);
         assertEq(token.getPastAverageVotes(ALICE, 1000, 1000), 0);
         assertEq(token.getPastAverageVotes(ALICE, type(uint256).max, type(uint256).max), 0);
-        vm.expectRevert(VoteIntegralLib.AverageVotes__InvalidTimeRange.selector);
+        vm.expectRevert(IAverageVotes.AverageVotes__InvalidTimeRange.selector);
         token.getPastAverageVotes(ALICE, 1001, 1000);
 
         token = new AverageVotesTokenHarness();
         assertEq(token.getPastAverageVotes(ALICE, 1000, 1200), 0);
-        vm.expectRevert(VoteIntegralLib.AverageVotes__InvalidTimeRange.selector);
+        vm.expectRevert(IAverageVotes.AverageVotes__InvalidTimeRange.selector);
         token.getPastAverageVotes(ALICE, 999, 998);
     }
 

@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
-import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 
 /**
  * @title Vote Integral Library
@@ -13,7 +12,6 @@ import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
  */
 library VoteIntegralLib {
     error AverageVotes__AlreadyInitialized();
-    error AverageVotes__InvalidTimeRange();
 
     /// @custom:storage-location erc7201:reserve.storage.VotesIntegral
     struct VotesIntegralStorage {
@@ -46,29 +44,18 @@ library VoteIntegralLib {
     }
 
     /// @notice Starts integral accounting at the current timestamp for every delegate.
-    /// @dev Called only by the vault's authorized wrapper or during fresh vault initialization.
-    function initialize() external {
+    /// @dev Called only by the vault's authorized wrapper or during fresh vault initialization, passing clock().
+    function initialize(uint48 timestamp) external {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
 
         require($.activation == 0, AverageVotes__AlreadyInitialized());
 
-        $.activation = Time.timestamp();
+        $.activation = timestamp;
     }
 
-    /// @notice Returns average delegated votes over [start, end), rounded down.
-    /// @dev Time before activation contributes zero but remains part of the averaging period.
-    function averageVotes(address account, uint256 start, uint256 end) external view returns (uint256) {
-        require(start <= end, AverageVotes__InvalidTimeRange());
-
-        if (start == end) {
-            return 0;
-        }
-
-        return (_lookup(account, end) - _lookup(account, start)) / (end - start);
-    }
-
-    // Cumulative accounting and activation clipping stay inside the token's library.
-    function _lookup(address account, uint256 timepoint) private view returns (uint256) {
+    /// @notice Returns cumulative delegated vote-seconds at a timestamp.
+    /// @dev Time at or before activation contributes zero. Future extrapolation uses checked arithmetic.
+    function lookup(address account, uint256 timepoint) external view returns (uint256) {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
 
         if ($.activation == 0 || timepoint <= $.activation) {
@@ -105,14 +92,12 @@ library VoteIntegralLib {
         return $.cumulative[account][low] + uint256(checkpoint._value) * timepoint;
     }
 
-    /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, using block time.
+    /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, passing clock().
     ///      The caller must retain OZ's uint208 supply/vote checks and nondecreasing uint48 timestamp checks.
-    function update(address from, address to, uint256 amount) external {
+    function update(address from, address to, uint256 amount, uint48 timestamp) external {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
 
         if ($.activation != 0 && from != to && amount != 0) {
-            uint48 timestamp = Time.timestamp();
-
             if (from != address(0)) {
                 _recordIntegral($, from, timestamp);
             }
