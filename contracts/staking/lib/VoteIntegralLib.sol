@@ -90,11 +90,12 @@ library VoteIntegralLib {
         return $.cumulative[account][low] + uint256(checkpoint._value) * timepoint;
     }
 
-    /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, at clock().
+    /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, using block time.
     ///      The caller must retain OZ's uint208 supply/vote checks and nondecreasing uint48 timestamp checks.
-    function update(address from, address to, uint256 amount, uint48 timestamp) external {
+    function update(address from, address to, uint256 amount) external {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
         if ($.initialized && from != to && amount != 0) {
+            uint48 timestamp = Time.timestamp();
             if (from != address(0)) {
                 _recordIntegral($, from, timestamp);
             }

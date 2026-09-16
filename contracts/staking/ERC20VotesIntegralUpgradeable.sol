@@ -23,7 +23,7 @@ abstract contract ERC20VotesIntegralUpgradeable is ERC20VotesUpgradeable, IVotes
     }
 
     function _moveDelegateVotes(address from, address to, uint256 amount) internal virtual override {
-        VoteIntegralLib.update(from, to, amount, clock());
+        VoteIntegralLib.update(from, to, amount);
         // OZ appends/coalesces the checkpoint whose integral was just recorded. Its supply, vote and
         // timestamp checks apply to both updates: a failure here also reverts the library's writes.
         super._moveDelegateVotes(from, to, amount);

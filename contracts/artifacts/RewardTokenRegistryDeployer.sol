@@ -9,7 +9,7 @@ library RewardTokenRegistryDeployer {
      *
      * @notice Source Contract: contracts/staking/RewardTokenRegistry.sol
      * - solc: 0.8.33+commit.64118f21
-     * - optimizer_runs: 35
+     * - optimizer_runs: 80
      * - viaIR: false
      * - evm_version: cancun
      * - bytecodeHash: none

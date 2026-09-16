@@ -42,8 +42,9 @@ Let `a` be activation and `V(t)` an account's standard delegated votes. Its
 integral is zero for `t <= a`, and otherwise the area under `V` from `a` to `t`.
 
 Before a nonzero movement between different standard delegates, the extension
-reads each affected delegate's latest OZ checkpoint. At a later timestamp it
-writes the next checkpoint's integral as:
+calls the library, which reads the current block timestamp and each affected
+delegate's latest OZ checkpoint. At a later timestamp it writes the next
+checkpoint's integral as:
 
 ```text
 previousCumulative + previousVotes * (now - max(previousTimestamp, activation))
@@ -116,10 +117,10 @@ and addition remain checked because public queries accept a uint256 timepoint.
 Each new checkpoint uses at most one companion storage word, with no second
 array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
-Solidity 0.8.33 is used with IR disabled and 35 optimizer runs. Runtime sizes
-are 24,554 bytes for the vault (22 bytes below EIP-170), 22,813 for the governor,
-9,999 for ProposalLib, and 1,459 for VoteIntegralLib. Runs 36–40 exceed the vault
-limit by 8 bytes. Run `pnpm size` after any contract or compiler change.
+Solidity 0.8.33 is used with IR disabled and 80 optimizer runs. Runtime sizes
+are 24,562 bytes for the vault (14 bytes below EIP-170), 22,917 for the governor,
+10,001 for ProposalLib, and 1,443 for VoteIntegralLib. Runs 81–85 exceed the vault
+limit by 16 bytes. Run `pnpm size` after any contract or compiler change.
 
 Unit tests compare arbitrary histories to a segment-sum reference clipped at
 activation. They cover zero-area intervals, same-timestamp movements, maximum

@@ -8,7 +8,7 @@
 - Standard proposals require votes at the previous timestamp and a 12-hour average of standard delegated vote power to meet the current proposal threshold. Both lookback and throttle refill use `PROPOSAL_THROTTLE_PERIOD` (12 hours).
 - Integral accounting starts at one activation timestamp per vault. Pre-activation vote-seconds count as zero, so unchanged legacy holders ramp automatically to their full 12-hour average without a transfer. Eligibility always uses the average; there is no historical endpoint fallback.
 - The shared `Versioned` mixin returns `1.1.0` instead of `1.0.0`.
-- Optimizer runs set to 35 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 22,813 bytes; StakingVault runtime: 24,554 bytes (22 bytes below EIP-170).
+- Optimizer runs set to 80 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 22,917 bytes; StakingVault runtime: 24,562 bytes (14 bytes below EIP-170).
 
 ### Added
 
