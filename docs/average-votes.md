@@ -132,10 +132,12 @@ index arithmetic, elapsed time, extrapolation, endpoint subtraction, and divisio
 Each new checkpoint uses at most one companion storage word, with no second
 array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
-Solidity 0.8.33 is used with IR disabled and 35 optimizer runs. Runtime sizes
-are 24,562 bytes for the vault (14 bytes below EIP-170), 22,813 for the governor,
-9,811 for ProposalLib, and 1,653 for VoteIntegralLib. Runs 36–40 exceed the vault
-limit by 16 bytes. Run `pnpm size` after any contract or compiler change.
+Solidity 0.8.33 is used with IR disabled and 833 optimizer runs. Runtime sizes
+are 24,441 bytes for the vault (135 bytes below EIP-170), 24,284 for the governor,
+10,112 for ProposalLib, and 1,790 for VoteIntegralLib. At 834 runs the optimizer
+produces a vault larger than the limit. UnstakingManager creation runs through the
+linked upgrade library to preserve this headroom. Run `pnpm size` after any contract
+or compiler change.
 
 Unit tests compare arbitrary histories to a segment-sum reference clipped at
 activation and the requested range. They cover reversed/empty ranges, ranges
