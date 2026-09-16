@@ -3,18 +3,23 @@ pragma solidity ^0.8.28;
 
 import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
+import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 
 /**
  * @title Vote Integral Library
  * @notice Tracks cumulative delegated vote-seconds alongside the standard OZ checkpoints.
- * @dev Requires a timestamp clock. Existing checkpoints retain their packed layout and are not backfilled.
- *      Tracking starts at each delegate's first nonzero vote movement after upgrading to this extension.
+ * @dev Requires a block-timestamp clock. Existing checkpoints retain their packed layout and are not backfilled.
+ *      Tracking starts globally at the vault's activation timestamp.
  */
 library VoteIntegralLib {
+    error VoteIntegral__AlreadyInitialized();
+
     /// @custom:storage-location erc7201:reserve.storage.VotesIntegral
     struct VotesIntegralStorage {
-        // Integral at the checkpoint timestamp, plus one. Zero means this checkpoint predates tracking.
+        // Integral at the checkpoint timestamp. Entries before activation remain zero.
         mapping(address account => mapping(uint256 index => uint256)) cumulative;
+        uint48 activation;
+        bool initialized;
     }
 
     // keccak256(abi.encode(uint256(keccak256("reserve.storage.VotesIntegral")) - 1)) & ~bytes32(uint256(0xff))
@@ -40,9 +45,22 @@ library VoteIntegralLib {
         return $._delegateCheckpoints[account]._checkpoints;
     }
 
-    /// @notice Returns cumulative delegated vote-seconds plus one, or zero for untracked history.
-    /// @dev Preserves the tracking sentinel, including at zero area. Differences of tracked values are exact.
+    /// @notice Starts integral accounting at the current timestamp for every delegate.
+    /// @dev Called only by the vault's authorized wrapper or during fresh vault initialization.
+    function initialize() external {
+        VotesIntegralStorage storage $ = _getVotesIntegralStorage();
+        require(!$.initialized, VoteIntegral__AlreadyInitialized());
+        $.activation = Time.timestamp();
+        $.initialized = true;
+    }
+
+    /// @notice Returns cumulative delegated vote-seconds since activation.
     function lookup(address account, uint256 timepoint) external view returns (uint256) {
+        VotesIntegralStorage storage $ = _getVotesIntegralStorage();
+        if (!$.initialized || timepoint <= $.activation) {
+            return 0;
+        }
+
         Checkpoints.Checkpoint208[] storage checkpoints = _delegateHistory(account);
         uint256 low;
         uint256 high = checkpoints.length;
@@ -62,53 +80,45 @@ library VoteIntegralLib {
             --low;
         }
 
-        uint256 cumulative = _getVotesIntegralStorage().cumulative[account][low];
-        if (cumulative == 0) {
-            return 0;
-        }
         Checkpoints.Checkpoint208 storage checkpoint = checkpoints[low];
-        // Preserve the sentinel so tracked zero area remains distinct from untracked history.
-        // The search selected a checkpoint at or before timepoint.
+        uint48 start = checkpoint._key > $.activation ? checkpoint._key : $.activation;
+        // The search selected a checkpoint at or before timepoint, and timepoint is after activation.
         unchecked {
-            timepoint -= checkpoint._key;
+            timepoint -= start;
         }
         // Keep extrapolation checked: callers can supply timestamps beyond the uint48 clock domain.
-        return cumulative + uint256(checkpoint._value) * timepoint;
+        return $.cumulative[account][low] + uint256(checkpoint._value) * timepoint;
     }
 
     /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, at clock().
     ///      The caller must retain OZ's uint208 supply/vote checks and nondecreasing uint48 timestamp checks.
     function update(address from, address to, uint256 amount, uint48 timestamp) external {
-        if (from != to && amount != 0) {
+        VotesIntegralStorage storage $ = _getVotesIntegralStorage();
+        if ($.initialized && from != to && amount != 0) {
             if (from != address(0)) {
-                _recordIntegral(from, timestamp);
+                _recordIntegral($, from, timestamp);
             }
             if (to != address(0)) {
-                _recordIntegral(to, timestamp);
+                _recordIntegral($, to, timestamp);
             }
         }
     }
 
-    function _recordIntegral(address account, uint48 timestamp) private {
-        mapping(uint256 => uint256) storage cumulatives = _getVotesIntegralStorage().cumulative[account];
+    function _recordIntegral(VotesIntegralStorage storage $, address account, uint48 timestamp) private {
+        mapping(uint256 => uint256) storage cumulatives = $.cumulative[account];
         Checkpoints.Checkpoint208[] storage checkpoints = _delegateHistory(account);
         uint256 index = checkpoints.length;
-        uint256 cumulative = 1;
+        uint256 cumulative;
         if (index != 0) {
-            // OZ uses nondecreasing uint48 timestamps and uint208 votes. Even the maximum integral
-            // plus our sentinel fits uint256: (2^208 - 1) * (2^48 - 1) + 1 < 2^256.
+            // One-shot current-clock initialization makes timestamp >= activation. Together with OZ's
+            // nondecreasing uint48 timestamps and uint208 vote cap, this ensures the integral fits uint256.
             unchecked {
                 Checkpoints.Checkpoint208 storage last = checkpoints[index - 1];
-                uint256 previous = cumulatives[index - 1];
                 if (last._key == timestamp) {
-                    if (previous != 0) {
-                        return;
-                    }
-                    // The first tracked movement can coalesce into a pre-upgrade checkpoint.
-                    --index;
-                } else if (previous != 0) {
-                    cumulative = previous + uint256(last._value) * (timestamp - last._key);
+                    return;
                 }
+                uint48 start = last._key > $.activation ? last._key : $.activation;
+                cumulative = cumulatives[index - 1] + uint256(last._value) * (timestamp - start);
             }
         }
         cumulatives[index] = cumulative;

@@ -151,25 +151,14 @@ library ProposalLib {
             uint256 periodStart =
                 block.timestamp > PROPOSAL_THROTTLE_PERIOD ? block.timestamp - PROPOSAL_THROTTLE_PERIOD : 0;
             IOptimisticVotes votes = IOptimisticVotes(address(governor.token()));
-            // The lookup returns integral + 1 for tracked history, including a true zero integral.
             uint256 integralStart = votes.getPastVotesIntegral(proposal.proposer, periodStart);
-
-            if (integralStart == 0) {
-                // Existing vaults may have standard vote history but no integral observations at the window start.
-                uint256 historicalVotes = governor.getVotes(proposal.proposer, periodStart);
-                require(
-                    historicalVotes >= votesThreshold,
-                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, historicalVotes, votesThreshold)
-                );
-            } else {
-                uint256 integralEnd = votes.getPastVotesIntegral(proposal.proposer, block.timestamp);
-                // Both endpoints are tracked, so their +1 offsets cancel.
-                uint256 averageVotes = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
-                require(
-                    averageVotes >= votesThreshold,
-                    IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
-                );
-            }
+            uint256 integralEnd = votes.getPastVotesIntegral(proposal.proposer, block.timestamp);
+            // Deliberately divide by the full period even before timestamp 12 hours or integral activation.
+            uint256 averageVotes = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
+            require(
+                averageVotes >= votesThreshold,
+                IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
+            );
         }
 
         // validate calls

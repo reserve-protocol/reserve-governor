@@ -26,6 +26,7 @@ import { StakingVault } from "@src/staking/StakingVault.sol";
 import { UnstakingManager } from "@src/staking/UnstakingManager.sol";
 import { StakingVaultUpgradeLib } from "@src/staking/lib/StakingVaultUpgradeLib.sol";
 import { RewardTokenRegistry } from "@staking/RewardTokenRegistry.sol";
+import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 
 import { MockERC20 } from "@mocks/MockERC20.sol";
 import { MockRoleRegistry } from "@mocks/MockRoleRegistry.sol";
@@ -48,6 +49,8 @@ contract StakingVaultTest is Test {
     uint256 private constant REWARD_HALF_LIFE = 3 days;
     uint256 private constant UNSTAKING_DELAY = 1 weeks;
     address private constant TRUSTED_FILLER_REGISTRY = address(0xF111E7);
+    bytes32 private constant VOTE_INTEGRAL_STATE_SLOT =
+        bytes32(uint256(0x6c8ef2534ba8916a427dbfc162fbce2a165f7cccf4d86d45f25d2b245ed73b00) + 1);
 
     address constant ACTOR_ALICE = address(0x123123001);
     address constant ACTOR_BOB = address(0x123123002);
@@ -651,7 +654,7 @@ contract StakingVaultTest is Test {
 
         vm.warp(start + 6 hours);
         uint256 halfwayIntegral = vault.getPastVotesIntegral(address(this), block.timestamp);
-        assertEq(halfwayIntegral, 1000e18 * 6 hours + 1);
+        assertEq(halfwayIntegral, 1000e18 * 6 hours);
 
         // Delegation changes at one timestamp must not create a zero-duration
         // segment or lose the integral accumulated before the change.
@@ -660,7 +663,7 @@ contract StakingVaultTest is Test {
 
         vm.warp(start + 12 hours);
         assertEq(vault.getPastVotesIntegral(address(this), block.timestamp), halfwayIntegral);
-        assertEq(vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp), 1000e18 * 6 hours + 1);
+        assertEq(vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp), 1000e18 * 6 hours);
     }
 
     function test_standardDelegatedVoteIntegral_ignoresNoopDelegateMovements() public {
@@ -1448,6 +1451,27 @@ contract StakingVaultTest is Test {
     function test_cannotInitializeTwice() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         vault.initialize("New Name", "NEW", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0, address(0));
+    }
+
+    function test_initializeVoteIntegral_requiresAdmin() public {
+        // Simulate a legacy vault whose integral namespace has not been initialized.
+        vm.store(address(vault), VOTE_INTEGRAL_STATE_SLOT, bytes32(0));
+        bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(ACTOR_ALICE);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, ACTOR_ALICE, adminRole)
+        );
+        vault.initializeVoteIntegral();
+
+        vm.prank(address(timelock));
+        vault.initializeVoteIntegral();
+    }
+
+    function test_initializeVoteIntegral_cannotResetFreshVault() public {
+        vm.prank(address(timelock));
+        vm.expectRevert(VoteIntegralLib.VoteIntegral__AlreadyInitialized.selector);
+        vault.initializeVoteIntegral();
     }
 
     function test_implementationCannotBeInitialized() public {

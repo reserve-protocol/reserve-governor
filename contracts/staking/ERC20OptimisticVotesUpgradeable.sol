@@ -38,6 +38,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesIntegralUpgradeab
 
     function __ERC20OptimisticVotes_init() internal onlyInitializing {
         __ERC20Votes_init();
+        _initializeVoteIntegral();
         __ERC20OptimisticVotes_init_unchained();
     }
 

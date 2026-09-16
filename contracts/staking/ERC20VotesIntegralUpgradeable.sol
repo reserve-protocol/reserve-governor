@@ -10,14 +10,16 @@ import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 /**
  * @title ERC20 Votes Integral
  * @notice Tracks cumulative delegated vote-seconds alongside the standard OZ checkpoints.
- * @dev Requires a timestamp clock. Existing checkpoints retain their packed layout and are not backfilled.
- *      Tracking starts at each delegate's first nonzero vote movement after upgrading to this extension.
+ * @dev Requires a block-timestamp clock. Existing checkpoints retain their packed layout and are not backfilled.
  */
 abstract contract ERC20VotesIntegralUpgradeable is ERC20VotesUpgradeable, IVotesIntegral {
-    /// @notice Returns cumulative delegated vote-seconds plus one, or zero for untracked history.
-    /// @dev Includes the current timestamp. The offset cancels when subtracting two tracked values.
+    /// @notice Returns cumulative delegated vote-seconds since integral activation.
     function getPastVotesIntegral(address account, uint256 timepoint) external view returns (uint256) {
         return VoteIntegralLib.lookup(account, timepoint);
+    }
+
+    function _initializeVoteIntegral() internal {
+        VoteIntegralLib.initialize();
     }
 
     function _moveDelegateVotes(address from, address to, uint256 amount) internal virtual override {

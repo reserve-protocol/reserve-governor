@@ -11,7 +11,7 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and on average over the preceding 12 hours, with a historical-vote fallback when integral history at the start of the lookback is untracked (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
+Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and on average over the preceding 12 hours (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
 
 The shared `Versioned` mixin reports `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release changes and upgrade notes.
 
@@ -254,7 +254,7 @@ The main hybrid governor contract.
 **Proposal Creation Rules:**
 
 - `proposeOptimistic()` and `propose()` consume charges from the same per-account bucket
-- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour average against the current `proposalThreshold()`; when integral history at the start of the window is untracked, it uses standard votes at that point instead of the average
+- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour integral average against the current `proposalThreshold()`
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -369,6 +369,7 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - `removeRewardToken(rewardToken)` -- Remove a reward token from distribution
 - `setUnstakingDelay(delay)` -- Set the delay before unstaked tokens can be claimed
 - `setRewardRatio(rewardHalfLife)` -- Set the exponential decay half-life for reward distribution
+- `initializeVoteIntegral()` -- Activate integral accounting once when upgrading a legacy vault
 
 **Other:**
 
@@ -376,7 +377,7 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - `optimisticDelegates(account)` -- Return the current optimistic delegate for an account
 - `getOptimisticVotes(account)` -- Return the latest optimistic delegated voting weight
 - `getPastOptimisticVotes(account, timepoint)` -- Return optimistic voting weight at a past timestamp snapshot
-- `getPastVotesIntegral(account, timepoint)` -- Return cumulative standard delegated vote-seconds plus one, extrapolated from the most recent checkpoint at or before the timestamp; returns zero for untracked history, including before the first tracked checkpoint
+- `getPastVotesIntegral(account, timepoint)` -- Return cumulative standard delegated vote-seconds since the vault-wide activation, extrapolated from the most recent checkpoint at or before the timestamp; returns zero while inactive and at or before activation
 - `rewardTokenRegistry()` -- Reward token registry wired in during initialization
 - `versionRegistry()` -- Version registry wired in during initialization
 
@@ -388,9 +389,9 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - Standard and optimistic delegatees are tracked independently on the same share balance
 - `addRewardToken()` only accepts tokens that are currently registered in `RewardTokenRegistry`
 
-Standard delegated vote movements update cumulative vote-seconds through `ERC20VotesIntegralUpgradeable` and the linked `VoteIntegralLib`. The library reads OZ standard voting checkpoints and stores a cumulative value for each tracked checkpoint in a companion mapping; OZ continues to write the voting checkpoints. Updates at the same timestamp coalesce; lookups binary-search the existing checkpoints. History is retained indefinitely. Zero-value movements and movements between accounts with the same standard delegate do not start tracking or add checkpoints.
+Standard delegated vote movements update cumulative vote-seconds through `ERC20VotesIntegralUpgradeable` and the linked `VoteIntegralLib`. The library reads OZ standard voting checkpoints and stores a raw cumulative value for each post-activation checkpoint in a companion mapping; OZ continues to write the voting checkpoints. Updates at the same timestamp coalesce; lookups binary-search the existing checkpoints. History is retained indefinitely. The vault-wide activation makes unchanged legacy balances accrue automatically. Zero-value movements and movements between accounts with the same standard delegate do not add checkpoints.
 
-OZ retains its existing one-slot checkpoints (`uint48` timestamp and `uint208` votes). The companion mapping adds one slot per tracked checkpoint, storing `cumulative + 1`; zero means tracking has not started for that checkpoint. This preserves existing vote history without duplicating timestamps or vote values. The supply cap and timestamp range bound the integral plus its sentinel below `uint256.max`. The extension needs a timestamp clock, as used by StakingVault. See [the checkpoint-integral design and tradeoffs](docs/checkpoint-integrals.md).
+OZ retains its existing one-slot checkpoints (`uint48` timestamp and `uint208` votes). The companion mapping adds one slot per post-activation checkpoint and stores the exact cumulative value without a sentinel offset. A packed namespace slot records the global activation timestamp and one-time initialization flag. This preserves existing vote history without duplicating timestamps or vote values. The supply cap and timestamp range bound the integral below `uint256.max`. The extension requires the block-timestamp clock used by StakingVault. See [the checkpoint-integral design and tradeoffs](docs/checkpoint-integrals.md).
 
 #### Token Support
 
@@ -491,11 +492,11 @@ integralStart = integral(start)
 averageVotes = floor((integral(t) - integralStart) / PROPOSAL_THROTTLE_PERIOD)
 ```
 
-The getter preserves the stored encoding: zero means untracked history, and any tracked value is cumulative vote-seconds plus one. When `integralStart` is nonzero, both endpoints are tracked and the offsets cancel, so `averageVotes` must meet the same threshold. A tracked zero integral returns one and uses exact averaging. Higher vote power can compensate for shorter holding time; this is an average requirement, not continuous ownership of particular shares. Deposits or delegations after tracking begins accumulate vote-seconds automatically, so an account can become eligible as time passes without another transaction.
+The getter returns plain cumulative vote-seconds since the vault's activation timestamp. The governor always requires `averageVotes` to meet the threshold, including when either integral is zero. Time before activation contributes zero, and the denominator remains the full 12 hours. There is no historical-vote fallback.
 
-When `integralStart` is zero, the governor instead requires standard `getPastVotes(account, start)` to meet the threshold. This covers unchanged delegates on upgraded vaults without backfilling the integral or requiring a transfer. The fallback remains active only while the window starts before tracked history, so a dust delegation that starts tracking does not temporarily disqualify a legacy delegate. A newly delegated account still waits a full lookback because its votes at `start` remain zero until the window reaches its first delegation checkpoint.
+An unchanged legacy holder therefore accrues eligibility automatically: after six hours its recognized average is half its voting weight; after twelve hours it is the full weight. No transfer or delegation is needed. Higher vote power can compensate for shorter holding time, so larger holders may qualify earlier. Transfers and delegation changes preserve the vote-seconds each delegate actually earned; they cannot duplicate accrued credit or reset activation.
 
-The fallback is an accepted single-point migration approximation: together with the current-vote check it verifies voting power at `start` and `t - 1`, but it does not detect an intervening dip. A zero `integralStart` means missing history, not zero accumulated area. Exact averaging applies as soon as `start` reaches the first tracked checkpoint, including at that checkpoint's timestamp. See [Upgrading to 1.1.0](#upgrading-to-110) for the transition behavior.
+This is an average requirement, not continuous ownership of particular shares. Both fresh and upgraded vaults use the same accounting. See [Upgrading to 1.1.0](#upgrading-to-110) for activation and the one-time warm-up.
 
 ### StakingVault Parameters
 
@@ -563,17 +564,21 @@ For deployments created with `deployWithExistingStakingVault()`, the new timeloc
 
 Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastVotesIntegral` unconditionally for eligible standard proposers; a vault without that API makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate that API during deployment.
 
-This release needs no reinitializer or additional throttle configuration. The governor reuses the existing capacity and per-account charge state for both proposal paths. Its storage layout is unchanged. The companion cumulative mapping occupies a new `reserve.storage.VotesIntegral` ERC-7201 namespace. Existing standard and optimistic checkpoints, delegation mappings, and ordinary storage slots retain their layout. This implementation supports upgrades from deployed 1.0.0 vaults; it does not migrate integral arrays from the earlier, unreleased observation-array prototype.
+Activate the upgraded vault atomically by passing the new admin-only initializer to `upgradeToAndCall`:
 
-An upgraded delegate whose lookback starts in untracked integral history can qualify immediately if their standard votes at both `t - 1` and `t - 12 hours` meet the current threshold and a throttle charge is available. A newly delegated account cannot use the fallback early: its historical lookup remains zero until the 12-hour window reaches the delegation checkpoint.
+```solidity
+vault.upgradeToAndCall(newVaultImpl, abi.encodeCall(StakingVault.initializeVoteIntegral, ()));
+```
 
-The first nonzero movement between different standard delegatees starts integral tracking for the affected accounts. Previous vote-seconds are not backfilled. The historical fallback continues while the lookback start precedes the first tracked checkpoint, so a dust movement does not temporarily block a legacy delegate. Exactly 12 hours after that account's first tracked movement, the start lookup returns one and the governor switches to the exact recorded average. This deadline is per account, not 12 hours after the upgrade. Calling `delegate()` with the same delegate does not start tracking in this implementation.
+Fresh vaults activate during ordinary initialization. Activation is one-shot and cannot be reset, including when initialized at timestamp zero. If an upgrade omits this call, integral lookups return zero and integral writes remain disabled while ordinary vote checkpoints continue. An admin can initialize later, but accrual begins at that actual activation time; earlier activity earns no credit.
 
-During that migration window, the fallback checks only the lookback-start checkpoint in addition to the separate current-vote check. It cannot detect an intervening dip below the threshold. Pre-upgrade transfers or delegations across legacy accounts can therefore be replayed as proposal opportunities 12 hours later; threshold stake is not globally rate-limited across those accounts. Each account leaves the fallback 12 hours after its first tracked movement. This single-point approximation is the accepted compatibility tradeoff for legacy histories that cannot be backfilled.
+The governor reuses the existing capacity and per-account charge state, with no additional throttle configuration or governor storage. The `reserve.storage.VotesIntegral` ERC-7201 namespace holds a raw cumulative mapping plus one packed slot for the activation timestamp and initialized flag. Existing standard and optimistic checkpoints, delegation mappings, and ordinary storage retain their layouts. This supports deployed 1.0.0 vaults; earlier unreleased PR prototypes require a separate migration of their integral state.
+
+All vote-seconds before activation count as zero. A legacy holder with exactly the proposal threshold must wait twelve hours before proposing; larger holders can qualify sooner as their average grows. Unchanged holders accrue automatically. The first movement records all time held since activation before applying the new balance. Pre-upgrade transfers and delegations cannot be replayed for proposal credit, and intervening post-activation balance dips are included in the average.
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 
-The build uses Solidity 0.8.33, optimizer runs 156, and `via_ir = false`. At these settings the governor runtime is 23,106 bytes and the vault runtime is 24,509 bytes, leaving the vault 67 bytes below the 24,576-byte EIP-170 limit. Recheck sizes after contract or compiler changes.
+The build uses Solidity 0.8.33, optimizer runs 35, and `via_ir = false`. The governor runtime is 22,813 bytes and the vault runtime is 24,554 bytes, leaving the vault 22 bytes below the 24,576-byte EIP-170 limit. Runs 36–40 produce a 24,584-byte vault and exceed the limit. Run `pnpm size` after any contract or compiler change.
 
 
 ## Flow Summary

@@ -1,161 +1,152 @@
 # Checkpoint-indexed vote integrals
 
-This document describes the checkpoint-indexed implementation of the proposal-integral feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48). It retains a small linked `VoteIntegralLib` and removes duplicate observation arrays. Governor eligibility and shared-throttle behavior are defined in that PR.
+The proposal-integral feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48)
+uses existing OZ standard vote checkpoints and a linked `VoteIntegralLib`.
+Standard proposals require current voting power and a 12-hour average. Both
+proposal paths share the existing proposal throttle.
 
-## Storage and updates
+## Storage and activation
 
 `ERC20VotesIntegralUpgradeable` extends OZ `ERC20VotesUpgradeable` and delegates
-integral lookup/update calls to `VoteIntegralLib`. The library reads the fixed
-OZ 5.4 `openzeppelin.storage.Votes` namespace using OZ's `VotesStorage` type.
-OZ continues to write standard checkpoints; the library never changes them.
-Changes to that namespace or its checkpoint layout require compatibility review.
+integral lookup/update calls to `VoteIntegralLib`. Both require a block-timestamp
+clock. The library reads the fixed OZ 5.4 `openzeppelin.storage.Votes` namespace
+using OZ's `VotesStorage` type. OZ continues to write standard checkpoints;
+the library never changes their layout. Changes to that namespace or checkpoint
+layout require compatibility review.
 
 Standard checkpoints remain packed `uint48` timestamps plus `uint208` votes,
-occupying one storage slot each. The library writes a separate ERC-7201 namespace,
-`reserve.storage.VotesIntegral`, containing:
+occupying one storage slot each. The separate ERC-7201 namespace
+`reserve.storage.VotesIntegral` contains:
 
 ```solidity
 mapping(address account => mapping(uint256 checkpointIndex => uint256)) cumulative;
+uint48 activation;
+bool initialized;
 ```
 
-Values store the integral at that checkpoint's timestamp **plus one**. Zero
-means the checkpoint has no integral history. This distinguishes an untracked
-checkpoint from a tracked checkpoint with zero cumulative area, without a
-separate tracking-start marker or array length.
+The mapping stores plain cumulative vote-seconds. Activation and the initialized
+flag occupy one additional slot for the entire vault. The flag makes activation
+one-shot even at timestamp zero. No integral offset or missing-history sentinel
+is needed: every integral is zero before activation.
+
+Fresh vaults activate during initialization. Legacy vault admins activate via
+`upgradeToAndCall(newImpl, abi.encodeCall(StakingVault.initializeVoteIntegral, ()))`.
+The timestamp is read inside the library; callers cannot select an earlier time
+or reset activation. If activation is omitted, lookups return zero and integral
+updates are skipped while ordinary OZ voting checkpoints continue. Later
+initialization starts accrual at that actual call's timestamp.
+
+## Accounting and lookup
+
+Let `a` be activation and `V(t)` an account's standard delegated votes. Its
+integral is zero for `t <= a`, and otherwise the area under `V` from `a` to `t`.
 
 Before a nonzero movement between different standard delegates, the extension
-calls the library to read each affected delegate's latest OZ checkpoint. For a
-later timestamp it stores `previousCumulative + previousVotes * elapsed` at the next checkpoint
-index. At the same timestamp it leaves the existing cumulative value intact.
-OZ then appends/coalesces the corresponding voting checkpoint. A failure in
-OZ's movement or timestamp checks reverts the entire transaction, including the
-companion write. Total-supply and optimistic checkpoints do not acquire
-companion entries.
+reads each affected delegate's latest OZ checkpoint. At a later timestamp it
+writes the next checkpoint's integral as:
 
-Lookup binary-searches the existing standard checkpoints. If the selected
-entry is untracked, it returns zero. Otherwise it preserves the plus-one encoding
-and adds the checkpoint's votes times the elapsed time. A tracked zero-area
-checkpoint therefore returns one, not zero. Subtracting two tracked lookups
-cancels the offsets and yields exact vote-seconds; subtract one when decoding
-an absolute tracked value. Never treat an untracked zero as measured area.
-Current-timestamp queries work. Like the preceding implementation, future
-timestamps extrapolate the latest votes; arithmetic overflow now reverts
-instead of wrapping.
-
-## Upgrade behavior
-
-Existing 1.0.0 standard and optimistic checkpoints and ordinary vault storage
-retain their exact layouts. Adding `cumulative` directly to OZ's checkpoint
-struct would change array-element stride and cannot preserve those histories.
-
-Existing delegates remain untracked until their first real vote movement.
-The first cumulative entry is one (zero area). This also works if the movement
-coalesces into a checkpoint written by the old implementation at the same
-timestamp. Earlier history is not backfilled. No-op delegation and zero-value
-movements do not start tracking. No reinitializer is needed.
-
-Governor migration fallback is keyed to the integral at the **start** of the
-12-hour lookback. While that value is zero, the governor checks standard votes
-at the lookback start instead of subtracting a partially tracked integral. A
-first dust movement therefore cannot switch a legacy delegate to a near-zero
-average as soon as the end integral begins growing. A new delegate still waits
-a full lookback because its start-point vote checkpoint is zero until the
-window reaches the delegation.
-
-Exact averaging begins when the lookback lands on the first tracked checkpoint:
-that lookup returns one even though accumulated area is zero. This distinguishes
-a fresh account's first checkpoint from missing legacy history and prevents
-brief funding, removal, and restoration just before its 12-hour anniversary
-from bypassing the average check. Tracked zero-vote spans also use exact averaging.
-
-The fallback deliberately approximates unavailable legacy history with one
-point. Together with the independent current-vote check, it verifies votes at
-the window start and at the previous timestamp, but cannot see an intervening
-dip. Pre-upgrade stake hops across legacy addresses can be replayed as proposal
-opportunities 12 hours later. The approximation ends for each address exactly
-12 hours after its first tracked movement, not at a global deadline after the
-upgrade. It does not impose a global rate limit on threshold stake reused across
-legacy addresses. These remain accepted migration limits.
-
-This release does **not** migrate integral arrays from the earlier, unreleased
-observation-array prototype that was previously developed in #48. If that
-prototype is deployed first, a separate integral-history migration design is
-required. The four [fork cases](../test/fork/README.md) target the two real
-1.0.0 vaults backing the six identified DTFs.
-
-## Bounds and tradeoffs
-
-OZ enforces nondecreasing uint48 timestamps and the uint208 voting supply cap.
-The maximum stored integral including its sentinel is bounded by
-`(2^208 - 1) * (2^48 - 1) + 1 < 2^256`. Guarded index arithmetic and updates
-use unchecked operations under those constraints. Lookup multiplication and
-addition stay checked because the public query accepts a uint256 timepoint.
-
-Each new tracked checkpoint adds one companion storage word instead of two
-observation words, with no second array length. The linked library performs
-lookup and accounting in the vault's storage context. Lookup searches the full
-standard checkpoint history, including pre-upgrade entries, through typed
-storage references. Fewer writes do not imply cheaper reads; both paths must
-be measured.
-
-Keeping the accounting in a library lets this implementation use Solidity
-0.8.33, no IR, and **156 optimizer runs**. The vault is **24,509 bytes**,
-**67 bytes** below EIP-170, and the integral library is **1,097 bytes**. The
-earlier observation-array prototype used 24,573 vault bytes plus a 1,300-byte
-integral library. Size headroom remains limited and must be checked after future
-edits.
-
-Unit tests compare fuzzed histories to a direct segment-sum reference and cover
-tracked zero-area intervals, first-checkpoint anniversary attacks, legacy
-tracking boundaries, same-timestamp movements, maximum arithmetic, no-ops,
-redelegation, and rollback when OZ rejects a movement. Forks exercise actual
-upgrades with legacy checkpoints from earlier and identical timestamps.
-
-## Gas comparison
-
-Both implementations below use Solidity 0.8.33, optimizer runs **156**, no IR,
-and the same token harness and state sequence. The baseline is the earlier
-observation-array implementation at
-`982f284c1aea5f34dca32c0f15880402d829d1fc`; its external integral library
-maintains a separate observation array. Holding the optimizer setting constant
-isolates the accounting change.
-
-| Operation | Separate observations | Shared checkpoints | Change |
-| --- | ---: | ---: | ---: |
-| Fresh mint, no delegation | 111,583 | 108,838 | -2,745 |
-| Initial delegation | 126,058 | 98,940 | -27,118 |
-| Later mint to delegated account | 146,049 | 113,423 | -32,626 |
-| Transfer across distinct delegates | 201,194 | 140,693 | -60,501 |
-| Same-timestamp coalesced transfer | 68,069 | 51,454 | -16,615 |
-| Later burn from delegated account | 145,904 | 113,278 | -32,626 |
-| Historical integral lookup, cold | 26,749 | 23,656 | -3,093 |
-| Historical integral lookup, warm | 6,744 | 5,651 | -1,093 |
-| Current integral lookup, cold | 24,690 | 21,401 | -3,289 |
-| Current integral lookup, warm | 6,690 | 5,401 | -1,289 |
-
-These are gross `gasleft()` differences around test-contract-to-token calls,
-including CALL/calldata overhead and excluding intrinsic transaction gas and
-refunds. They are not end-to-end StakingVault deposit costs. Cold measurements
-use `vm.cool(token)` to cool the token address and its storage, and cool the
-linked integral library in both implementations. Earlier state transitions
-remain in the same Foundry test execution, so storage original/dirty accounting is not
-claimed to match independent transaction receipts. Warm lookups immediately
-repeat the same query. The lookup fixture has 65 checkpoints; the historical
-query selects checkpoint 33 and the current query is ten seconds after the
-last checkpoint. The coalescing measurement follows an earlier transfer at the
-same timestamp.
-
-Run the retained [benchmark](../test/bench/IntegralGasBenchmark.t.sol) with:
-
-```sh
-forge test --match-contract IntegralGasBenchmarkTest --optimizer-runs 156 -vv
+```text
+previousCumulative + previousVotes * (now - max(previousTimestamp, activation))
 ```
 
-To reproduce the baseline, copy the unchanged harness into a separate checkout
-of the baseline commit and run the same command.
+The previous cumulative is naturally zero for legacy checkpoints. At the same
+timestamp the existing cumulative stays unchanged, including when coalescing
+with a legacy checkpoint written at activation. OZ then appends/coalesces its
+voting checkpoint. An OZ failure rolls back the companion write as well.
+No-op movements, total-supply checkpoints, and optimistic checkpoints do not
+add integral entries.
 
-Both mutations and lookups cost less in this fixture, with the largest saving
-on transfers between different delegates. Legacy delegates' lookups search
-their full OZ checkpoint history, which can be longer than a new post-upgrade
-observation array. These measurements do not characterize all history lengths
-or transaction sequences.
+Lookup returns zero when inactive, at/before activation, or before the first
+vote checkpoint. Otherwise it binary-searches the standard checkpoints and
+returns:
+
+```text
+checkpointCumulative + checkpointVotes * (query - max(checkpointTimestamp, activation))
+```
+
+This lets an untouched legacy account accrue without a transfer or any storage
+write: its old checkpoint supplies the balance, and elapsed time begins at
+activation. Current-timestamp queries work. Future timestamps extrapolate the
+latest checkpoint's votes; arithmetic overflow reverts rather than wrapping.
+
+## Proposal eligibility and upgrade behavior
+
+The governor always calculates:
+
+```text
+start = max(0, now - 12 hours)
+averageVotes = floor((integral(now) - integral(start)) / 12 hours)
+```
+
+Both this average and votes at `now - 1` must meet the current proposal threshold.
+There is no historical endpoint fallback. Before twelve hours have elapsed from
+activation, pre-activation time contributes zero while the denominator remains
+twelve hours. For a constant balance of 100 votes, the recognized average is
+25 after three hours, 50 after six hours, and 100 after twelve hours. Larger
+balances may satisfy the threshold sooner. A threshold-sized legacy holder
+waits twelve hours without needing another transaction.
+
+Transfers and delegation changes preserve only the time each account actually
+held its votes. For example, 100 votes moved from Alice to Bob six hours after
+activation give each a 50-vote average at hour twelve. Alice also fails the
+separate current-votes check. Pre-activation stake hops earn no integral credit,
+and post-activation dips are included in the average. A dust movement cannot
+reset the ramp or erase already accrued area.
+
+Existing 1.0.0 standard and optimistic checkpoints and ordinary vault storage
+retain their exact layouts. Upgrade and activate the vault before upgrading
+its governor or deploying a new governor against it. The governor retains its
+existing throttle capacity and charge state. Veto-triggered confirmation
+proposals remain exempt from throttle and proposer eligibility checks.
+
+This release does not migrate integral state from earlier unreleased PR
+prototypes. Those require a separate migration. The four
+[fork cases](../test/fork/README.md) exercise actual 1.0.0 BSC and Base vaults,
+including legacy checkpoints at the exact activation timestamp.
+
+## Bounds, size, and verification
+
+OZ enforces nondecreasing uint48 timestamps and a uint208 voting supply cap.
+The maximum integral within that clock domain is bounded by
+`(2^208 - 1) * (2^48 - 1) < 2^256`. One-shot current-time activation means every
+subsequent update occurs at or after activation. Guarded index arithmetic and
+updates use unchecked operations under these constraints. Lookup multiplication
+and addition remain checked because public queries accept a uint256 timepoint.
+
+Each new checkpoint uses at most one companion storage word, with no second
+array length or duplicate timestamp/value history. Activation adds one slot per
+vault. The linked library keeps accounting code outside the vault runtime.
+Solidity 0.8.33 is used with IR disabled and 35 optimizer runs. Runtime sizes
+are 24,554 bytes for the vault (22 bytes below EIP-170), 22,813 for the governor,
+9,999 for ProposalLib, and 1,459 for VoteIntegralLib. Runs 36–40 exceed the vault
+limit by 8 bytes. Run `pnpm size` after any contract or compiler change.
+
+Unit tests compare arbitrary histories to a segment-sum reference clipped at
+activation. They cover zero-area intervals, same-timestamp movements, maximum
+arithmetic, no-ops, redelegation, conservation, delayed initialization, reset
+protection, pre-activation endpoint replay, and rollback on an OZ failure.
+Governor tests verify the unchanged legacy holder's ramp and proportionally
+earlier eligibility for larger balances.
+
+## Gas measurements
+
+The retained [benchmark](../test/bench/IntegralGasBenchmark.t.sol) measures token
+mutations and historical/current lookups with the configured optimizer setting:
+
+```sh
+forge test --match-contract IntegralGasBenchmarkTest -vv
+```
+
+It reports gross `gasleft()` differences around test-contract-to-token calls,
+including CALL/calldata overhead and excluding intrinsic transaction gas and
+refunds. These are not end-to-end StakingVault deposit costs. Cold measurements
+cool the token address, its storage, and the linked integral library. Earlier
+state transitions remain in the same Foundry execution, so storage original/dirty
+accounting does not necessarily match independent transaction receipts. Warm
+lookups repeat the same query immediately. The lookup fixture has 65 checkpoints;
+the historical query selects checkpoint 33, and the current query is ten seconds
+after the last checkpoint.
+
+Legacy lookups search the full OZ checkpoint history. Results from a fixed
+fixture do not characterize every history length or transaction sequence, and
+measurements from earlier sentinel-based prototypes do not describe this ramp.

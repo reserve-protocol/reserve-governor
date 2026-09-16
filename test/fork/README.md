@@ -19,15 +19,18 @@ Tests run serially with a 50 compute-units-per-second RPC budget.
 Each vault is tested with both earlier legacy checkpoints and a legacy
 checkpoint created at the exact upgrade timestamp. The fixture registers the
 new vault implementation through the existing registry owner, then calls the
-actual vault's `upgradeToAndCall` from its existing admin. Real share holders
+actual vault's `upgradeToAndCall` from its existing admin with
+`abi.encodeCall(StakingVault.initializeVoteIntegral, ())`. Real share holders
 move their delegated votes before/after the upgrade. No proxy storage, code,
 balances, roles or votes are patched.
 
 Assertions cover ordinary storage, balances, supply, standard and optimistic
 checkpoint samples, historical votes, the implementation slot, zero integral
-before the first tracked movement, a returned value of one at the first tracked
-checkpoint (including same-timestamp coalescing), and subsequent cumulative
-vote-seconds plus one. The old governor/timelock implementations remain in use;
-this experiment changes the vault's accounting only. These tests impersonate
-authorized actors directly and do not simulate voting to approve the upgrade
-or broadcast transactions.
+at activation, automatic accrual without new checkpoints, and preservation of
+that accrued area on the first later movement. The same-timestamp cases also
+coalesce post-upgrade movements into checkpoints written by the legacy
+implementation at activation. Integrals contain plain vote-seconds.
+
+The old governor/timelock implementations remain in use; this experiment changes
+the vault's accounting only. These tests impersonate authorized actors directly
+and do not simulate voting to approve the upgrade or broadcast transactions.

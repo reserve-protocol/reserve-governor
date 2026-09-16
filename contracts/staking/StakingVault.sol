@@ -167,6 +167,11 @@ contract StakingVault is
         nativeRewardsLastPaid = block.timestamp;
     }
 
+    /// @notice Activates vote-integral accounting when upgrading a legacy vault.
+    function initializeVoteIntegral() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _initializeVoteIntegral();
+    }
+
     /**
      * Deposit & Delegate
      */
