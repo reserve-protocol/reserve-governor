@@ -20,14 +20,14 @@ occupying one storage slot each. The separate ERC-7201 namespace
 
 ```solidity
 mapping(address account => mapping(uint256 checkpointIndex => uint256)) cumulative;
-uint48 activation;
-bool initialized;
+uint48 activation; // zero means inactive
 ```
 
-The mapping stores plain cumulative vote-seconds. Activation and the initialized
-flag occupy one additional slot for the entire vault. The flag makes activation
-one-shot even at timestamp zero. No integral offset or missing-history sentinel
-is needed: every integral is zero before activation.
+The mapping stores plain cumulative vote-seconds. Activation occupies one
+additional slot for the entire vault, with zero denoting inactive accounting.
+Initialization at timestamp zero reverts, so a successful activation is always
+nonzero and cannot be reset. No integral offset or missing-history sentinel is
+needed: every integral is zero before activation.
 
 Fresh vaults activate during initialization. Legacy vault admins activate via
 `upgradeToAndCall(newImpl, abi.encodeCall(StakingVault.initializeVoteIntegral, ()))`.
@@ -119,7 +119,7 @@ array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
 Solidity 0.8.33 is used with IR disabled and 80 optimizer runs. Runtime sizes
 are 24,562 bytes for the vault (14 bytes below EIP-170), 22,917 for the governor,
-10,001 for ProposalLib, and 1,443 for VoteIntegralLib. Runs 81–85 exceed the vault
+10,001 for ProposalLib, and 1,475 for VoteIntegralLib. Runs 81–85 exceed the vault
 limit by 16 bytes. Run `pnpm size` after any contract or compiler change.
 
 Unit tests compare arbitrary histories to a segment-sum reference clipped at

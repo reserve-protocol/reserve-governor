@@ -2213,7 +2213,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     function _restartVoteIntegral(address account) internal {
         _clearVoteIntegral(account);
-        vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(uint256(uint48(block.timestamp)) | (1 << 48)));
+        vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(uint256(uint48(block.timestamp))));
     }
 
     function _setupVoter(address voter, uint256 amount) internal {

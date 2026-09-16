@@ -131,14 +131,14 @@ contract ERC20VotesIntegralTest is Test {
     }
 
     function test_maximumIntegralFits() public {
-        vm.warp(0);
+        vm.warp(1);
         token = new IntegralTokenHarness();
         token.initializeVoteIntegral();
         vm.prank(ALICE);
         token.delegate(ALICE);
         token.mint(ALICE, type(uint208).max);
         vm.warp(type(uint48).max);
-        uint256 expected = uint256(type(uint208).max) * type(uint48).max;
+        uint256 expected = uint256(type(uint208).max) * (type(uint48).max - 1);
         assertEq(token.getPastVotesIntegral(ALICE, block.timestamp), expected);
         token.burn(ALICE, type(uint208).max);
         token.mint(ALICE, type(uint208).max);
@@ -186,9 +186,13 @@ contract ERC20VotesIntegralTest is Test {
         assertEq(token.getPastVotesIntegral(ALICE, 1300), 2500);
     }
 
-    function test_cannotResetActivationInitializedAtTimestampZero() public {
+    function test_zeroTimestampCannotActivateAndActivationCannotReset() public {
         vm.warp(0);
         token = new IntegralTokenHarness();
+        vm.expectRevert(VoteIntegralLib.VoteIntegral__InvalidActivationTimestamp.selector);
+        token.initializeVoteIntegral();
+
+        vm.warp(1);
         token.initializeVoteIntegral();
 
         vm.warp(100);

@@ -13,13 +13,14 @@ import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
  */
 library VoteIntegralLib {
     error VoteIntegral__AlreadyInitialized();
+    error VoteIntegral__InvalidActivationTimestamp();
 
     /// @custom:storage-location erc7201:reserve.storage.VotesIntegral
     struct VotesIntegralStorage {
         // Integral at the checkpoint timestamp. Entries before activation remain zero.
         mapping(address account => mapping(uint256 index => uint256)) cumulative;
+        // Zero means accounting has not been activated.
         uint48 activation;
-        bool initialized;
     }
 
     // keccak256(abi.encode(uint256(keccak256("reserve.storage.VotesIntegral")) - 1)) & ~bytes32(uint256(0xff))
@@ -49,15 +50,16 @@ library VoteIntegralLib {
     /// @dev Called only by the vault's authorized wrapper or during fresh vault initialization.
     function initialize() external {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
-        require(!$.initialized, VoteIntegral__AlreadyInitialized());
-        $.activation = Time.timestamp();
-        $.initialized = true;
+        require($.activation == 0, VoteIntegral__AlreadyInitialized());
+        uint48 timestamp = Time.timestamp();
+        require(timestamp != 0, VoteIntegral__InvalidActivationTimestamp());
+        $.activation = timestamp;
     }
 
     /// @notice Returns cumulative delegated vote-seconds since activation.
     function lookup(address account, uint256 timepoint) external view returns (uint256) {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
-        if (!$.initialized || timepoint <= $.activation) {
+        if ($.activation == 0 || timepoint <= $.activation) {
             return 0;
         }
 
@@ -94,7 +96,7 @@ library VoteIntegralLib {
     ///      The caller must retain OZ's uint208 supply/vote checks and nondecreasing uint48 timestamp checks.
     function update(address from, address to, uint256 amount) external {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
-        if ($.initialized && from != to && amount != 0) {
+        if ($.activation != 0 && from != to && amount != 0) {
             uint48 timestamp = Time.timestamp();
             if (from != address(0)) {
                 _recordIntegral($, from, timestamp);

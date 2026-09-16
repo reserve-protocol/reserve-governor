@@ -19,8 +19,8 @@
 ### Upgrade notes
 
 - Upgrade and activate the vault before upgrading its governor or deploying a new governor against it. Pass `abi.encodeCall(StakingVault.initializeVoteIntegral, ())` to `upgradeToAndCall` through the existing version-registry and vault-admin authorization flow. Fresh vaults activate during initialization.
-- No new governor throttle storage is required. The `reserve.storage.VotesIntegral` ERC-7201 namespace stores raw integrals and one packed activation/initialized slot, preserving deployed 1.0.0 checkpoints and ordinary storage. This does not migrate integral state from earlier unreleased PR prototypes.
-- Activation cannot be reset. If omitted during upgrade, integral lookups return zero and integral writes are skipped while ordinary vote checkpoints continue. A later admin initialization starts the ramp at that later timestamp without backfilling prior activity.
+- No new governor throttle storage is required. The `reserve.storage.VotesIntegral` ERC-7201 namespace stores raw integrals and one activation timestamp slot (zero means inactive), preserving deployed 1.0.0 checkpoints and ordinary storage. This does not migrate integral state from earlier unreleased PR prototypes.
+- Activation cannot be reset, and initialization at timestamp zero reverts. If omitted during upgrade, integral lookups return zero and integral writes are skipped while ordinary vote checkpoints continue. A later admin initialization starts the ramp at that later timestamp without backfilling prior activity.
 - A threshold-sized unchanged holder becomes eligible after twelve hours; larger holders can qualify earlier through the same fixed-period average. Pre-upgrade stake hops earn no credit, and post-activation balance dips remain part of the calculation.
 - Fresh governor EIP-712 domains use version `1.1.0`. Existing governor proxies retain their stored domain version on upgrade; signing clients should query `eip712Domain()`.
 
