@@ -328,7 +328,7 @@ Versioned factory for full system deployments.
 
 - Stores immutable pointers to `versionRegistry`, `rewardTokenRegistry`, `guardian`, `stakingVaultImpl`, `governorImpl`, `timelockImpl`, and `selectorRegistryImpl`
 - `deployWithNewStakingVault(baseParams, newStakingVaultParams, deploymentNonce)` -- Deploy a new `StakingVault` proxy and the timelock/governor/selector-registry stack
-- `deployWithExistingStakingVault(baseParams, existingStakingVault, deploymentNonce)` -- Deploy the timelock/governor/selector-registry stack around an already deployed vault; its implementation must already support `getPastVotesIntegral` for standard proposals to work
+- `deployWithExistingStakingVault(baseParams, existingStakingVault, deploymentNonce)` -- Deploy the timelock/governor/selector-registry stack around an already deployed vault; its implementation must already support `getPastAverageVotes` for standard proposals to work
 - During deployment, grants `CANCELLER_ROLE` on each timelock to the governor contract, the shared `Guardian`, and every address in `baseParams.additionalGuardians`
 - `BaseDeploymentParams` includes optimistic proposers and optional direct per-instance cancellers; optimistic-only guardian management remains centralized in `Guardian`
 
@@ -377,7 +377,7 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - `optimisticDelegates(account)` -- Return the current optimistic delegate for an account
 - `getOptimisticVotes(account)` -- Return the latest optimistic delegated voting weight
 - `getPastOptimisticVotes(account, timepoint)` -- Return optimistic voting weight at a past timestamp snapshot
-- `getPastVotesIntegral(account, timepoint)` -- Return cumulative standard delegated vote-seconds since the vault-wide activation, extrapolated from the most recent checkpoint at or before the timestamp; returns zero while inactive and at or before activation
+- `getPastAverageVotes(account, start, end)` -- Return average standard delegated votes over `[start, end)`, rounded down, with activation clipping and division handled inside the token; equal bounds return zero and reversed bounds revert
 - `rewardTokenRegistry()` -- Reward token registry wired in during initialization
 - `versionRegistry()` -- Version registry wired in during initialization
 
@@ -488,11 +488,10 @@ For a standard proposal at time `t`, the governor evaluates `proposalThreshold()
 
 ```text
 start = max(0, t - PROPOSAL_THROTTLE_PERIOD)
-integralStart = integral(start)
-averageVotes = floor((integral(t) - integralStart) / PROPOSAL_THROTTLE_PERIOD)
+averageVotes = token.getPastAverageVotes(account, start, t)
 ```
 
-The getter returns plain cumulative vote-seconds since the vault's activation timestamp. The governor always requires `averageVotes` to meet the threshold, including when either integral is zero. Time before activation contributes zero, and the denominator remains the full 12 hours. There is no historical-vote fallback.
+The token returns average votes for the requested range, handling cumulative subtraction, activation clipping, and division internally. The governor always requires this returned average to meet the threshold. Time before activation contributes zero but remains in the requested duration used as the denominator. The governor requests twelve hours, clamped to timestamp zero if the chain clock itself is younger. There is no historical-vote fallback.
 
 An unchanged legacy holder therefore accrues eligibility automatically: after six hours its recognized average is half its voting weight; after twelve hours it is the full weight. No transfer or delegation is needed. Higher vote power can compensate for shorter holding time, so larger holders may qualify earlier. Transfers and delegation changes preserve the vote-seconds each delegate actually earned; they cannot duplicate accrued credit or reset activation.
 
@@ -562,7 +561,7 @@ For deployments created with `deployWithExistingStakingVault()`, the new timeloc
 
 ### Upgrading to 1.1.0
 
-Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastVotesIntegral` unconditionally for eligible standard proposers; a vault without that API makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate that API during deployment.
+Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastAverageVotes` unconditionally for eligible standard proposers; a vault without that API makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate that API during deployment.
 
 Activate the upgraded vault atomically by passing the new admin-only initializer to `upgradeToAndCall`:
 
@@ -578,7 +577,7 @@ All vote-seconds before activation count as zero. A legacy holder with exactly t
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 
-The build uses Solidity 0.8.33, optimizer runs 80, and `via_ir = false`. The governor runtime is 22,917 bytes and the vault runtime is 24,562 bytes, leaving the vault 14 bytes below the 24,576-byte EIP-170 limit. Runs 81–85 produce a 24,592-byte vault and exceed the limit. Run `pnpm size` after any contract or compiler change.
+The build uses Solidity 0.8.33, optimizer runs 35, and `via_ir = false`. The governor runtime is 22,813 bytes and the vault runtime is 24,562 bytes, leaving the vault 14 bytes below the 24,576-byte EIP-170 limit. Runs 36–40 produce a 24,592-byte vault and exceed the limit. Run `pnpm size` after any contract or compiler change.
 
 
 ## Flow Summary

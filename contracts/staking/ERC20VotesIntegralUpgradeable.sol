@@ -13,9 +13,9 @@ import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
  * @dev Requires a block-timestamp clock. Existing checkpoints retain their packed layout and are not backfilled.
  */
 abstract contract ERC20VotesIntegralUpgradeable is ERC20VotesUpgradeable, IVotesIntegral {
-    /// @notice Returns cumulative delegated vote-seconds since integral activation.
-    function getPastVotesIntegral(address account, uint256 timepoint) external view returns (uint256) {
-        return VoteIntegralLib.lookup(account, timepoint);
+    /// @inheritdoc IVotesIntegral
+    function getPastAverageVotes(address account, uint256 start, uint256 end) external view returns (uint256) {
+        return VoteIntegralLib.averageVotes(account, start, end);
     }
 
     function _initializeVoteIntegral() internal {

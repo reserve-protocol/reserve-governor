@@ -151,10 +151,7 @@ library ProposalLib {
             uint256 periodStart =
                 block.timestamp > PROPOSAL_THROTTLE_PERIOD ? block.timestamp - PROPOSAL_THROTTLE_PERIOD : 0;
             IOptimisticVotes votes = IOptimisticVotes(address(governor.token()));
-            uint256 integralStart = votes.getPastVotesIntegral(proposal.proposer, periodStart);
-            uint256 integralEnd = votes.getPastVotesIntegral(proposal.proposer, block.timestamp);
-            // Deliberately divide by the full period even before timestamp 12 hours or integral activation.
-            uint256 averageVotes = (integralEnd - integralStart) / PROPOSAL_THROTTLE_PERIOD;
+            uint256 averageVotes = votes.getPastAverageVotes(proposal.proposer, periodStart, block.timestamp);
             require(
                 averageVotes >= votesThreshold,
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)

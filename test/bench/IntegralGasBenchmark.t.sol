@@ -138,25 +138,26 @@ contract IntegralGasBenchmarkTest is Test {
 
         vm.warp(block.timestamp + 10);
 
+        uint256 periodStart = midpoint - 100;
         _coolIntegralCall();
         uint256 gasBefore = gasleft();
-        uint256 historical = token.getPastVotesIntegral(DELEGATE_A, midpoint);
+        uint256 historical = token.getPastAverageVotes(DELEGATE_A, periodStart, midpoint);
         uint256 gasUsed = gasBefore - gasleft();
         emit log_named_uint("cold historical lookup, 65 checkpoints", gasUsed);
 
         gasBefore = gasleft();
-        uint256 historicalWarm = token.getPastVotesIntegral(DELEGATE_A, midpoint);
+        uint256 historicalWarm = token.getPastAverageVotes(DELEGATE_A, periodStart, midpoint);
         gasUsed = gasBefore - gasleft();
         emit log_named_uint("warm historical lookup, 65 checkpoints", gasUsed);
 
         _coolIntegralCall();
         gasBefore = gasleft();
-        uint256 current = token.getPastVotesIntegral(DELEGATE_A, block.timestamp);
+        uint256 current = token.getPastAverageVotes(DELEGATE_A, periodStart, block.timestamp);
         gasUsed = gasBefore - gasleft();
         emit log_named_uint("cold current lookup, 65 checkpoints", gasUsed);
 
         gasBefore = gasleft();
-        uint256 currentWarm = token.getPastVotesIntegral(DELEGATE_A, block.timestamp);
+        uint256 currentWarm = token.getPastAverageVotes(DELEGATE_A, periodStart, block.timestamp);
         gasUsed = gasBefore - gasleft();
         emit log_named_uint("warm current lookup, 65 checkpoints", gasUsed);
 

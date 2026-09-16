@@ -2,7 +2,9 @@
 pragma solidity ^0.8.28;
 
 interface IVotesIntegral {
-    /// @notice Returns cumulative delegated vote-seconds since integral activation.
-    /// @dev Includes the current timestamp. History at or before activation contributes zero.
-    function getPastVotesIntegral(address account, uint256 timepoint) external view returns (uint256);
+    /// @notice Returns average delegated votes over [start, end), rounded down.
+    /// @dev Divides by the full requested interval, including time before activation, which contributes zero.
+    ///      Equal bounds return zero; start > end reverts.
+    ///      Supports the current timestamp and checked extrapolation into the future.
+    function getPastAverageVotes(address account, uint256 start, uint256 end) external view returns (uint256);
 }

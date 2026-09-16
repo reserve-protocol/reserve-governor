@@ -467,7 +467,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         _clearVoteIntegral(alice);
         vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(0));
 
-        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), 0);
+        assertEq(stakingVault.getPastAverageVotes(alice, 0, block.timestamp), 0);
         uint256 threshold = governor.proposalThreshold();
         assertGe(governor.getVotes(alice, block.timestamp - PROPOSAL_THROTTLE_PERIOD), threshold);
 
@@ -488,9 +488,12 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         _restartVoteIntegral(alice);
         uint256 activation = block.timestamp;
 
-        assertEq(stakingVault.getPastVotesIntegral(alice, activation), 0);
+        assertEq(stakingVault.getPastAverageVotes(alice, 0, activation), 0);
         vm.warp(activation + 6 hours);
-        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), threshold * 6 hours);
+        assertEq(
+            stakingVault.getPastAverageVotes(alice, block.timestamp - PROPOSAL_THROTTLE_PERIOD, block.timestamp),
+            threshold / 2
+        );
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
@@ -504,7 +507,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.propose(targets, values, calldatas, "Legacy activation ramp halfway");
 
         vm.warp(activation + 12 hours);
-        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), threshold * 12 hours);
+        assertEq(stakingVault.getPastAverageVotes(alice, activation, block.timestamp), threshold);
         vm.prank(alice);
         uint256 proposalId = governor.propose(targets, values, calldatas, "Legacy activation ramp complete");
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
@@ -523,7 +526,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.stopPrank();
 
         vm.warp(activation + 12 hours);
-        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), ALICE_STAKE * 12 hours + 1 * 6 hours);
+        assertEq(stakingVault.getPastAverageVotes(alice, activation, block.timestamp), ALICE_STAKE);
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
@@ -585,7 +588,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         stakingVault.transfer(proposer, threshold);
 
         assertEq(governor.getVotes(proposer, start), threshold);
-        assertEq(stakingVault.getPastVotesIntegral(proposer, start), 0);
+        assertEq(stakingVault.getPastAverageVotes(proposer, 0, start), 0);
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1)));
@@ -623,8 +626,8 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.warp(start + PROPOSAL_THROTTLE_PERIOD);
 
         assertEq(governor.getVotes(proposer, start), 0);
-        assertEq(stakingVault.getPastVotesIntegral(proposer, start), 0);
-        uint256 averageVotes = stakingVault.getPastVotesIntegral(proposer, block.timestamp) / PROPOSAL_THROTTLE_PERIOD;
+        assertEq(stakingVault.getPastAverageVotes(proposer, 0, start), 0);
+        uint256 averageVotes = stakingVault.getPastAverageVotes(proposer, start, block.timestamp);
         assertEq(averageVotes, threshold);
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1)));
@@ -649,10 +652,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 threshold = governor.proposalThreshold();
         uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
         IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
-        uint256 averageVotes = votes.getPastVotesIntegral(recentVoter, block.timestamp) / PROPOSAL_THROTTLE_PERIOD;
+        uint256 averageVotes = votes.getPastAverageVotes(recentVoter, periodStart, block.timestamp);
 
         assertGe(governor.getVotes(recentVoter, block.timestamp - 1), threshold);
-        assertEq(votes.getPastVotesIntegral(recentVoter, periodStart), 0);
+        assertEq(votes.getPastAverageVotes(recentVoter, 0, periodStart), 0);
         assertEq(governor.getVotes(recentVoter, periodStart), 0);
         vm.prank(recentVoter);
         vm.expectRevert(

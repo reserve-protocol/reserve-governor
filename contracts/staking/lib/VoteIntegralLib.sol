@@ -14,6 +14,7 @@ import { Time } from "@openzeppelin/contracts/utils/types/Time.sol";
 library VoteIntegralLib {
     error VoteIntegral__AlreadyInitialized();
     error VoteIntegral__InvalidActivationTimestamp();
+    error VoteIntegral__InvalidTimeRange();
 
     /// @custom:storage-location erc7201:reserve.storage.VotesIntegral
     struct VotesIntegralStorage {
@@ -56,8 +57,18 @@ library VoteIntegralLib {
         $.activation = timestamp;
     }
 
-    /// @notice Returns cumulative delegated vote-seconds since activation.
-    function lookup(address account, uint256 timepoint) external view returns (uint256) {
+    /// @notice Returns average delegated votes over [start, end), rounded down.
+    /// @dev Time before activation contributes zero but remains part of the averaging period.
+    function averageVotes(address account, uint256 start, uint256 end) external view returns (uint256) {
+        require(start <= end, VoteIntegral__InvalidTimeRange());
+        if (start == end) {
+            return 0;
+        }
+        return (_lookup(account, end) - _lookup(account, start)) / (end - start);
+    }
+
+    // Cumulative accounting and activation clipping stay inside the token's library.
+    function _lookup(address account, uint256 timepoint) private view returns (uint256) {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
         if ($.activation == 0 || timepoint <= $.activation) {
             return 0;
@@ -67,27 +78,23 @@ library VoteIntegralLib {
         uint256 low;
         uint256 high = checkpoints.length;
         // At most one checkpoint per uint48 timestamp, so index arithmetic cannot overflow.
-        unchecked {
-            while (low < high) {
-                uint256 mid = (low + high) / 2;
-                if (checkpoints[mid]._key <= timepoint) {
-                    low = mid + 1;
-                } else {
-                    high = mid;
-                }
+        while (low < high) {
+            uint256 mid = (low + high) / 2;
+            if (checkpoints[mid]._key <= timepoint) {
+                low = mid + 1;
+            } else {
+                high = mid;
             }
-            if (low == 0) {
-                return 0;
-            }
-            --low;
         }
+        if (low == 0) {
+            return 0;
+        }
+        --low;
 
         Checkpoints.Checkpoint208 storage checkpoint = checkpoints[low];
         uint48 start = checkpoint._key > $.activation ? checkpoint._key : $.activation;
         // The search selected a checkpoint at or before timepoint, and timepoint is after activation.
-        unchecked {
-            timepoint -= start;
-        }
+        timepoint -= start;
         // Keep extrapolation checked: callers can supply timestamps beyond the uint48 clock domain.
         return $.cumulative[account][low] + uint256(checkpoint._value) * timepoint;
     }

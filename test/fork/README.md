@@ -29,7 +29,8 @@ checkpoint samples, historical votes, the implementation slot, zero integral
 at activation, automatic accrual without new checkpoints, and preservation of
 that accrued area on the first later movement. The same-timestamp cases also
 coalesce post-upgrade movements into checkpoints written by the legacy
-implementation at activation. Integrals contain plain vote-seconds.
+implementation at activation. The token returns average votes over each requested
+interval, rounded down.
 
 The old governor/timelock implementations remain in use; this experiment changes
 the vault's accounting only. These tests impersonate authorized actors directly

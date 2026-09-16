@@ -48,19 +48,19 @@ contract ERC20VotesIntegralTest is Test {
     }
 
     function test_emptyHistoryAndZeroVoteIntervals() public {
-        assertEq(token.getPastVotesIntegral(ALICE, block.timestamp), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 0, block.timestamp), 0);
         token.mint(ALICE, 10);
         vm.warp(1100);
         token.burn(ALICE, 10);
         vm.warp(1300);
         token.mint(ALICE, 20);
         vm.warp(1400);
-        assertEq(token.getPastVotesIntegral(ALICE, 999), 0);
-        assertEq(token.getPastVotesIntegral(ALICE, 1000), 0);
-        assertEq(token.getPastVotesIntegral(ALICE, 1050), 500);
-        assertEq(token.getPastVotesIntegral(ALICE, 1200), 1000);
-        assertEq(token.getPastVotesIntegral(ALICE, 1350), 2000);
-        assertEq(token.getPastVotesIntegral(ALICE, 1400), 3000);
+        assertEq(token.getPastAverageVotes(ALICE, 0, 999), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 0, 1000), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1050), 10);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1200), 5);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1350), 5);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1400), 7);
         assertEq(token.getPastVotes(ALICE, 1200), 0);
         assertEq(token.getPastVotes(ALICE, 1350), 20);
     }
@@ -69,17 +69,15 @@ contract ERC20VotesIntegralTest is Test {
         token.mint(ALICE, 10);
         token.burn(ALICE, 10);
         vm.warp(1100);
-        assertEq(token.getPastVotesIntegral(ALICE, 999), 0);
-        assertEq(token.getPastVotesIntegral(BOB, 1100), 0);
-        assertEq(token.getPastVotesIntegral(ALICE, 1000), 0);
-        assertEq(token.getPastVotesIntegral(ALICE, 1100), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 0, 999), 0);
+        assertEq(token.getPastAverageVotes(BOB, 0, 1100), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 0, 1000), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 0, 1100), 0);
 
         token.mint(ALICE, 20);
         vm.warp(1200);
-        uint256 startIntegral = token.getPastVotesIntegral(ALICE, 1000);
-        uint256 endIntegral = token.getPastVotesIntegral(ALICE, 1200);
-        assertEq(endIntegral, 2000);
-        assertEq(endIntegral - startIntegral, 20 * 100);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1200), 10);
+        assertEq(token.getPastAverageVotes(ALICE, 1100, 1200), 20);
     }
 
     function test_sameTimestampUpdatesPreserveCumulative() public {
@@ -89,9 +87,9 @@ contract ERC20VotesIntegralTest is Test {
         token.burn(ALICE, 3);
         token.mint(ALICE, 8);
         assertEq(token.numCheckpoints(ALICE), 2);
-        assertEq(token.getPastVotesIntegral(ALICE, 1100), 1000);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1100), 10);
         vm.warp(1200);
-        assertEq(token.getPastVotesIntegral(ALICE, 1200), 3000);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1200), 15);
         assertEq(token.getPastVotes(ALICE, 1100), 20);
     }
 
@@ -109,7 +107,7 @@ contract ERC20VotesIntegralTest is Test {
         token.transfer(BOB, 5);
         assertEq(token.numCheckpoints(ALICE), 1);
         assertEq(token.numCheckpoints(BOB), 0);
-        assertEq(token.getPastVotesIntegral(ALICE, 1100), 1000);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1100), 10);
     }
 
     function test_redelegationAndUndelegatedTransfers() public {
@@ -126,8 +124,8 @@ contract ERC20VotesIntegralTest is Test {
         vm.warp(1400);
         assertEq(token.getVotes(ALICE), 0);
         assertEq(token.getVotes(BOB), 10);
-        assertEq(token.getPastVotesIntegral(ALICE, 1400), 2200);
-        assertEq(token.getPastVotesIntegral(BOB, 1400), 1400);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1400), 5);
+        assertEq(token.getPastAverageVotes(BOB, 1000, 1400), 3);
     }
 
     function test_maximumIntegralFits() public {
@@ -139,19 +137,19 @@ contract ERC20VotesIntegralTest is Test {
         token.mint(ALICE, type(uint208).max);
         vm.warp(type(uint48).max);
         uint256 expected = uint256(type(uint208).max) * (type(uint48).max - 1);
-        assertEq(token.getPastVotesIntegral(ALICE, block.timestamp), expected);
+        assertEq(token.getPastAverageVotes(ALICE, 1, block.timestamp), type(uint208).max);
         token.burn(ALICE, type(uint208).max);
         token.mint(ALICE, type(uint208).max);
-        assertEq(token.getPastVotesIntegral(ALICE, block.timestamp), expected);
+        assertEq(token.getPastAverageVotes(ALICE, 1, block.timestamp), type(uint208).max);
         assertEq(token.numCheckpoints(ALICE), 2);
         assertEq(uint256(vm.load(address(token), _entry(ALICE, 1))), expected);
     }
 
     function test_extrapolationCannotWrap() public {
         token.mint(ALICE, type(uint208).max);
-        assertEq(token.getPastVotesIntegral(ALICE, 1001), uint256(type(uint208).max));
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1001), uint256(type(uint208).max));
         vm.expectRevert(stdError.arithmeticError);
-        token.getPastVotesIntegral(ALICE, type(uint256).max);
+        token.getPastAverageVotes(ALICE, 0, type(uint256).max);
     }
 
     function test_failedOZVoteMovementRollsBackIntegralEntries() public {
@@ -162,7 +160,7 @@ contract ERC20VotesIntegralTest is Test {
         assertEq(vm.load(address(token), _entry(ALICE, 1)), bytes32(0));
         assertEq(vm.load(address(token), _entry(BOB, 0)), bytes32(0));
         assertEq(token.numCheckpoints(ALICE), 1);
-        assertEq(token.getPastVotesIntegral(ALICE, 1100), 1000);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1100), 10);
     }
 
     function test_uninitializedHistoryIsZeroAndLateInitializationDoesNotBackfill() public {
@@ -173,17 +171,17 @@ contract ERC20VotesIntegralTest is Test {
         vm.warp(1100);
         token.mint(ALICE, 5);
 
-        assertEq(token.getPastVotesIntegral(ALICE, 1100), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 0, 1100), 0);
         assertEq(vm.load(address(token), _entry(ALICE, 1)), bytes32(0));
 
         token.initializeVoteIntegral();
-        assertEq(token.getPastVotesIntegral(ALICE, 1100), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 0, 1100), 0);
         vm.warp(1200);
-        assertEq(token.getPastVotesIntegral(ALICE, 1200), 1500);
+        assertEq(token.getPastAverageVotes(ALICE, 1100, 1200), 15);
 
         token.burn(ALICE, 5);
         vm.warp(1300);
-        assertEq(token.getPastVotesIntegral(ALICE, 1300), 2500);
+        assertEq(token.getPastAverageVotes(ALICE, 1100, 1300), 12);
     }
 
     function test_zeroTimestampCannotActivateAndActivationCannotReset() public {
@@ -200,6 +198,43 @@ contract ERC20VotesIntegralTest is Test {
         token.initializeVoteIntegral();
     }
 
+    function test_rangesClipActivationAndFollowVoteChanges() public {
+        token = new IntegralTokenHarness();
+        vm.prank(ALICE);
+        token.delegate(ALICE);
+        token.mint(ALICE, 10);
+        vm.warp(1100);
+        token.initializeVoteIntegral();
+        vm.warp(1200);
+        token.mint(ALICE, 10);
+        vm.warp(1300);
+        token.burn(ALICE, 20);
+        vm.warp(1400);
+
+        assertEq(token.getPastAverageVotes(ALICE, 900, 1050), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 900, 1100), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 1050, 1150), 5);
+        assertEq(token.getPastAverageVotes(ALICE, 1100, 1200), 10);
+        assertEq(token.getPastAverageVotes(ALICE, 1150, 1250), 15);
+        assertEq(token.getPastAverageVotes(ALICE, 1200, 1300), 20);
+        assertEq(token.getPastAverageVotes(ALICE, 1050, 1350), 10);
+        assertEq(token.getPastAverageVotes(ALICE, 1300, 1400), 0);
+    }
+
+    function test_rangeBounds() public {
+        token.mint(ALICE, type(uint208).max);
+        assertEq(token.getPastAverageVotes(ALICE, 999, 999), 0);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1000), 0);
+        assertEq(token.getPastAverageVotes(ALICE, type(uint256).max, type(uint256).max), 0);
+        vm.expectRevert(VoteIntegralLib.VoteIntegral__InvalidTimeRange.selector);
+        token.getPastAverageVotes(ALICE, 1001, 1000);
+
+        token = new IntegralTokenHarness();
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1200), 0);
+        vm.expectRevert(VoteIntegralLib.VoteIntegral__InvalidTimeRange.selector);
+        token.getPastAverageVotes(ALICE, 999, 998);
+    }
+
     function test_sameTimestampActivationStoresRawZero() public {
         assertEq(vm.load(address(token), _entry(ALICE, 0)), bytes32(0));
         token.mint(ALICE, 10);
@@ -208,21 +243,21 @@ contract ERC20VotesIntegralTest is Test {
         assertEq(vm.load(address(token), _entry(ALICE, 0)), bytes32(0));
 
         vm.warp(1001);
-        assertEq(token.getPastVotesIntegral(ALICE, 1001), 15);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, 1001), 15);
     }
 
-    function test_redelegationHalfwayConservesVoteSeconds() public {
+    function test_redelegationHalfwayConservesAverageWeight() public {
         token.mint(ALICE, 100);
         vm.warp(block.timestamp + 6 hours);
         vm.prank(ALICE);
         token.delegate(BOB);
         vm.warp(block.timestamp + 6 hours);
 
-        uint256 aliceIntegral = token.getPastVotesIntegral(ALICE, block.timestamp);
-        uint256 bobIntegral = token.getPastVotesIntegral(BOB, block.timestamp);
-        assertEq(aliceIntegral, 100 * 6 hours);
-        assertEq(bobIntegral, 100 * 6 hours);
-        assertEq(aliceIntegral + bobIntegral, 100 * 12 hours);
+        uint256 aliceAverage = token.getPastAverageVotes(ALICE, 1000, block.timestamp);
+        uint256 bobAverage = token.getPastAverageVotes(BOB, 1000, block.timestamp);
+        assertEq(aliceAverage, 50);
+        assertEq(bobAverage, 50);
+        assertEq(aliceAverage + bobAverage, 100);
     }
 
     function test_dustMovementDoesNotResetOrEraseArea() public {
@@ -232,7 +267,7 @@ contract ERC20VotesIntegralTest is Test {
         token.burn(ALICE, 1);
         vm.warp(block.timestamp + 6 hours);
 
-        assertEq(token.getPastVotesIntegral(ALICE, block.timestamp), 100 * 12 hours);
+        assertEq(token.getPastAverageVotes(ALICE, 1000, block.timestamp), 100);
     }
 
     function test_firstCheckpointBoundary() public {
@@ -241,12 +276,12 @@ contract ERC20VotesIntegralTest is Test {
         vm.prank(BOB);
         token.delegate(BOB);
 
-        assertEq(token.getPastVotesIntegral(BOB, 1099), 0);
-        assertEq(token.getPastVotesIntegral(BOB, 1100), 0);
-        assertEq(token.getPastVotesIntegral(BOB, 1101), 10);
+        assertEq(token.getPastAverageVotes(BOB, 0, 1099), 0);
+        assertEq(token.getPastAverageVotes(BOB, 0, 1100), 0);
+        assertEq(token.getPastAverageVotes(BOB, 1100, 1101), 10);
     }
 
-    function testFuzz_integralsMatchSegmentSum(uint208[12] memory values, uint32[12] memory elapsed, uint256 seed)
+    function testFuzz_averageMatchesSegmentSum(uint208[12] memory values, uint32[12] memory elapsed, uint256 seed)
         public
     {
         token = new IntegralTokenHarness();
@@ -274,6 +309,7 @@ contract ERC20VotesIntegralTest is Test {
         }
         vm.warp(timestamp + 1);
         uint256 query = bound(seed, 999, timestamp);
+        uint256 rangeStart = bound(uint256(keccak256(abi.encode(seed))), 0, query);
         uint256 expected;
         uint256 expectedVotes;
         for (uint256 i; i < values.length; ++i) {
@@ -285,12 +321,18 @@ contract ERC20VotesIntegralTest is Test {
                 end = query;
             }
             uint256 start = times[i] > activation ? times[i] : activation;
+            if (start < rangeStart) {
+                start = rangeStart;
+            }
             if (end > start && query > activation) {
                 expected += uint256(values[i]) * (end - start);
             }
             expectedVotes = values[i];
         }
-        assertEq(token.getPastVotesIntegral(ALICE, query), expected);
+        if (query > rangeStart) {
+            expected /= query - rangeStart;
+        }
+        assertEq(token.getPastAverageVotes(ALICE, rangeStart, query), expected);
         assertEq(token.getPastVotes(ALICE, query), expectedVotes);
         assertEq(token.getVotes(ALICE), values[11]);
     }

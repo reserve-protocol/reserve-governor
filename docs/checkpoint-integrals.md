@@ -57,9 +57,22 @@ voting checkpoint. An OZ failure rolls back the companion write as well.
 No-op movements, total-supply checkpoints, and optimistic checkpoints do not
 add integral entries.
 
-Lookup returns zero when inactive, at/before activation, or before the first
-vote checkpoint. Otherwise it binary-searches the standard checkpoints and
-returns:
+The token API is `getPastAverageVotes(account, start, end)`. It returns
+average delegated votes over `[start, end)`, rounded down:
+
+```text
+averageVotes = floor((cumulative(end) - cumulative(start)) / (end - start))
+```
+
+The cumulative endpoints are private implementation details. The denominator
+is the full requested duration, including time before activation.
+All activation handling stays inside the token: inactive accounting and
+pre-activation time contribute zero. Equal bounds return zero; reversed bounds
+revert, even while inactive.
+
+Each private cumulative lookup returns zero at/before activation or before the
+first vote checkpoint. Otherwise it binary-searches the standard checkpoints
+and computes:
 
 ```text
 checkpointCumulative + checkpointVotes * (query - max(checkpointTimestamp, activation))
@@ -76,13 +89,15 @@ The governor always calculates:
 
 ```text
 start = max(0, now - 12 hours)
-averageVotes = floor((integral(now) - integral(start)) / 12 hours)
+averageVotes = token.getPastAverageVotes(account, start, now)
 ```
 
 Both this average and votes at `now - 1` must meet the current proposal threshold.
-There is no historical endpoint fallback. Before twelve hours have elapsed from
-activation, pre-activation time contributes zero while the denominator remains
-twelve hours. For a constant balance of 100 votes, the recognized average is
+If the chain clock itself is younger than twelve hours, the requested interval
+starts at timestamp zero and uses that shorter duration.
+There is no historical endpoint fallback. For a full twelve-hour request during
+the activation ramp, pre-activation time contributes zero while the denominator
+remains twelve hours. For a constant balance of 100 votes, the recognized average is
 25 after three hours, 50 after six hours, and 100 after twelve hours. Larger
 balances may satisfy the threshold sooner. A threshold-sized legacy holder
 waits twelve hours without needing another transaction.
@@ -110,20 +125,22 @@ including legacy checkpoints at the exact activation timestamp.
 OZ enforces nondecreasing uint48 timestamps and a uint208 voting supply cap.
 The maximum integral within that clock domain is bounded by
 `(2^208 - 1) * (2^48 - 1) < 2^256`. One-shot current-time activation means every
-subsequent update occurs at or after activation. Guarded index arithmetic and
-updates use unchecked operations under these constraints. Lookup multiplication
-and addition remain checked because public queries accept a uint256 timepoint.
+subsequent update occurs at or after activation. The private integral-update
+helper uses unchecked operations under these constraints. All arithmetic in
+the average lookup and its private cumulative lookups remains checked, including
+index arithmetic, elapsed time, extrapolation, endpoint subtraction, and division.
 
 Each new checkpoint uses at most one companion storage word, with no second
 array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
-Solidity 0.8.33 is used with IR disabled and 80 optimizer runs. Runtime sizes
-are 24,562 bytes for the vault (14 bytes below EIP-170), 22,917 for the governor,
-10,001 for ProposalLib, and 1,475 for VoteIntegralLib. Runs 81–85 exceed the vault
+Solidity 0.8.33 is used with IR disabled and 35 optimizer runs. Runtime sizes
+are 24,562 bytes for the vault (14 bytes below EIP-170), 22,813 for the governor,
+9,836 for ProposalLib, and 1,696 for VoteIntegralLib. Runs 36–40 exceed the vault
 limit by 16 bytes. Run `pnpm size` after any contract or compiler change.
 
 Unit tests compare arbitrary histories to a segment-sum reference clipped at
-activation. They cover zero-area intervals, same-timestamp movements, maximum
+activation and the requested range. They cover reversed/empty ranges, ranges
+straddling activation, zero-area intervals, same-timestamp movements, maximum
 arithmetic, no-ops, redelegation, conservation, delayed initialization, reset
 protection, pre-activation endpoint replay, and rollback on an OZ failure.
 Governor tests verify the unchanged legacy holder's ramp and proportionally
@@ -143,10 +160,11 @@ including CALL/calldata overhead and excluding intrinsic transaction gas and
 refunds. These are not end-to-end StakingVault deposit costs. Cold measurements
 cool the token address, its storage, and the linked integral library. Earlier
 state transitions remain in the same Foundry execution, so storage original/dirty
-accounting does not necessarily match independent transaction receipts. Warm
-lookups repeat the same query immediately. The lookup fixture has 65 checkpoints;
-the historical query selects checkpoint 33, and the current query is ten seconds
-after the last checkpoint.
+accounting does not necessarily match independent transaction receipts. The
+query results are average voting weights, with division included in the measured
+call. Warm lookups repeat the same query immediately. The lookup fixture has 65 checkpoints;
+both queries start at checkpoint 23. The historical range ends at checkpoint
+33, and the current range ends ten seconds after the last checkpoint.
 
 Legacy lookups search the full OZ checkpoint history. Results from a fixed
 fixture do not characterize every history length or transaction sequence, and

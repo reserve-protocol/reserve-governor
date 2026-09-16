@@ -653,17 +653,17 @@ contract StakingVaultTest is Test {
         vault.depositAndDelegate(1000e18);
 
         vm.warp(start + 6 hours);
-        uint256 halfwayIntegral = vault.getPastVotesIntegral(address(this), block.timestamp);
-        assertEq(halfwayIntegral, 1000e18 * 6 hours);
+        uint256 halfwayAverage = vault.getPastAverageVotes(address(this), start, block.timestamp);
+        assertEq(halfwayAverage, 1000e18);
 
         // Delegation changes at one timestamp must not create a zero-duration
         // segment or lose the integral accumulated before the change.
         vault.delegate(ACTOR_BOB);
-        assertEq(vault.getPastVotesIntegral(address(this), block.timestamp), halfwayIntegral);
+        assertEq(vault.getPastAverageVotes(address(this), start, block.timestamp), halfwayAverage);
 
         vm.warp(start + 12 hours);
-        assertEq(vault.getPastVotesIntegral(address(this), block.timestamp), halfwayIntegral);
-        assertEq(vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp), 1000e18 * 6 hours);
+        assertEq(vault.getPastAverageVotes(address(this), start, block.timestamp), 500e18);
+        assertEq(vault.getPastAverageVotes(ACTOR_BOB, start, block.timestamp), 500e18);
     }
 
     function test_standardDelegatedVoteIntegral_ignoresNoopDelegateMovements() public {
@@ -673,7 +673,7 @@ contract StakingVaultTest is Test {
 
         uint256 start = block.timestamp;
         vm.warp(start + 1 hours);
-        uint256 beforeNoop = vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp);
+        uint256 beforeNoop = vault.getPastAverageVotes(ACTOR_BOB, start, block.timestamp);
 
         // Re-delegating to the same delegate and moving shares between two
         // accounts with the same delegate must not alter the integral.
@@ -684,7 +684,7 @@ contract StakingVaultTest is Test {
         vault.delegate(ACTOR_BOB);
         vault.transfer(ACTOR_ALICE, 100e18);
 
-        assertEq(vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp), beforeNoop);
+        assertEq(vault.getPastAverageVotes(ACTOR_BOB, start, block.timestamp), beforeNoop);
     }
 
     function test_transferMovesStandardAndOptimisticDelegateWeights() public {
