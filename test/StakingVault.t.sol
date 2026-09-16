@@ -651,7 +651,7 @@ contract StakingVaultTest is Test {
 
         vm.warp(start + 6 hours);
         uint256 halfwayIntegral = vault.getPastVotesIntegral(address(this), block.timestamp);
-        assertEq(halfwayIntegral, 1000e18 * 6 hours);
+        assertEq(halfwayIntegral, 1000e18 * 6 hours + 1);
 
         // Delegation changes at one timestamp must not create a zero-duration
         // segment or lose the integral accumulated before the change.
@@ -660,7 +660,7 @@ contract StakingVaultTest is Test {
 
         vm.warp(start + 12 hours);
         assertEq(vault.getPastVotesIntegral(address(this), block.timestamp), halfwayIntegral);
-        assertEq(vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp), 1000e18 * 6 hours);
+        assertEq(vault.getPastVotesIntegral(ACTOR_BOB, block.timestamp), 1000e18 * 6 hours + 1);
     }
 
     function test_standardDelegatedVoteIntegral_ignoresNoopDelegateMovements() public {

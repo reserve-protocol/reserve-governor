@@ -11,7 +11,7 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and on average over the preceding 12 hours, with a historical-vote fallback when the cumulative integral at the start of the lookback is zero (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
+Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and on average over the preceding 12 hours, with a historical-vote fallback when integral history at the start of the lookback is untracked (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
 
 The shared `Versioned` mixin reports `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release changes and upgrade notes.
 
@@ -254,7 +254,7 @@ The main hybrid governor contract.
 **Proposal Creation Rules:**
 
 - `proposeOptimistic()` and `propose()` consume charges from the same per-account bucket
-- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour average against the current `proposalThreshold()`; when the cumulative integral at the start of the window is zero, it uses standard votes at that point instead of the average
+- `propose()` checks standard votes at `block.timestamp - 1` and the preceding 12-hour average against the current `proposalThreshold()`; when integral history at the start of the window is untracked, it uses standard votes at that point instead of the average
 - `propose()` rejects non-empty calldata calls to EOAs (`InvalidCall`) but allows pure ETH transfers to EOAs with empty calldata
 - `proposeOptimistic()` requires each target to be a deployed contract and each calldata entry to include at least a selector (>=4 bytes)
 - `proposeOptimistic()` requires `OPTIMISTIC_PROPOSER_ROLE` and each `(target, selector)` to be allowlisted in `OptimisticSelectorRegistry`
@@ -376,7 +376,7 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - `optimisticDelegates(account)` -- Return the current optimistic delegate for an account
 - `getOptimisticVotes(account)` -- Return the latest optimistic delegated voting weight
 - `getPastOptimisticVotes(account, timepoint)` -- Return optimistic voting weight at a past timestamp snapshot
-- `getPastVotesIntegral(account, timepoint)` -- Return cumulative standard delegated vote-seconds, extrapolated from the most recent observation at or before the timestamp; returns zero before the first observation or when none exists
+- `getPastVotesIntegral(account, timepoint)` -- Return cumulative standard delegated vote-seconds plus one, extrapolated from the most recent checkpoint at or before the timestamp; returns zero for untracked history, including before the first tracked checkpoint
 - `rewardTokenRegistry()` -- Reward token registry wired in during initialization
 - `versionRegistry()` -- Version registry wired in during initialization
 
@@ -491,11 +491,11 @@ integralStart = integral(start)
 averageVotes = floor((integral(t) - integralStart) / PROPOSAL_THROTTLE_PERIOD)
 ```
 
-When `integralStart` is nonzero, `averageVotes` must meet the same threshold. Higher vote power can compensate for shorter holding time; this is an average requirement, not continuous ownership of particular shares. Deposits or delegations after tracking begins accumulate vote-seconds automatically, so an account can become eligible as time passes without another transaction.
+The getter preserves the stored encoding: zero means untracked history, and any tracked value is cumulative vote-seconds plus one. When `integralStart` is nonzero, both endpoints are tracked and the offsets cancel, so `averageVotes` must meet the same threshold. A tracked zero integral returns one and uses exact averaging. Higher vote power can compensate for shorter holding time; this is an average requirement, not continuous ownership of particular shares. Deposits or delegations after tracking begins accumulate vote-seconds automatically, so an account can become eligible as time passes without another transaction.
 
-When `integralStart` is zero, the governor instead requires standard `getPastVotes(account, start)` to meet the threshold. This covers unchanged delegates on upgraded vaults without backfilling the integral or requiring a transfer. The fallback remains active while the window starts in untracked or zero-area history, so a dust delegation that starts tracking does not temporarily disqualify a legacy delegate. A newly delegated account still waits a full lookback because its votes at `start` remain zero until the window reaches its first delegation checkpoint.
+When `integralStart` is zero, the governor instead requires standard `getPastVotes(account, start)` to meet the threshold. This covers unchanged delegates on upgraded vaults without backfilling the integral or requiring a transfer. The fallback remains active only while the window starts before tracked history, so a dust delegation that starts tracking does not temporarily disqualify a legacy delegate. A newly delegated account still waits a full lookback because its votes at `start` remain zero until the window reaches its first delegation checkpoint.
 
-The fallback is an accepted single-point migration approximation: together with the current-vote check it verifies voting power at `start` and `t - 1`, but it does not detect an intervening dip. A zero `integralStart` is not an explicit upgrade flag and also occurs when `start` lands exactly on the first tracked checkpoint. See [Upgrading to 1.1.0](#upgrading-to-110) for the transition behavior.
+The fallback is an accepted single-point migration approximation: together with the current-vote check it verifies voting power at `start` and `t - 1`, but it does not detect an intervening dip. A zero `integralStart` means missing history, not zero accumulated area. Exact averaging applies as soon as `start` reaches the first tracked checkpoint, including at that checkpoint's timestamp. See [Upgrading to 1.1.0](#upgrading-to-110) for the transition behavior.
 
 ### StakingVault Parameters
 
@@ -565,11 +565,11 @@ Upgrade the `StakingVault` before its governor, following the registration and a
 
 This release needs no reinitializer or additional throttle configuration. The governor reuses the existing capacity and per-account charge state for both proposal paths. Its storage layout is unchanged. The companion cumulative mapping occupies a new `reserve.storage.VotesIntegral` ERC-7201 namespace. Existing standard and optimistic checkpoints, delegation mappings, and ordinary storage slots retain their layout. This implementation supports upgrades from deployed 1.0.0 vaults; it does not migrate integral arrays from the earlier, unreleased observation-array prototype.
 
-An upgraded delegate whose lookback starts in untracked or zero-area integral history can qualify immediately if their standard votes at both `t - 1` and `t - 12 hours` meet the current threshold and a throttle charge is available. A newly delegated account cannot use the fallback early: its historical lookup remains zero until the 12-hour window reaches the delegation checkpoint.
+An upgraded delegate whose lookback starts in untracked integral history can qualify immediately if their standard votes at both `t - 1` and `t - 12 hours` meet the current threshold and a throttle charge is available. A newly delegated account cannot use the fallback early: its historical lookup remains zero until the 12-hour window reaches the delegation checkpoint.
 
-The first nonzero movement between different standard delegatees starts integral tracking for the affected accounts. Previous vote-seconds are not backfilled. The historical fallback continues until `integral(t - 12 hours)` becomes nonzero, so a dust movement that creates the first zero-area integral entry does not temporarily block a legacy delegate. After the lookback start enters recorded history, the governor uses the exact recorded average. Calling `delegate()` with the same delegate does not start tracking in this implementation.
+The first nonzero movement between different standard delegatees starts integral tracking for the affected accounts. Previous vote-seconds are not backfilled. The historical fallback continues while the lookback start precedes the first tracked checkpoint, so a dust movement does not temporarily block a legacy delegate. Exactly 12 hours after that account's first tracked movement, the start lookup returns one and the governor switches to the exact recorded average. This deadline is per account, not 12 hours after the upgrade. Calling `delegate()` with the same delegate does not start tracking in this implementation.
 
-During that migration window, the fallback checks only the lookback-start checkpoint in addition to the separate current-vote check. It cannot detect an intervening dip below the threshold. This single-point approximation is the accepted compatibility tradeoff for legacy histories that cannot be backfilled.
+During that migration window, the fallback checks only the lookback-start checkpoint in addition to the separate current-vote check. It cannot detect an intervening dip below the threshold. Pre-upgrade transfers or delegations across legacy accounts can therefore be replayed as proposal opportunities 12 hours later; threshold stake is not globally rate-limited across those accounts. Each account leaves the fallback 12 hours after its first tracked movement. This single-point approximation is the accepted compatibility tradeoff for legacy histories that cannot be backfilled.
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 

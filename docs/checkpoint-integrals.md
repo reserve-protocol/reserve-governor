@@ -33,10 +33,14 @@ companion write. Total-supply and optimistic checkpoints do not acquire
 companion entries.
 
 Lookup binary-searches the existing standard checkpoints. If the selected
-entry is untracked, it returns zero. Otherwise it removes the sentinel and
-adds the checkpoint's votes times the elapsed time. Current-timestamp queries
-work. Like the preceding implementation, future timestamps extrapolate the
-latest votes; arithmetic overflow now reverts instead of wrapping.
+entry is untracked, it returns zero. Otherwise it preserves the plus-one encoding
+and adds the checkpoint's votes times the elapsed time. A tracked zero-area
+checkpoint therefore returns one, not zero. Subtracting two tracked lookups
+cancels the offsets and yields exact vote-seconds; subtract one when decoding
+an absolute tracked value. Never treat an untracked zero as measured area.
+Current-timestamp queries work. Like the preceding implementation, future
+timestamps extrapolate the latest votes; arithmetic overflow now reverts
+instead of wrapping.
 
 ## Upgrade behavior
 
@@ -58,13 +62,20 @@ average as soon as the end integral begins growing. A new delegate still waits
 a full lookback because its start-point vote checkpoint is zero until the
 window reaches the delegation.
 
-This fallback deliberately approximates unavailable legacy history with one
+Exact averaging begins when the lookback lands on the first tracked checkpoint:
+that lookup returns one even though accumulated area is zero. This distinguishes
+a fresh account's first checkpoint from missing legacy history and prevents
+brief funding, removal, and restoration just before its 12-hour anniversary
+from bypassing the average check. Tracked zero-vote spans also use exact averaging.
+
+The fallback deliberately approximates unavailable legacy history with one
 point. Together with the independent current-vote check, it verifies votes at
 the window start and at the previous timestamp, but cannot see an intervening
-dip. The fallback also applies when the lookback lands exactly on the first
-tracked checkpoint because that checkpoint has zero accumulated area. These
-are accepted migration limits; exact averaging begins once the lookback-start
-integral is nonzero.
+dip. Pre-upgrade stake hops across legacy addresses can be replayed as proposal
+opportunities 12 hours later. The approximation ends for each address exactly
+12 hours after its first tracked movement, not at a global deadline after the
+upgrade. It does not impose a global rate limit on threshold stake reused across
+legacy addresses. These remain accepted migration limits.
 
 This release does **not** migrate integral arrays from the earlier, unreleased
 observation-array prototype that was previously developed in #48. If that
@@ -89,13 +100,14 @@ be measured.
 
 Keeping the accounting in a library lets this implementation use Solidity
 0.8.33, no IR, and **156 optimizer runs**. The vault is **24,509 bytes**,
-**67 bytes** below EIP-170, and the integral library is **1,104 bytes**. The
+**67 bytes** below EIP-170, and the integral library is **1,097 bytes**. The
 earlier observation-array prototype used 24,573 vault bytes plus a 1,300-byte
 integral library. Size headroom remains limited and must be checked after future
 edits.
 
 Unit tests compare fuzzed histories to a direct segment-sum reference and cover
-zero-vote intervals, same-timestamp movements, maximum arithmetic, no-ops,
+tracked zero-area intervals, first-checkpoint anniversary attacks, legacy
+tracking boundaries, same-timestamp movements, maximum arithmetic, no-ops,
 redelegation, and rollback when OZ rejects a movement. Forks exercise actual
 upgrades with legacy checkpoints from earlier and identical timestamps.
 
@@ -116,10 +128,10 @@ isolates the accounting change.
 | Transfer across distinct delegates | 201,194 | 140,693 | -60,501 |
 | Same-timestamp coalesced transfer | 68,069 | 51,454 | -16,615 |
 | Later burn from delegated account | 145,904 | 113,278 | -32,626 |
-| Historical integral lookup, cold | 26,749 | 23,676 | -3,073 |
-| Historical integral lookup, warm | 6,744 | 5,671 | -1,073 |
-| Current integral lookup, cold | 24,690 | 21,421 | -3,269 |
-| Current integral lookup, warm | 6,690 | 5,421 | -1,269 |
+| Historical integral lookup, cold | 26,749 | 23,656 | -3,093 |
+| Historical integral lookup, warm | 6,744 | 5,651 | -1,093 |
+| Current integral lookup, cold | 24,690 | 21,401 | -3,289 |
+| Current integral lookup, warm | 6,690 | 5,401 | -1,289 |
 
 These are gross `gasleft()` differences around test-contract-to-token calls,
 including CALL/calldata overhead and excluding intrinsic transaction gas and

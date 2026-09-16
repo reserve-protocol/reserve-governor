@@ -77,14 +77,15 @@ contract VoteIntegralUpgradeForkTest is Test {
         vault.delegate(sameTimestamp ? delegate : FRESH_DELEGATE);
         assertEq(vault.numCheckpoints(delegate), sameTimestamp ? count : count + 1);
         assertEq(vault.numCheckpoints(FRESH_DELEGATE), 1);
-        assertEq(vault.getPastVotesIntegral(delegate, start), 0);
+        assertEq(vault.getPastVotesIntegral(delegate, start), 1);
+        assertEq(vault.getPastVotesIntegral(FRESH_DELEGATE, start), 1);
         assertEq(vault.getPastVotesIntegral(delegate, start - 1), 0);
 
         vm.warp(start + 100);
         uint256 trackedVotes = sameTimestamp ? oldVotes : oldVotes - shares;
         uint256 freshVotes = sameTimestamp ? 0 : shares;
-        assertEq(vault.getPastVotesIntegral(delegate, block.timestamp), trackedVotes * 100);
-        assertEq(vault.getPastVotesIntegral(FRESH_DELEGATE, block.timestamp), freshVotes * 100);
+        assertEq(vault.getPastVotesIntegral(delegate, block.timestamp), trackedVotes * 100 + 1);
+        assertEq(vault.getPastVotesIntegral(FRESH_DELEGATE, block.timestamp), freshVotes * 100 + 1);
         assertEq(vault.getPastVotes(delegate, oldTime), pastVotes);
         assertEq(vault.getPastVotes(delegate, start), trackedVotes);
 
@@ -94,10 +95,10 @@ contract VoteIntegralUpgradeForkTest is Test {
         vm.warp(start + 200);
         assertEq(
             vault.getPastVotesIntegral(delegate, block.timestamp),
-            trackedVotes * 100 + (sameTimestamp ? oldVotes - shares : oldVotes) * 100
+            trackedVotes * 100 + (sameTimestamp ? oldVotes - shares : oldVotes) * 100 + 1
         );
-        assertEq(vault.getPastVotesIntegral(FRESH_DELEGATE, block.timestamp), shares * 100);
-        assertEq(vault.getPastVotesIntegral(delegate, start + 50), trackedVotes * 50);
+        assertEq(vault.getPastVotesIntegral(FRESH_DELEGATE, block.timestamp), shares * 100 + 1);
+        assertEq(vault.getPastVotesIntegral(delegate, start + 50), trackedVotes * 50 + 1);
         assertEq(vault.getPastVotes(delegate, oldTime), pastVotes);
     }
 

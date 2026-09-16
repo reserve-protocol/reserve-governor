@@ -25,8 +25,9 @@ balances, roles or votes are patched.
 
 Assertions cover ordinary storage, balances, supply, standard and optimistic
 checkpoint samples, historical votes, the implementation slot, zero integral
-before the first tracked movement, same-timestamp coalescing, and subsequent
-integral accumulation. The old governor/timelock implementations remain in use;
+before the first tracked movement, a returned value of one at the first tracked
+checkpoint (including same-timestamp coalescing), and subsequent cumulative
+vote-seconds plus one. The old governor/timelock implementations remain in use;
 this experiment changes the vault's accounting only. These tests impersonate
 authorized actors directly and do not simulate voting to approve the upgrade
 or broadcast transactions.

@@ -40,8 +40,8 @@ library VoteIntegralLib {
         return $._delegateCheckpoints[account]._checkpoints;
     }
 
-    /// @notice Returns cumulative delegated vote-seconds at a timestamp, including the current timestamp.
-    /// @dev Returns zero before tracking starts. Uses the same timestamps and vote values as getPastVotes.
+    /// @notice Returns cumulative delegated vote-seconds plus one, or zero for untracked history.
+    /// @dev Preserves the tracking sentinel, including at zero area. Differences of tracked values are exact.
     function lookup(address account, uint256 timepoint) external view returns (uint256) {
         Checkpoints.Checkpoint208[] storage checkpoints = _delegateHistory(account);
         uint256 low;
@@ -67,9 +67,9 @@ library VoteIntegralLib {
             return 0;
         }
         Checkpoints.Checkpoint208 storage checkpoint = checkpoints[low];
-        // The sentinel is nonzero and the search selected a checkpoint at or before timepoint.
+        // Preserve the sentinel so tracked zero area remains distinct from untracked history.
+        // The search selected a checkpoint at or before timepoint.
         unchecked {
-            --cumulative;
             timepoint -= checkpoint._key;
         }
         // Keep extrapolation checked: callers can supply timestamps beyond the uint48 clock domain.

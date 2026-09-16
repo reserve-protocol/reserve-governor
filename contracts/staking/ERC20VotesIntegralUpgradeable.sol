@@ -14,8 +14,8 @@ import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
  *      Tracking starts at each delegate's first nonzero vote movement after upgrading to this extension.
  */
 abstract contract ERC20VotesIntegralUpgradeable is ERC20VotesUpgradeable, IVotesIntegral {
-    /// @notice Returns cumulative delegated vote-seconds at a timestamp, including the current timestamp.
-    /// @dev Returns zero before tracking starts. Uses the same timestamps and vote values as getPastVotes.
+    /// @notice Returns cumulative delegated vote-seconds plus one, or zero for untracked history.
+    /// @dev Includes the current timestamp. The offset cancels when subtracting two tracked values.
     function getPastVotesIntegral(address account, uint256 timepoint) external view returns (uint256) {
         return VoteIntegralLib.lookup(account, timepoint);
     }
