@@ -197,8 +197,10 @@ contract DtfUpgradeForkTest is Test {
         ReserveOptimisticGovernor governor = ReserveOptimisticGovernor(payable(ownerGovernor));
         assertEq(governor.timelock(), admin);
         assertEq(address(governor.token()), address(vault));
-        (address[] memory targets, uint256[] memory values, bytes[] memory data) =
-            _singleCall(address(vault), abi.encodeCall(vault.upgradeToAndCall, (implementation, "")));
+        (address[] memory targets, uint256[] memory values, bytes[] memory data) = _singleCall(
+            address(vault),
+            abi.encodeCall(vault.upgradeToAndCall, (implementation, abi.encodeCall(vault.initializeAverageVotes, ())))
+        );
         bytes32 descriptionHash = _passAndQueue(governor, targets, values, data, "Upgrade shared staking vault");
         bytes32 beforeState = _vaultState(vault);
         governor.execute(targets, values, data, descriptionHash);

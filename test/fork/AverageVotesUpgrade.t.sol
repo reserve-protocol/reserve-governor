@@ -9,7 +9,7 @@ import { StakingVault } from "@staking/StakingVault.sol";
 import { Test } from "forge-std/Test.sol";
 
 /// @dev Uses real 1.0.0 vaults and authorized registry/admin accounts. No storage, code, balances or votes are patched.
-contract VoteIntegralUpgradeForkTest is Test {
+contract AverageVotesUpgradeForkTest is Test {
     address private constant BSC_HOLDER = 0xb209Eed4D80fB47E5C16577e44DaD1073c5C5015;
     address private constant FRESH_DELEGATE = address(0x123456789);
     bytes32 private constant IMPLEMENTATION_SLOT = bytes32(uint256(keccak256("eip1967.proxy.implementation")) - 1);
@@ -58,46 +58,47 @@ contract VoteIntegralUpgradeForkTest is Test {
             vault.delegate(FRESH_DELEGATE);
         }
         uint32 count = vault.numCheckpoints(delegate);
-        bytes32 beforeState = _state(vault, delegate, holder);
-        _upgradeVault(vault);
-        assertEq(_state(vault, delegate, holder), beforeState, "upgrade changed existing storage/history");
+        uint32 freshCount = vault.numCheckpoints(FRESH_DELEGATE);
+        {
+            bytes32 beforeState = _state(vault, delegate, holder);
+            _upgradeVault(vault);
+            assertEq(_state(vault, delegate, holder), beforeState, "upgrade changed existing storage/history");
+        }
         assertEq(vault.version(), "1.1.0");
-        assertEq(vault.getPastVotesIntegral(delegate, block.timestamp), 0);
-        assertEq(vault.getPastVotesIntegral(FRESH_DELEGATE, block.timestamp), 0);
+        assertEq(vault.getPastAverageVotes(delegate, 0, block.timestamp), 0);
+        assertEq(vault.getPastAverageVotes(FRESH_DELEGATE, 0, block.timestamp), 0);
 
-        if (!sameTimestamp) {
-            // Waiting and no-op delegation must not backfill old checkpoints or start tracking.
-            vm.warp(block.timestamp + 100);
+        if (sameTimestamp) {
+            // Post-upgrade movements coalesce into the legacy checkpoints at activation without adding history.
             vm.prank(holder);
             vault.delegate(delegate);
-            assertEq(vault.getPastVotesIntegral(delegate, block.timestamp), 0);
+            vm.prank(holder);
+            vault.delegate(FRESH_DELEGATE);
+            assertEq(vault.numCheckpoints(delegate), count);
+            assertEq(vault.numCheckpoints(FRESH_DELEGATE), freshCount);
+            assertEq(vault.getPastAverageVotes(delegate, 0, block.timestamp), 0);
+            assertEq(vault.getPastAverageVotes(FRESH_DELEGATE, 0, block.timestamp), 0);
         }
+
         uint256 start = block.timestamp;
+        uint256 trackedVotes = sameTimestamp ? oldVotes - shares : oldVotes;
+        uint256 freshVotes = sameTimestamp ? shares : 0;
+
+        // Unchanged legacy balances accrue from the global activation without adding checkpoints.
+        vm.warp(start + 100);
+        assertEq(vault.numCheckpoints(delegate), count);
+        assertEq(vault.numCheckpoints(FRESH_DELEGATE), freshCount);
+        assertEq(vault.getPastAverageVotes(delegate, start, block.timestamp), trackedVotes);
+        assertEq(vault.getPastAverageVotes(FRESH_DELEGATE, start, block.timestamp), freshVotes);
+        assertEq(vault.getPastAverageVotes(delegate, 0, start - 1), 0);
+
+        // The first post-upgrade movement must preserve the accrued interval exactly once.
         vm.prank(holder);
         vault.delegate(sameTimestamp ? delegate : FRESH_DELEGATE);
-        assertEq(vault.numCheckpoints(delegate), sameTimestamp ? count : count + 1);
-        assertEq(vault.numCheckpoints(FRESH_DELEGATE), 1);
-        assertEq(vault.getPastVotesIntegral(delegate, start), 0);
-        assertEq(vault.getPastVotesIntegral(delegate, start - 1), 0);
-
-        vm.warp(start + 100);
-        uint256 trackedVotes = sameTimestamp ? oldVotes : oldVotes - shares;
-        uint256 freshVotes = sameTimestamp ? 0 : shares;
-        assertEq(vault.getPastVotesIntegral(delegate, block.timestamp), trackedVotes * 100);
-        assertEq(vault.getPastVotesIntegral(FRESH_DELEGATE, block.timestamp), freshVotes * 100);
-        assertEq(vault.getPastVotes(delegate, oldTime), pastVotes);
-        assertEq(vault.getPastVotes(delegate, start), trackedVotes);
-
-        // Another movement must accumulate the previous interval exactly once.
-        vm.prank(holder);
-        vault.delegate(sameTimestamp ? FRESH_DELEGATE : delegate);
         vm.warp(start + 200);
-        assertEq(
-            vault.getPastVotesIntegral(delegate, block.timestamp),
-            trackedVotes * 100 + (sameTimestamp ? oldVotes - shares : oldVotes) * 100
-        );
-        assertEq(vault.getPastVotesIntegral(FRESH_DELEGATE, block.timestamp), shares * 100);
-        assertEq(vault.getPastVotesIntegral(delegate, start + 50), trackedVotes * 50);
+        assertEq(vault.getPastAverageVotes(delegate, start, block.timestamp), (2 * oldVotes - shares) / 2);
+        assertEq(vault.getPastAverageVotes(FRESH_DELEGATE, start, block.timestamp), shares / 2);
+        assertEq(vault.getPastAverageVotes(delegate, start, start + 50), trackedVotes);
         assertEq(vault.getPastVotes(delegate, oldTime), pastVotes);
     }
 
@@ -122,7 +123,7 @@ contract VoteIntegralUpgradeForkTest is Test {
         registry.registerVersion(next);
         address admin = vault.getRoleMember(bytes32(0), 0);
         vm.prank(admin);
-        vault.upgradeToAndCall(implementation, "");
+        vault.upgradeToAndCall(implementation, abi.encodeCall(StakingVault.initializeAverageVotes, ()));
         assertEq(address(uint160(uint256(vm.load(address(vault), IMPLEMENTATION_SLOT)))), implementation);
     }
 

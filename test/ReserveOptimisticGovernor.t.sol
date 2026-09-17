@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { StdStorage, stdStorage } from "forge-std/StdStorage.sol";
 import { Test } from "forge-std/Test.sol";
 
 import {
@@ -70,6 +71,7 @@ contract GovernorSignatureWallet is IERC1271 {
 }
 
 abstract contract ReserveOptimisticGovernorTestBase is Test {
+    using stdStorage for StdStorage;
     // Contracts
     MockERC20 public underlying;
     StakingVault public stakingVault;
@@ -104,9 +106,10 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     uint256 internal constant QUORUM_NUMERATOR = 0.1e18; // 10%
     uint256 internal constant PROPOSAL_THROTTLE_CAPACITY = 2; // proposals per 12h
 
-    // ERC-7201 VotesIntegral namespace; nested mapping stores cumulative + 1 per checkpoint.
+    // ERC-7201 VotesIntegral namespace; nested mapping stores raw cumulative values per checkpoint.
     bytes32 internal constant VOTE_INTEGRALS_MAPPING_SLOT =
         0x6c8ef2534ba8916a427dbfc162fbce2a165f7cccf4d86d45f25d2b245ed73b00;
+    bytes32 internal constant VOTE_INTEGRAL_STATE_SLOT = bytes32(uint256(VOTE_INTEGRALS_MAPPING_SLOT) + 1);
 
     uint256 internal constant TIMELOCK_DELAY = 2 days;
     string internal constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -496,65 +499,182 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         governor.propose(targets, values, calldatas, "No votes proposer");
     }
 
-    function test_standardProposal_usesCurrentVotesWhenIntegralHistoryEmpty() public {
-        address recentVoter = makeAddr("recentVoter");
-        _setupVoter(recentVoter, 100_000e18);
-        vm.warp(block.timestamp + 1);
-        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
-        _clearVoteIntegral(recentVoter);
+    function test_standardProposal_uninitializedAverageVotesFailsClosed() public {
+        _clearAverageVoteHistory(alice);
+        vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(0));
 
-        assertEq(stakingVault.getPastVotesIntegral(recentVoter, block.timestamp), 0);
-        assertEq(governor.getVotes(recentVoter, periodStart), 0);
-        assertGe(stakingVault.getVotes(recentVoter), governor.proposalThreshold());
-
-        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
-            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
-
-        vm.prank(recentVoter);
-        uint256 proposalId = governor.propose(targets, values, calldatas, "Legacy integral history");
-        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
-    }
-
-    function test_standardProposal_zeroIntegralRejectsVotesRemovedThisTimestamp() public {
-        _clearVoteIntegral(alice);
-        vm.prank(alice);
-        stakingVault.delegate(bob);
-
+        assertEq(stakingVault.getPastAverageVotes(alice, 0, block.timestamp), 0);
         uint256 threshold = governor.proposalThreshold();
-        assertEq(stakingVault.getPastVotesIntegral(alice, block.timestamp), 0);
-        assertGe(governor.getVotes(alice, block.timestamp - 1), threshold);
         assertGe(governor.getVotes(alice, block.timestamp - PROPOSAL_THROTTLE_PERIOD), threshold);
-        assertEq(stakingVault.getVotes(alice), 0);
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, alice, 0, threshold)
         );
-        vm.prank(alice);
-        governor.propose(targets, values, calldatas, "Removed current votes");
+        governor.propose(targets, values, calldatas, "Uninitialized average voting history");
     }
 
-    function test_standardProposal_zeroIntegralStillRequiresPreviousTimestampVotes() public {
-        address recentVoter = makeAddr("recentVoter");
-        _setupVoter(recentVoter, 100_000e18);
+    function test_standardProposal_unchangedLegacyBalanceRampsFromGlobalActivation() public {
         uint256 threshold = governor.proposalThreshold();
-        assertEq(stakingVault.getPastVotesIntegral(recentVoter, block.timestamp), 0);
-        assertGe(stakingVault.getVotes(recentVoter), threshold);
-        assertEq(governor.getVotes(recentVoter, block.timestamp - 1), 0);
+        vm.prank(alice);
+        stakingVault.transfer(bob, ALICE_STAKE - threshold);
+        _restartAverageVotes(alice);
+        uint256 activation = block.timestamp;
+
+        assertEq(stakingVault.getPastAverageVotes(alice, 0, activation), 0);
+        vm.warp(activation + 6 hours);
+        assertEq(
+            stakingVault.getPastAverageVotes(alice, block.timestamp - PROPOSAL_THROTTLE_PERIOD, block.timestamp),
+            threshold / 2
+        );
 
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
         vm.expectRevert(
-            abi.encodeWithSelector(IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, 0, threshold)
+            abi.encodeWithSelector(
+                IGovernor.GovernorInsufficientProposerVotes.selector, alice, threshold / 2, threshold
+            )
         );
-        vm.prank(recentVoter);
-        governor.propose(targets, values, calldatas, "New votes this timestamp");
+        vm.prank(alice);
+        governor.propose(targets, values, calldatas, "Legacy activation ramp halfway");
+
+        vm.warp(activation + 12 hours);
+        assertEq(stakingVault.getPastAverageVotes(alice, activation, block.timestamp), threshold);
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, "Legacy activation ramp complete");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
     }
 
-    function test_standardProposal_requiresAverageDelegatedVotes() public {
+    function test_standardProposal_dustDoesNotResetLegacyRampOrEraseArea() public {
+        _restartAverageVotes(alice);
+        uint256 activation = block.timestamp;
+        address dustHolder = makeAddr("dustHolder");
+
+        vm.warp(activation + 6 hours);
+        underlying.mint(dustHolder, 1);
+        vm.startPrank(dustHolder);
+        underlying.approve(address(stakingVault), 1);
+        stakingVault.depositAndDelegate(1, alice, dustHolder);
+        vm.stopPrank();
+
+        vm.warp(activation + 12 hours);
+        assertEq(stakingVault.getPastAverageVotes(alice, activation, block.timestamp), ALICE_STAKE);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
+
+        vm.prank(alice);
+        uint256 proposalId = governor.propose(targets, values, calldatas, "Legacy ramp after dust");
+        assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+    }
+
+    function test_standardProposal_cannotReplayPreActivationEndpointHop() public {
+        address proposer = makeAddr("preActivationHopProposer");
+        uint256 threshold = governor.proposalThreshold();
+
+        vm.prank(bob);
+        stakingVault.transfer(proposer, threshold);
+        vm.prank(proposer);
+        stakingVault.delegate(proposer);
+        vm.warp(block.timestamp + 4 hours);
+        vm.prank(proposer);
+        stakingVault.transfer(bob, threshold);
+        vm.warp(block.timestamp + 1 hours);
+        vm.prank(bob);
+        stakingVault.transfer(proposer, threshold);
+        vm.warp(block.timestamp + 3 hours);
+
+        _restartAverageVotes(proposer);
+        vm.warp(block.timestamp + 6 hours);
+        assertEq(governor.getVotes(proposer, block.timestamp - 1), threshold);
+        assertGe(governor.getVotes(proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD), threshold);
+        uint256 averageVotes = threshold / 2;
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IGovernor.GovernorInsufficientProposerVotes.selector, proposer, averageVotes, threshold
+            )
+        );
+        vm.prank(proposer);
+        governor.propose(targets, values, calldatas, "Pre-activation endpoint hop");
+    }
+
+    function test_standardProposal_rejectsBriefVotesAtFirstCheckpointAnniversary() public {
+        address proposer = makeAddr("anniversaryProposer");
+        uint256 threshold = governor.proposalThreshold();
+        uint256 start = block.timestamp;
+
+        vm.prank(bob);
+        stakingVault.transfer(proposer, threshold);
+        vm.prank(proposer);
+        stakingVault.delegate(proposer);
+
+        vm.warp(start + 1);
+        vm.prank(proposer);
+        stakingVault.transfer(bob, threshold);
+
+        vm.warp(start + PROPOSAL_THROTTLE_PERIOD - 2);
+        vm.prank(bob);
+        stakingVault.transfer(proposer, threshold);
+
+        assertEq(governor.getVotes(proposer, start), threshold);
+        assertEq(stakingVault.getPastAverageVotes(proposer, 0, start), 0);
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1)));
+
+        // Before the anniversary there are no historical votes; at/after it the tiny exact average rejects.
+        for (uint256 i; i < 3; ++i) {
+            vm.warp(start + PROPOSAL_THROTTLE_PERIOD - 1 + i);
+            assertEq(governor.getVotes(proposer, block.timestamp - 1), threshold);
+            uint256 eligibleVotes = (threshold * (i == 0 ? 2 : 3)) / PROPOSAL_THROTTLE_PERIOD;
+            assertLt(eligibleVotes, threshold);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    IGovernor.GovernorInsufficientProposerVotes.selector, proposer, eligibleVotes, threshold
+                )
+            );
+            vm.prank(proposer);
+            governor.propose(targets, values, calldatas, "First checkpoint anniversary");
+        }
+    }
+
+    function test_standardProposal_averagesTrackedZeroAreaBeforeLaterVotes() public {
+        address proposer = makeAddr("zeroAreaProposer");
+        uint256 threshold = governor.proposalThreshold();
+        uint256 start = block.timestamp;
+        vm.prank(bob);
+        stakingVault.transfer(proposer, threshold);
+        vm.startPrank(proposer);
+        stakingVault.delegate(proposer);
+        stakingVault.transfer(bob, threshold);
+        vm.stopPrank();
+
+        vm.warp(start + PROPOSAL_THROTTLE_PERIOD / 2);
+        vm.prank(bob);
+        stakingVault.transfer(proposer, 2 * threshold);
+        vm.warp(start + PROPOSAL_THROTTLE_PERIOD);
+
+        assertEq(governor.getVotes(proposer, start), 0);
+        assertEq(stakingVault.getPastAverageVotes(proposer, 0, start), 0);
+        uint256 averageVotes = stakingVault.getPastAverageVotes(proposer, start, block.timestamp);
+        assertEq(averageVotes, threshold);
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1)));
+        vm.prank(proposer);
+        governor.propose(targets, values, calldatas, "Tracked zero-area start");
+    }
+
+    function test_standardProposal_recentLargeAccountQualifiesProportionally() public {
         address recentVoter = makeAddr("recentVoter");
         uint256 amount = 100_000e18;
+        uint256 start = block.timestamp;
         underlying.mint(recentVoter, amount);
 
         vm.startPrank(recentVoter);
@@ -566,14 +686,13 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));
         uint256 threshold = governor.proposalThreshold();
+        uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
         IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
-        uint256 averageVotes =
-            (votes.getPastVotesIntegral(recentVoter, block.timestamp)
-                    - votes.getPastVotesIntegral(recentVoter, block.timestamp - PROPOSAL_THROTTLE_PERIOD))
-                / PROPOSAL_THROTTLE_PERIOD;
+        uint256 averageVotes = votes.getPastAverageVotes(recentVoter, periodStart, block.timestamp);
 
         assertGe(governor.getVotes(recentVoter, block.timestamp - 1), threshold);
-        assertLt(averageVotes, threshold);
+        assertEq(votes.getPastAverageVotes(recentVoter, 0, periodStart), 0);
+        assertEq(governor.getVotes(recentVoter, periodStart), 0);
         vm.prank(recentVoter);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -582,8 +701,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         );
         governor.propose(targets, values, calldatas, "Recent delegated voter");
 
-        // The same delegation becomes eligible after 12 hours, without another transfer.
-        vm.warp(block.timestamp + PROPOSAL_THROTTLE_PERIOD - 1);
+        // Higher balances satisfy the fixed-period average before a full lookback elapses.
+        uint256 eligibleAfter = (threshold * PROPOSAL_THROTTLE_PERIOD + amount - 1) / amount;
+        vm.warp(start + eligibleAfter);
         vm.prank(recentVoter);
         uint256 proposalId = governor.propose(targets, values, calldatas, "Recent delegated voter warmed up");
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
@@ -2004,7 +2124,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
                     continue;
                 }
                 uint8 third = 3 - first - second;
-                assertTrue(vm.revertToState(snapshotId));
+                vm.revertToState(snapshotId);
 
                 _upgradeComponent(first, address(stakingVaultImpl), address(governorImpl), address(timelockImpl));
                 _upgradeComponent(second, address(stakingVaultImpl), address(governorImpl), address(timelockImpl));
@@ -2238,11 +2358,16 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
             : governor.castVoteBySig(proposalId, support, voter, signature);
     }
 
-    function _clearVoteIntegral(address account) internal {
+    function _clearAverageVoteHistory(address account) internal {
         bytes32 accountSlot = keccak256(abi.encode(account, VOTE_INTEGRALS_MAPPING_SLOT));
         for (uint32 i; i < stakingVault.numCheckpoints(account); ++i) {
             vm.store(address(stakingVault), keccak256(abi.encode(i, accountSlot)), bytes32(0));
         }
+    }
+
+    function _restartAverageVotes(address account) internal {
+        _clearAverageVoteHistory(account);
+        vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(uint256(uint48(block.timestamp))));
     }
 
     function _setupVoter(address voter, uint256 amount) internal {

@@ -227,7 +227,6 @@ contract ReserveOptimisticGovernor is
         return _getOptimisticVotes(account, timepoint);
     }
 
-    /// @dev Call proposalType() to determine whether to call `state()` or `optimisticProposal.state()`
     function state(uint256 proposalId)
         public
         view
@@ -235,9 +234,57 @@ contract ReserveOptimisticGovernor is
         returns (ProposalState)
     {
         if (_isOptimistic(proposalId)) {
-            return ProposalLib.optimisticState(
-                _proposalCore(proposalId), vetoThreshold(proposalId), IOptimisticVotes(address(token())), proposalId
-            );
+            ProposalCore storage proposalCore = _proposalCore(proposalId);
+
+            if (proposalCore.executed) {
+                return ProposalState.Executed;
+            }
+
+            if (proposalCore.canceled) {
+                return ProposalState.Canceled;
+            }
+
+            // {s}
+            uint256 snapshot = proposalCore.voteStart;
+
+            if (snapshot >= block.timestamp) {
+                return ProposalState.Pending;
+            }
+
+            // D18{1}
+            uint256 _vetoThreshold = vetoThreshold(proposalId);
+
+            if (_vetoThreshold == ProposalLib.TRANSITIONED_VETO_THRESHOLD) {
+                // special-case for transitioned proposals
+                return ProposalState.Defeated;
+            }
+
+            // {tok}
+            uint256 pastSupply = IOptimisticVotes(address(token())).getPastOptimisticTotalSupply(snapshot);
+
+            if (pastSupply == 0) {
+                return ProposalState.Canceled;
+            }
+
+            // {tok} = D18{1} * {tok} / D18{1}
+            uint256 vetoThresholdTok = Math.mulDiv(_vetoThreshold, pastSupply, 1e18);
+            vetoThresholdTok = Math.max(vetoThresholdTok, 1);
+
+            // {tok}
+            (uint256 againstVotes,,) = proposalVotes(proposalId);
+
+            if (againstVotes >= vetoThresholdTok) {
+                return ProposalState.Defeated;
+            }
+
+            // {s}
+            uint256 deadline = proposalCore.voteStart + proposalCore.voteDuration;
+
+            if (deadline >= block.timestamp) {
+                return ProposalState.Active;
+            }
+
+            return ProposalState.Succeeded;
         }
 
         return super.state(proposalId);

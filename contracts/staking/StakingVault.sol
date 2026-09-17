@@ -162,9 +162,15 @@ contract StakingVault is
 
         tokenJar = _tokenJar;
 
-        unstakingManager = new UnstakingManager(_underlying);
+        // Deploy through the linked library to keep this implementation below the EIP-170 limit.
+        unstakingManager = StakingVaultUpgradeLib.deployUnstakingManager(_underlying);
 
         nativeRewardsLastPaid = block.timestamp;
+    }
+
+    /// @notice Activates average-vote accounting when upgrading a legacy vault.
+    function initializeAverageVotes() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _initializeAverageVotes();
     }
 
     /**
@@ -299,16 +305,17 @@ contract StakingVault is
             UserRewardInfo storage userRewardTracker = userRewardTrackers[_rewardToken][msg.sender];
 
             // {reward} = D18{reward} / D18
-            claimableRewards[i] = userRewardTracker.accruedRewards / SCALAR;
+            uint256 amount = userRewardTracker.accruedRewards / SCALAR;
+            claimableRewards[i] = amount;
 
-            if (claimableRewards[i] != 0) {
+            if (amount != 0) {
                 // {reward} += {reward}
-                rewardInfo.totalClaimed += claimableRewards[i];
+                rewardInfo.totalClaimed += amount;
                 userRewardTracker.accruedRewards %= SCALAR;
 
-                SafeERC20.safeTransfer(IERC20(_rewardToken), msg.sender, claimableRewards[i]);
+                SafeERC20.safeTransfer(IERC20(_rewardToken), msg.sender, amount);
 
-                emit RewardsClaimed(msg.sender, _rewardToken, claimableRewards[i]);
+                emit RewardsClaimed(msg.sender, _rewardToken, amount);
             }
         }
     }
