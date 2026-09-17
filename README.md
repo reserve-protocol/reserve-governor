@@ -577,7 +577,7 @@ All vote-seconds before activation count as zero. A legacy holder with exactly t
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 
-The build uses Solidity 0.8.33, optimizer runs 156, and `via_ir = false`. The governor runtime is 23,958 bytes and the vault runtime is 22,776 bytes, leaving the vault 1,800 bytes below the 24,576-byte EIP-170 limit at 156 optimizer runs. UnstakingManager creation runs through the linked upgrade library to preserve this headroom. Run `pnpm size` after any contract or compiler change.
+The build uses Solidity 0.8.33, optimizer runs 415, and `via_ir = false`. The governor runtime is 24,531 bytes and the vault runtime is 23,785 bytes, leaving the governor 45 bytes below the 24,576-byte EIP-170 limit at 415 optimizer runs. UnstakingManager creation runs through the linked upgrade library to preserve this headroom. Run `pnpm size` after any contract or compiler change.
 
 
 ## Flow Summary

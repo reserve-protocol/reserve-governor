@@ -9,7 +9,7 @@ library GovernanceUpgradeLibDeployer {
      *
      * @notice Source Contract: contracts/governance/lib/GovernanceUpgradeLib.sol
      * - solc: 0.8.33+commit.64118f21
-     * - optimizer_runs: 156
+     * - optimizer_runs: 415
      * - viaIR: false
      * - evm_version: cancun
      * - bytecodeHash: none
