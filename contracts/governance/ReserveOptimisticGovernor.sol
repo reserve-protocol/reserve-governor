@@ -247,7 +247,7 @@ contract ReserveOptimisticGovernor is
             }
 
             // {tok} = D18{1} * {tok} / D18{1}
-            uint256 vetoThresholdTok = (_vetoThreshold * pastSupply) / 1e18;
+            uint256 vetoThresholdTok = Math.mulDiv(_vetoThreshold, pastSupply, 1e18);
             vetoThresholdTok = Math.max(vetoThresholdTok, 1);
 
             // {tok}
