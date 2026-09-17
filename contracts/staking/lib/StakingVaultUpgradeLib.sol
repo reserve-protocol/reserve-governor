@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { UnstakingManager } from "@staking/UnstakingManager.sol";
 import { Versioned } from "@utils/Versioned.sol";
 
 library StakingVaultUpgradeLib {
     error Vault__VersionDeprecated(bytes32 versionHash);
     error Vault__NotLatestStakingVault(address stakingVaultImpl);
+
+    function deployUnstakingManager(IERC20 asset) external returns (UnstakingManager) {
+        return new UnstakingManager(asset);
+    }
 
     function authorizeUpgrade(ReserveOptimisticGovernanceVersionRegistry versionRegistry, address stakingVaultImpl)
         external

@@ -4,17 +4,16 @@ pragma solidity ^0.8.28;
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 
-import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
+import { IAverageVotes } from "@interfaces/IAverageVotes.sol";
 import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovernor.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { ReserveOptimisticGovernor } from "@governance/ReserveOptimisticGovernor.sol";
-import { OPTIMISTIC_PROPOSER_ROLE } from "@utils/Constants.sol";
+import { OPTIMISTIC_PROPOSER_ROLE, PROPOSAL_THROTTLE_PERIOD } from "@utils/Constants.sol";
 
 library ProposalLib {
     string constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -31,52 +30,6 @@ library ProposalLib {
     }
 
     // === External ===
-
-    function optimisticState(
-        GovernorUpgradeable.ProposalCore storage proposalCore,
-        uint256 vetoThreshold,
-        IOptimisticVotes token,
-        uint256 proposalId
-    ) external view returns (IGovernor.ProposalState) {
-        if (proposalCore.executed) {
-            return IGovernor.ProposalState.Executed;
-        }
-
-        if (proposalCore.canceled) {
-            return IGovernor.ProposalState.Canceled;
-        }
-
-        // {s}
-        uint256 snapshot = proposalCore.voteStart;
-        if (snapshot >= block.timestamp) {
-            return IGovernor.ProposalState.Pending;
-        }
-
-        if (vetoThreshold == TRANSITIONED_VETO_THRESHOLD) {
-            return IGovernor.ProposalState.Defeated;
-        }
-
-        // {tok}
-        uint256 pastSupply = token.getPastOptimisticTotalSupply(snapshot);
-        if (pastSupply == 0) {
-            return IGovernor.ProposalState.Canceled;
-        }
-
-        // {tok} = D18{1} * {tok} / D18{1}
-        uint256 vetoThresholdTok = Math.max((vetoThreshold * pastSupply) / 1e18, 1);
-        (uint256 againstVotes,,) = _governor().proposalVotes(proposalId);
-        if (againstVotes >= vetoThresholdTok) {
-            return IGovernor.ProposalState.Defeated;
-        }
-
-        // {s}
-        uint256 deadline = proposalCore.voteStart + proposalCore.voteDuration;
-        if (deadline >= block.timestamp) {
-            return IGovernor.ProposalState.Active;
-        }
-
-        return IGovernor.ProposalState.Succeeded;
-    }
 
     function proposeOptimistic(
         ProposalData calldata proposal,
@@ -146,6 +99,14 @@ library ProposalLib {
             require(
                 proposerVotes >= votesThreshold,
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
+            );
+
+            uint256 averageVotes = IAverageVotes(address(governor.token()))
+                .getPastAverageVotes(proposal.proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD, block.timestamp);
+
+            require(
+                averageVotes >= votesThreshold,
+                IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
             );
         }
 

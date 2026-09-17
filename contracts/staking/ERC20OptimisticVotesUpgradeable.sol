@@ -2,9 +2,6 @@
 pragma solidity ^0.8.28;
 
 import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
-import {
-    ERC20VotesUpgradeable
-} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20VotesUpgradeable.sol";
 
 import { IVotes } from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -12,6 +9,7 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
 import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
+import { ERC20AverageVotesUpgradeable } from "@staking/ERC20AverageVotesUpgradeable.sol";
 
 /**
  * @title ERC20OptimisticVotesUpgradeable
@@ -21,7 +19,7 @@ import { IOptimisticVotes } from "@interfaces/IOptimisticVotes.sol";
  *      delegate state and delegate checkpoints at a separate ERC-7201 slot. Token mint, burn, and transfer events
  *      update both delegate graphs through {_update}.
  */
-abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOptimisticVotes {
+abstract contract ERC20OptimisticVotesUpgradeable is ERC20AverageVotesUpgradeable, IOptimisticVotes {
     using Checkpoints for Checkpoints.Trace208;
 
     bytes32 private constant OPTIMISTIC_DELEGATION_TYPEHASH =
@@ -40,6 +38,7 @@ abstract contract ERC20OptimisticVotesUpgradeable is ERC20VotesUpgradeable, IOpt
 
     function __ERC20OptimisticVotes_init() internal onlyInitializing {
         __ERC20Votes_init();
+        _initializeAverageVotes();
         __ERC20OptimisticVotes_init_unchained();
     }
 

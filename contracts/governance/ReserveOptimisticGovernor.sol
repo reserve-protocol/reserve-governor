@@ -87,7 +87,7 @@ contract ReserveOptimisticGovernor is
     /// @param standardGovParams.proposalThreshold D18{1} Fraction of tok supply required to propose
     /// @param standardGovParams.voteExtension {s} Time extension for late quorum
     /// @param standardGovParams.quorumNumerator D18{1} Fraction of token supply required to reach quorum
-    /// @param _proposalThrottleCapacity Optimistic proposals-per-account per 12h
+    /// @param _proposalThrottleCapacity Proposals-per-account per 12h
     function initialize(
         OptimisticGovernanceParams calldata optimisticGovParams,
         StandardGovernanceParams calldata standardGovParams,
@@ -173,6 +173,8 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256 proposalId) {
+        ThrottleLib.consumeProposalCharge(proposalThrottle, msg.sender);
+
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         ProposalLib.proposePessimistic(
@@ -205,7 +207,6 @@ contract ReserveOptimisticGovernor is
         return _getOptimisticVotes(account, timepoint);
     }
 
-    /// @dev Call proposalType() to determine whether to call `state()` or `optimisticProposal.state()`
     function state(uint256 proposalId)
         public
         view
@@ -213,9 +214,57 @@ contract ReserveOptimisticGovernor is
         returns (ProposalState)
     {
         if (_isOptimistic(proposalId)) {
-            return ProposalLib.optimisticState(
-                _proposalCore(proposalId), vetoThreshold(proposalId), IOptimisticVotes(address(token())), proposalId
-            );
+            ProposalCore storage proposalCore = _proposalCore(proposalId);
+
+            if (proposalCore.executed) {
+                return ProposalState.Executed;
+            }
+
+            if (proposalCore.canceled) {
+                return ProposalState.Canceled;
+            }
+
+            // {s}
+            uint256 snapshot = proposalCore.voteStart;
+
+            if (snapshot >= block.timestamp) {
+                return ProposalState.Pending;
+            }
+
+            // D18{1}
+            uint256 _vetoThreshold = vetoThreshold(proposalId);
+
+            if (_vetoThreshold == ProposalLib.TRANSITIONED_VETO_THRESHOLD) {
+                // special-case for transitioned proposals
+                return ProposalState.Defeated;
+            }
+
+            // {tok}
+            uint256 pastSupply = IOptimisticVotes(address(token())).getPastOptimisticTotalSupply(snapshot);
+
+            if (pastSupply == 0) {
+                return ProposalState.Canceled;
+            }
+
+            // {tok} = D18{1} * {tok} / D18{1}
+            uint256 vetoThresholdTok = Math.mulDiv(_vetoThreshold, pastSupply, 1e18);
+            vetoThresholdTok = Math.max(vetoThresholdTok, 1);
+
+            // {tok}
+            (uint256 againstVotes,,) = proposalVotes(proposalId);
+
+            if (againstVotes >= vetoThresholdTok) {
+                return ProposalState.Defeated;
+            }
+
+            // {s}
+            uint256 deadline = proposalCore.voteStart + proposalCore.voteDuration;
+
+            if (deadline >= block.timestamp) {
+                return ProposalState.Active;
+            }
+
+            return ProposalState.Succeeded;
         }
 
         return super.state(proposalId);

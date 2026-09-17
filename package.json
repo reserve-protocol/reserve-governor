@@ -7,12 +7,13 @@
   "author": "ABC Labs",
   "scripts": {
     "compile": "forge compile",
-    "test": "forge test",
+    "test": "forge test --no-match-path 'test/fork/*'",
     "size": "forge compile --sizes contracts/",
     "format": "forge fmt",
     "selectors:upload": "forge selectors upload --all",
     "deploy": "forge script script/Deploy.s.sol:DeployScript --slow",
-    "artifacts": "./scripts/generate-artifacts.sh"
+    "artifacts": "./scripts/generate-artifacts.sh",
+    "test:fork": "forge test --match-path 'test/fork/*' --threads 1 --compute-units-per-second 50"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
