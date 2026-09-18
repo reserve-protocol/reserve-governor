@@ -31,7 +31,11 @@ Each test starts from untouched 1.0.0 proxy code and chain state. It impersonate
 the existing registry owner to register the locally deployed 1.1.0 release, then
 uses actual delegates' existing votes to pass standard proposals. It upgrades
 the vault through its own admin governance, and the DTF governor/timelock through
-the DTF governance, including the registry reinitializers in `upgradeToAndCall`.
+the DTF governance. The governor upgrade remains a direct proposal target
+because its `onlyGovernance` guard requires the governor's exact execution
+calldata; `UpgradeSpell_1_1_0` is used as an intermediate timelock
+implementation to initialize the registry and self-upgrade to the registered
+1.1.0 timelock implementation.
 No proxy bytecode, storage, roles, balances, or voting power are overwritten with
 cheatcodes. Only authorized actors are impersonated and proposal time is advanced.
 

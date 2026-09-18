@@ -12,6 +12,7 @@ import { GovernanceUpgradeLib } from "@governance/lib/GovernanceUpgradeLib.sol";
 import { IReserveOptimisticGovernorDeployer } from "@interfaces/IDeployer.sol";
 import { ReserveOptimisticGovernorDeployer } from "@src/Deployer.sol";
 import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
+import { UpgradeSpell_1_1_0 } from "@src/spells/upgrades/UpgradeSpell_1_1_0.sol";
 import { StakingVault } from "@staking/StakingVault.sol";
 import { CANCELLER_ROLE, EXECUTOR_ROLE, OPTIMISTIC_PROPOSER_ROLE, PROPOSER_ROLE } from "@utils/Constants.sol";
 
@@ -133,7 +134,7 @@ contract DtfUpgradeForkTest is Test {
 
         // The shared vault has its own admin timelock/governor, distinct from the DTF governance.
         _upgradeVault(sys.vault, vaultImpl);
-        _upgradeGovernance(sys, governorImpl, timelockImpl);
+        _upgradeGovernance(fixture.timelock, sys, governorImpl, timelockImpl);
 
         assertEq(_implementation(fixture.vault), vaultImpl);
         assertEq(_implementation(fixture.governor), governorImpl);
@@ -205,10 +206,13 @@ contract DtfUpgradeForkTest is Test {
         assertEq(_vaultState(vault), beforeState, "vault state changed during upgrade");
     }
 
-    function _upgradeGovernance(System memory sys, address governorImpl, address timelockImpl) private {
+    function _upgradeGovernance(address timelock, System memory sys, address governorImpl, address timelockImpl)
+        private
+    {
+        UpgradeSpell_1_1_0 spell = new UpgradeSpell_1_1_0();
         address[] memory targets = new address[](2);
         targets[0] = address(sys.governor);
-        targets[1] = address(sys.timelock);
+        targets[1] = timelock;
         uint256[] memory values = new uint256[](2);
         bytes[] memory data = new bytes[](2);
         data[0] = abi.encodeCall(
@@ -216,8 +220,7 @@ contract DtfUpgradeForkTest is Test {
             (governorImpl, abi.encodeCall(sys.governor.initializeVersionRegistry, (address(sys.registry))))
         );
         data[1] = abi.encodeCall(
-            sys.timelock.upgradeToAndCall,
-            (timelockImpl, abi.encodeCall(sys.timelock.initializeVersionRegistry, (address(sys.registry))))
+            sys.timelock.upgradeToAndCall, (address(spell), abi.encodeCall(spell.cast, (timelockImpl, sys.registry)))
         );
         bytes32 descriptionHash = _passAndQueue(sys.governor, targets, values, data, "Upgrade DTF governance");
         bytes32 beforeState = _governanceState(sys);
