@@ -9,7 +9,7 @@
 - Average-vote accounting starts at one activation timestamp per vault. Pre-activation vote-seconds count as zero, so unchanged legacy holders ramp automatically to their full 12-hour average without a transfer. Eligibility always uses the average; there is no historical endpoint fallback.
 - The shared `Versioned` mixin returns `1.1.0` instead of `1.0.0`.
 - Optimistic proposal state is calculated directly in the governor, avoiding the library round trip.
-- Optimizer runs set to 723 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 24,385 bytes; StakingVault runtime: 24,547 bytes (29 bytes below EIP-170). UnstakingManager creation runs through the linked upgrade library to preserve this headroom.
+- Optimizer runs set to 416 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 24,531 bytes; StakingVault runtime: 23,785 bytes (791 bytes below EIP-170). UnstakingManager creation runs through the linked upgrade library to preserve this headroom.
 
 ### Added
 

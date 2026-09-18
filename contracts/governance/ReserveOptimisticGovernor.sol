@@ -33,8 +33,10 @@ import { IReserveOptimisticGovernor } from "@interfaces/IReserveOptimisticGovern
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
 import { TimelockControllerOptimistic } from "@governance/TimelockControllerOptimistic.sol";
+import { GovernanceUpgradeLib } from "@governance/lib/GovernanceUpgradeLib.sol";
 import { ProposalLib } from "@governance/lib/ProposalLib.sol";
 import { ThrottleLib } from "@governance/lib/ThrottleLib.sol";
+import { ReserveOptimisticGovernanceVersionRegistry } from "@src/VersionRegistry.sol";
 import {
     CANCELLER_ROLE,
     MAX_OPTIMISTIC_DELAY,
@@ -75,6 +77,8 @@ contract ReserveOptimisticGovernor is
 
     mapping(uint256 proposalId => OptimisticProposalDetails) private optimisticProposalDetails;
 
+    ReserveOptimisticGovernanceVersionRegistry public versionRegistry;
+
     constructor() {
         _disableInitializers();
     }
@@ -94,7 +98,8 @@ contract ReserveOptimisticGovernor is
         uint256 _proposalThrottleCapacity,
         address _token,
         address _timelockController,
-        address _selectorRegistry
+        address _selectorRegistry,
+        address _versionRegistry
     ) public initializer {
         __Governor_init("Reserve Optimistic Governor");
         __GovernorSettings_init(
@@ -111,6 +116,21 @@ contract ReserveOptimisticGovernor is
         _setOptimisticParams(optimisticGovParams);
 
         selectorRegistry = OptimisticSelectorRegistry(payable(_selectorRegistry));
+        _setVersionRegistry(_versionRegistry);
+    }
+
+    /// @dev Call atomically via upgradeToAndCall when upgrading a proxy without a registry.
+    function initializeVersionRegistry(address registry) external reinitializer(2) {
+        // The outer upgrade already consumes the onlyGovernance calldata authorization.
+        require(_msgSender() == _executor(), GovernorOnlyExecutor(_msgSender()));
+        _setVersionRegistry(registry);
+    }
+
+    function _setVersionRegistry(address registry) private {
+        require(address(versionRegistry) == address(0), OptimisticGovernor__VersionRegistryAlreadySet());
+        require(registry.code.length != 0, OptimisticGovernor__InvalidVersionRegistry());
+        versionRegistry = ReserveOptimisticGovernanceVersionRegistry(registry);
+        emit VersionRegistrySet(registry);
     }
 
     function setProposalThrottle(uint256 newProposalThrottleCapacity) external onlyGovernance {
@@ -447,7 +467,9 @@ contract ReserveOptimisticGovernor is
     }
 
     /// @dev Upgrades authorized only through timelock
-    function _authorizeUpgrade(address) internal override onlyGovernance { }
+    function _authorizeUpgrade(address governorImpl) internal override onlyGovernance {
+        GovernanceUpgradeLib.authorizeGovernorUpgrade(versionRegistry, governorImpl);
+    }
 
     // === Setters ===
 

@@ -35,3 +35,12 @@ interval, rounded down.
 The old governor/timelock implementations remain in use; this experiment changes
 the vault's accounting only. These tests impersonate authorized actors directly
 and do not simulate voting to approve the upgrade or broadcast transactions.
+
+
+## Full governance upgrade cases
+
+`DtfUpgrade.t.sol` adds six cases for PHOTON, BUILDOUT, NEOCLOUD, POWER,
+ROBOTS and MAG7. Each upgrades the staking vault (including
+`initializeAverageVotes`), governor and timelock through their deployed
+version registries and governance paths. The vault-focused average-votes cases
+remain separate and cover the two distinct vaults directly.
