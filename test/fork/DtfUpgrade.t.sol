@@ -133,8 +133,8 @@ contract DtfUpgradeForkTest is Test {
         _registerRelease(sys.registry, vaultImpl, governorImpl, timelockImpl);
 
         // The shared vault has its own admin timelock/governor, distinct from the DTF governance.
-        _upgradeVault(sys.vault, vaultImpl);
-        _upgradeGovernance(fixture.timelock, sys, governorImpl, timelockImpl);
+        _upgradeVault(sys.vault);
+        _upgradeGovernance(sys, governorImpl, timelockImpl);
 
         assertEq(_implementation(fixture.vault), vaultImpl);
         assertEq(_implementation(fixture.governor), governorImpl);
@@ -192,27 +192,44 @@ contract DtfUpgradeForkTest is Test {
         registry.registerVersion(next);
     }
 
-    function _upgradeVault(StakingVault vault, address implementation) private {
+    function _upgradeVault(StakingVault vault) private {
         address admin = vault.getRoleMember(bytes32(0), 0);
         address ownerGovernor = IAccessControlEnumerable(admin).getRoleMember(PROPOSER_ROLE, 0);
         ReserveOptimisticGovernor governor = ReserveOptimisticGovernor(payable(ownerGovernor));
         assertEq(governor.timelock(), admin);
         assertEq(address(governor.token()), address(vault));
-        (address[] memory targets, uint256[] memory values, bytes[] memory data) =
-            _singleCall(address(vault), abi.encodeCall(vault.upgradeToAndCall, (implementation, "")));
+        UpgradeSpell_1_1_0 spell = new UpgradeSpell_1_1_0();
+        assertEq(vault.getRoleMemberCount(vault.DEFAULT_ADMIN_ROLE()), 1);
+
+        uint256 snapshot = vm.snapshotState();
+        bytes32 adminRole = vault.DEFAULT_ADMIN_ROLE();
+        vm.startPrank(admin);
+        vault.grantRole(adminRole, address(spell));
+        vm.stopPrank();
+        vm.expectRevert(abi.encodeWithSelector(UpgradeSpell_1_1_0.UpgradeSpell__Error.selector, 3));
+        spell.cast(vault);
+        vm.revertToState(snapshot);
+
+        address[] memory targets = new address[](2);
+        targets[0] = address(vault);
+        targets[1] = address(spell);
+        uint256[] memory values = new uint256[](2);
+        bytes[] memory data = new bytes[](2);
+        data[0] = abi.encodeCall(vault.grantRole, (vault.DEFAULT_ADMIN_ROLE(), address(spell)));
+        data[1] = abi.encodeCall(spell.cast, (vault));
         bytes32 descriptionHash = _passAndQueue(governor, targets, values, data, "Upgrade shared staking vault");
         bytes32 beforeState = _vaultState(vault);
         governor.execute(targets, values, data, descriptionHash);
         assertEq(_vaultState(vault), beforeState, "vault state changed during upgrade");
+        assertFalse(vault.hasRole(vault.DEFAULT_ADMIN_ROLE(), address(spell)));
+        assertEq(vault.getRoleMemberCount(vault.DEFAULT_ADMIN_ROLE()), 1);
+        assertEq(vault.getRoleMember(vault.DEFAULT_ADMIN_ROLE(), 0), admin);
     }
 
-    function _upgradeGovernance(address timelock, System memory sys, address governorImpl, address timelockImpl)
-        private
-    {
-        UpgradeSpell_1_1_0 spell = new UpgradeSpell_1_1_0();
+    function _upgradeGovernance(System memory sys, address governorImpl, address timelockImpl) private {
         address[] memory targets = new address[](2);
         targets[0] = address(sys.governor);
-        targets[1] = timelock;
+        targets[1] = address(sys.timelock);
         uint256[] memory values = new uint256[](2);
         bytes[] memory data = new bytes[](2);
         data[0] = abi.encodeCall(
@@ -220,7 +237,8 @@ contract DtfUpgradeForkTest is Test {
             (governorImpl, abi.encodeCall(sys.governor.initializeVersionRegistry, (address(sys.registry))))
         );
         data[1] = abi.encodeCall(
-            sys.timelock.upgradeToAndCall, (address(spell), abi.encodeCall(spell.cast, (timelockImpl, sys.registry)))
+            sys.timelock.upgradeToAndCall,
+            (timelockImpl, abi.encodeCall(sys.timelock.initializeVersionRegistry, (address(sys.registry))))
         );
         bytes32 descriptionHash = _passAndQueue(sys.governor, targets, values, data, "Upgrade DTF governance");
         bytes32 beforeState = _governanceState(sys);

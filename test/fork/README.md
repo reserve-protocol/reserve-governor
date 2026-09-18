@@ -29,13 +29,14 @@ admin governor/timelock, distinct from the DTF's governor/timelock.
 
 Each test starts from untouched 1.0.0 proxy code and chain state. It impersonates
 the existing registry owner to register the locally deployed 1.1.0 release, then
-uses actual delegates' existing votes to pass standard proposals. It upgrades
-the vault through its own admin governance, and the DTF governor/timelock through
-the DTF governance. The governor upgrade remains a direct proposal target
-because its `onlyGovernance` guard requires the governor's exact execution
-calldata; `UpgradeSpell_1_1_0` is used as an intermediate timelock
-implementation to initialize the registry and self-upgrade to the registered
-1.1.0 timelock implementation.
+uses actual delegates' existing votes to pass standard proposals. The shared
+staking vault is upgraded through its own admin governance using
+`UpgradeSpell_1_1_0`: the vault timelock grants the spell `DEFAULT_ADMIN_ROLE`,
+calls `cast`, and the spell upgrades the vault, renounces its temporary role,
+and verifies that the timelock is the sole remaining admin. The DTF
+governor/timelock are upgraded through direct DTF governance targets because
+their authorization is bound to the governor execution context and cannot be
+forwarded by an external spell.
 No proxy bytecode, storage, roles, balances, or voting power are overwritten with
 cheatcodes. Only authorized actors are impersonated and proposal time is advanced.
 
