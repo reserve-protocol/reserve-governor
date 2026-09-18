@@ -207,7 +207,7 @@ contract DtfUpgradeForkTest is Test {
         vault.grantRole(adminRole, address(spell));
         vm.stopPrank();
         vm.expectRevert(abi.encodeWithSelector(UpgradeSpell_1_1_0.UpgradeSpell__Error.selector, 3));
-        spell.cast(vault);
+        spell.castVault(vault);
         vm.revertToState(snapshot);
 
         address[] memory targets = new address[](2);
@@ -216,7 +216,7 @@ contract DtfUpgradeForkTest is Test {
         uint256[] memory values = new uint256[](2);
         bytes[] memory data = new bytes[](2);
         data[0] = abi.encodeCall(vault.grantRole, (vault.DEFAULT_ADMIN_ROLE(), address(spell)));
-        data[1] = abi.encodeCall(spell.cast, (vault));
+        data[1] = abi.encodeCall(spell.castVault, (vault));
         bytes32 descriptionHash = _passAndQueue(governor, targets, values, data, "Upgrade shared staking vault");
         bytes32 beforeState = _vaultState(vault);
         governor.execute(targets, values, data, descriptionHash);
@@ -236,9 +236,10 @@ contract DtfUpgradeForkTest is Test {
             sys.governor.upgradeToAndCall,
             (governorImpl, abi.encodeCall(sys.governor.initializeVersionRegistry, (address(sys.registry))))
         );
+        UpgradeSpell_1_1_0 spell = new UpgradeSpell_1_1_0();
         data[1] = abi.encodeCall(
             sys.timelock.upgradeToAndCall,
-            (timelockImpl, abi.encodeCall(sys.timelock.initializeVersionRegistry, (address(sys.registry))))
+            (address(spell), abi.encodeCall(spell.castTimelock, (timelockImpl, sys.registry)))
         );
         bytes32 descriptionHash = _passAndQueue(sys.governor, targets, values, data, "Upgrade DTF governance");
         bytes32 beforeState = _governanceState(sys);

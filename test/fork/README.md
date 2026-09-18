@@ -32,11 +32,14 @@ the existing registry owner to register the locally deployed 1.1.0 release, then
 uses actual delegates' existing votes to pass standard proposals. The shared
 staking vault is upgraded through its own admin governance using
 `UpgradeSpell_1_1_0`: the vault timelock grants the spell `DEFAULT_ADMIN_ROLE`,
-calls `cast`, and the spell upgrades the vault, renounces its temporary role,
+calls `castVault`, and the spell upgrades the vault, renounces its temporary role,
 and verifies that the timelock is the sole remaining admin. The DTF
-governor/timelock are upgraded through direct DTF governance targets because
-their authorization is bound to the governor execution context and cannot be
-forwarded by an external spell.
+governor is upgraded as a direct DTF governance target because its
+authorization is bound to the governor execution context. The same spell is
+installed temporarily as the timelock implementation via `castTimelock`; it
+initializes the timelock registry and self-upgrades to the registered final
+implementation. Thus the three component upgrades use one production spell
+contract across the two governance queues.
 No proxy bytecode, storage, roles, balances, or voting power are overwritten with
 cheatcodes. Only authorized actors are impersonated and proposal time is advanced.
 
