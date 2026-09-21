@@ -1476,6 +1476,12 @@ contract StakingVaultTest is Test {
 
         vm.prank(address(timelock));
         vault.initializeAverageVotes();
+
+        // The initializer version prevents replay even if the library state is cleared.
+        vm.store(address(vault), VOTE_INTEGRAL_STATE_SLOT, bytes32(0));
+        vm.prank(address(timelock));
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        vault.initializeAverageVotes();
     }
 
     function test_initializeAverageVotes_cannotResetFreshVault() public {
