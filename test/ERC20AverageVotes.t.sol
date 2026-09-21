@@ -356,6 +356,15 @@ contract ERC20AverageVotesTest is Test {
         assertEq(token.getVotes(ALICE), values[11]);
     }
 
+    function test_supplySecondsShareWeightsSupplyChanges() public {
+        token.mint(ALICE, 100);
+        vm.warp(1100);
+        token.mint(BOB, 900);
+        vm.warp(1200);
+
+        assertEq(token.getPastVoteShare(ALICE, 1000, 1200), uint256(2e18) / 11);
+    }
+
     function _entry(address account, uint32 index) private pure returns (bytes32) {
         return keccak256(abi.encode(index, keccak256(abi.encode(account, INTEGRAL_SLOT))));
     }

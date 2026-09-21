@@ -101,13 +101,14 @@ library ProposalLib {
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
             );
 
-            uint256 averageVotes = IAverageVotes(address(governor.token()))
-                .getPastAverageVotes(proposal.proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD, block.timestamp);
+            uint256 averageShare = IAverageVotes(address(governor.token()))
+                .getPastVoteShare(proposal.proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD, block.timestamp);
 
-            require(
-                averageVotes >= votesThreshold,
-                IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
-            );
+            if (averageShare < governor.proposalThresholdRatio()) {
+                uint256 averageVotes = IAverageVotes(address(governor.token()))
+                    .getPastAverageVotes(proposal.proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD, block.timestamp);
+                revert IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold);
+            }
         }
 
         // validate calls

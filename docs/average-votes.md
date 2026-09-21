@@ -1,9 +1,9 @@
-# Checkpoint-based average votes
+# Checkpoint-based supply-seconds eligibility
 
 The average-vote eligibility feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48)
 uses existing OZ standard vote checkpoints and a linked `VoteIntegralLib`.
-Standard proposals require current voting power and a 12-hour average. Both
-proposal paths share the existing proposal throttle.
+Standard proposals require current voting power and a 12-hour supply-seconds
+share. Both proposal paths share the existing proposal throttle.
 
 ## Storage and activation
 
@@ -21,10 +21,13 @@ occupying one storage slot each. The separate ERC-7201 namespace
 ```solidity
 mapping(address account => mapping(uint256 checkpointIndex => uint256)) cumulative;
 uint48 activation; // zero means inactive
+uint208 activationSupply; // packed with activation
+mapping(uint256 totalSupplyCheckpointIndex => uint256) supplyCumulative;
 ```
 
-The mapping stores plain cumulative vote-seconds. Activation occupies one
-additional slot for the entire vault, with zero denoting inactive accounting.
+The mappings store plain cumulative vote-seconds and total-supply-seconds.
+Activation and the supply at activation share one additional slot for the
+entire vault, with a zero activation denoting inactive accounting.
 The supported chains use positive timestamps, so activation becomes nonzero
 and cannot be reset. No integral offset or missing-history sentinel is
 needed: every integral is zero before activation.
@@ -53,8 +56,9 @@ The previous cumulative is naturally zero for legacy checkpoints. At the same
 timestamp the existing cumulative stays unchanged, including when coalescing
 with a legacy checkpoint written at activation. OZ then appends/coalesces its
 voting checkpoint. An OZ failure rolls back the companion write as well.
-No-op movements, total-supply checkpoints, and optimistic checkpoints do not
-add integral entries.
+No-op movements and optimistic checkpoints do not add account integral entries.
+Mint and burn operations also settle the prior total supply into the companion
+supply integral before OZ writes its total-supply checkpoint.
 
 The token API is `getPastAverageVotes(account, start, end)`. It returns
 average delegated votes over `[start, end)`, rounded down:
@@ -84,30 +88,36 @@ write: its old checkpoint supplies the balance, and elapsed time begins at
 activation. Current-timestamp queries work. Future timestamps extrapolate the
 latest checkpoint's votes; arithmetic overflow reverts rather than wrapping.
 
+`getPastVoteShare()` uses both histories and returns the D18 supply-seconds
+ratio:
+
+```text
+floor(1e18 * vote-seconds / total-supply-seconds)
+```
+
 ## Proposal eligibility and upgrade behavior
 
 The governor always calculates:
 
 ```text
 start = now - 12 hours
-averageVotes = token.getPastAverageVotes(account, start, now)
+averageShare = token.getPastVoteShare(account, start, now)
 ```
 
-Both this average and votes at `now - 1` must meet the current proposal threshold.
+Both this share and votes at `now - 1` must meet the current proposal threshold.
 The governor assumes the chain timestamp exceeds the twelve-hour lookback.
-There is no historical endpoint fallback. For a full twelve-hour request during
-the activation ramp, pre-activation time contributes zero while the denominator
-remains twelve hours. For a constant balance of 100 votes, the recognized average is
-25 after three hours, 50 after six hours, and 100 after twelve hours. Larger
-balances may satisfy the threshold sooner. A threshold-sized legacy holder
-waits twelve hours without needing another transaction.
+There is no historical account-vote fallback. During the activation ramp,
+pre-activation account vote-seconds are zero while the denominator uses the
+supply captured at activation. This preserves the fail-closed warm-up behavior
+for upgraded vaults. Periods with larger total supply receive proportionally
+larger weight. Larger balances may satisfy the threshold sooner.
 
 Transfers and delegation changes preserve only the time each account actually
 held its votes. For example, 100 votes moved from Alice to Bob six hours after
-activation give each a 50-vote average at hour twelve. Alice also fails the
-separate current-votes check. Pre-activation stake hops earn no integral credit,
-and post-activation dips are included in the average. A dust movement cannot
-reset the ramp or erase already accrued area.
+activation give each the corresponding supply-seconds share after activation.
+Alice also fails the separate current-votes check. Pre-activation stake hops earn
+no integral credit, and post-activation dips are included in the share. A dust
+movement cannot reset activation or erase already accrued area.
 
 Existing 1.0.0 standard and optimistic checkpoints and ordinary vault storage
 retain their exact layouts. Upgrade and activate the vault before upgrading
@@ -134,12 +144,11 @@ subtraction, and division.
 Each new checkpoint uses at most one companion storage word, with no second
 array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
-Solidity 0.8.33 is used with IR disabled and 723 optimizer runs. Runtime sizes
-are 24,547 bytes for the vault (29 bytes below EIP-170), 24,385 for the governor,
-9,365 for ProposalLib, and 1,659 for VoteIntegralLib. At 724 runs the optimizer
-produces a vault larger than the limit. UnstakingManager creation runs through the
-linked upgrade library to preserve this headroom. Run `pnpm size` after any contract
-or compiler change.
+Solidity 0.8.33 is used with IR disabled and 416 optimizer runs. Runtime sizes
+are 24,328 bytes for the vault, 24,552 for the governor, 9,535 for ProposalLib,
+and 3,281 for VoteIntegralLib. At 417 runs the governor grows to 24,648 bytes and
+exceeds EIP-170. UnstakingManager creation runs through the linked upgrade library
+to preserve this headroom. Run `pnpm size` after any contract or compiler change.
 
 Unit tests compare arbitrary histories to a segment-sum reference clipped at
 activation and the requested range. They cover reversed/empty ranges, ranges
@@ -147,7 +156,7 @@ straddling activation, zero-area intervals, same-timestamp movements, maximum
 arithmetic, no-ops, redelegation, conservation, delayed initialization, reset
 protection, token-clock consistency, pre-activation endpoint replay, and rollback
 on an OZ failure.
-Governor tests verify the unchanged legacy holder's ramp and proportionally
+Governor tests verify supply-weighted eligibility and proportionally
 earlier eligibility for larger balances.
 
 ## Gas measurements
@@ -172,4 +181,4 @@ both queries start at checkpoint 23. The historical range ends at checkpoint
 
 Legacy lookups search the full OZ checkpoint history. Results from a fixed
 fixture do not characterize every history length or transaction sequence, and
-measurements from earlier sentinel-based prototypes do not describe this ramp.
+measurements from earlier sentinel-based prototypes do not describe this implementation.

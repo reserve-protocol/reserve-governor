@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
 /**
@@ -18,6 +19,9 @@ library VoteIntegralLib {
         // Integral at the checkpoint timestamp. Entries before activation remain zero.
         mapping(address account => mapping(uint256 index => uint256)) cumulative;
         uint48 activation; // Zero means accounting has not been activated.
+        uint208 activationSupply; // {tok} Total supply when accounting was activated.
+        // Cumulative total-supply-seconds, indexed by the existing OZ supply checkpoints.
+        mapping(uint256 index => uint256) supplyCumulative;
     }
 
     // keccak256(abi.encode(uint256(keccak256("reserve.storage.VotesIntegral")) - 1)) & ~bytes32(uint256(0xff))
@@ -45,17 +49,22 @@ library VoteIntegralLib {
 
     /// @notice Starts integral accounting at the current timestamp for every delegate.
     /// @dev Called only by the vault's authorized wrapper or during fresh vault initialization, passing clock().
-    function initialize(uint48 timestamp) external {
+    function initialize(uint48 timestamp, uint208 supply) external {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
 
         require($.activation == 0, AverageVotes__AlreadyInitialized());
 
         $.activation = timestamp;
+        $.activationSupply = supply;
     }
 
     /// @notice Returns cumulative delegated vote-seconds at a timestamp.
     /// @dev Time at or before activation contributes zero. Future extrapolation uses checked arithmetic.
     function lookup(address account, uint256 timepoint) external view returns (uint256) {
+        return _lookup(account, timepoint);
+    }
+
+    function _lookup(address account, uint256 timepoint) private view returns (uint256) {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
 
         if ($.activation == 0 || timepoint <= $.activation) {
@@ -92,6 +101,60 @@ library VoteIntegralLib {
         return $.cumulative[account][low] + uint256(checkpoint._value) * timepoint;
     }
 
+    function _supplyLookup(uint256 timepoint) private view returns (uint256) {
+        VotesIntegralStorage storage $ = _getVotesIntegralStorage();
+
+        if ($.activation == 0 || timepoint <= $.activation) {
+            return 0;
+        }
+
+        Checkpoints.Checkpoint208[] storage checkpoints = _supplyHistory();
+        uint256 low;
+        uint256 high = checkpoints.length;
+
+        while (low < high) {
+            uint256 mid = (low + high) / 2;
+            if (checkpoints[mid]._key <= timepoint) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+
+        if (low == 0) {
+            return 0;
+        }
+
+        --low;
+        Checkpoints.Checkpoint208 storage checkpoint = checkpoints[low];
+        uint48 start = checkpoint._key > $.activation ? checkpoint._key : $.activation;
+        timepoint -= start;
+
+        return $.supplyCumulative[low] + uint256(checkpoint._value) * timepoint;
+    }
+
+    /// @notice Returns the supply-seconds voting share over `[start, end)` as D18.
+    function lookupShare(address account, uint256 start, uint256 end) external view returns (uint256) {
+        if (start == end) {
+            return 0;
+        }
+
+        uint256 voteSeconds = _lookup(account, end) - _lookup(account, start);
+        uint256 supplySeconds = _supplyLookup(end) - _supplyLookup(start);
+
+        VotesIntegralStorage storage $ = _getVotesIntegralStorage();
+        if ($.activation != 0 && start < $.activation) {
+            uint256 preActivationEnd = end < $.activation ? end : $.activation;
+            supplySeconds += uint256($.activationSupply) * (preActivationEnd - start);
+        }
+
+        if (supplySeconds == 0) {
+            return 0;
+        }
+
+        return Math.mulDiv(voteSeconds, 1e18, supplySeconds);
+    }
+
     /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, passing clock().
     ///      The caller must retain OZ's uint208 supply/vote checks and nondecreasing uint48 timestamp checks.
     function update(address from, address to, uint256 amount, uint48 timestamp) external {
@@ -106,6 +169,19 @@ library VoteIntegralLib {
                 _recordIntegral($, to, timestamp);
             }
         }
+    }
+
+    /// @dev Records the pre-change total supply before OZ writes its checkpoint.
+    ///      `newSupply` is the ERC20 total supply after the underlying update.
+    function updateSupply(address from, address to, uint256 amount, uint256 newSupply, uint48 timestamp) external {
+        VotesIntegralStorage storage $ = _getVotesIntegralStorage();
+
+        if ($.activation == 0 || (from != address(0) && to != address(0)) || amount == 0) {
+            return;
+        }
+
+        uint256 previousSupply = from == address(0) ? newSupply - amount : newSupply + amount;
+        _recordSupplyIntegral($, previousSupply, timestamp);
     }
 
     function _recordIntegral(VotesIntegralStorage storage $, address account, uint48 timestamp) private {
@@ -130,5 +206,39 @@ library VoteIntegralLib {
                 cumulatives[index] = cumulative;
             }
         }
+    }
+
+    function _recordSupplyIntegral(VotesIntegralStorage storage $, uint256 previousSupply, uint48 timestamp) private {
+        Checkpoints.Checkpoint208[] storage checkpoints = _supplyHistory();
+        uint256 index = checkpoints.length;
+        uint256 cumulative;
+
+        if (index != 0) {
+            unchecked {
+                Checkpoints.Checkpoint208 storage last = checkpoints[index - 1];
+                if (last._key == timestamp) {
+                    return;
+                }
+
+                uint48 start = last._key > $.activation ? last._key : $.activation;
+                cumulative = $.supplyCumulative[index - 1] + uint256(last._value) * (timestamp - start);
+            }
+        }
+
+        // If there is no historical supply checkpoint, the pre-change supply is the only
+        // available segment. Otherwise the latest checkpoint carries that segment's supply.
+        if (index == 0) {
+            cumulative = uint256(previousSupply) * (timestamp - $.activation);
+        }
+
+        $.supplyCumulative[index] = cumulative;
+    }
+
+    function _supplyHistory() private view returns (Checkpoints.Checkpoint208[] storage) {
+        VotesUpgradeable.VotesStorage storage $;
+        assembly {
+            $.slot := VotesStorageLocation
+        }
+        return $._totalCheckpoints._checkpoints;
     }
 }
