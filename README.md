@@ -555,6 +555,8 @@ Upgrades are intended to be executed by the existing vault admin. They cannot be
    2. `ReserveOptimisticGovernor`: call `governor.upgradeToAndCall(newGovernorImpl, data)` from timelock. The implementation must be the registered governor implementation for the latest non-deprecated version.
    3. `TimelockControllerOptimistic`: call `timelock.upgradeToAndCall(newTimelockImpl, data)` from timelock. The implementation must be the registered timelock implementation for the latest non-deprecated version.
 
+When upgrading all three components together, batch the calls in a single governance proposal and execute the `StakingVault` upgrade first; separate proposals can leave the system partially upgraded if one is cancelled or fails.
+
 Each component must use the implementation registered for the latest non-deprecated version. This keeps the staking vault, governor, and timelock implementation set aligned across deployments.
 
 Existing governor and timelock proxies must call their one-time `initializeVersionRegistry(versionRegistry)` reinitializer as part of the first upgrade to an implementation with these checks. Deployments created with `deployWithExistingStakingVault()` do not automatically make the new timelock the existing vault's admin; any later `StakingVault` upgrade remains controlled by its current `DEFAULT_ADMIN_ROLE` holder.
