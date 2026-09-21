@@ -118,7 +118,8 @@ contract ReserveOptimisticGovernorDeployer is Versioned, IReserveOptimisticGover
                 address(this),
                 newStakingVaultParams.rewardHalfLife,
                 newStakingVaultParams.unstakingDelay,
-                address(tokenJar)
+                address(tokenJar),
+                versionRegistry
             );
 
         // Step 1.6: Register additional reward tokens while Deployer is temporary vault admin
