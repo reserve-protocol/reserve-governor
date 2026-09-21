@@ -7,6 +7,7 @@
 - Standard and optimistic proposals now consume the same existing per-account proposal throttle. Capacity, charge state, deployment input, and governance setter are shared. Veto-triggered confirmation proposals remain exempt from throttle and proposer eligibility checks.
 - Standard proposals require votes at the previous timestamp and a 12-hour average of standard delegated vote power to meet the current proposal threshold. Both lookback and throttle refill use `PROPOSAL_THROTTLE_PERIOD` (12 hours).
 - Average-vote accounting starts at one activation timestamp per vault. Pre-activation vote-seconds count as zero, so unchanged legacy holders ramp automatically to their full 12-hour average without a transfer. Eligibility always uses the average; there is no historical endpoint fallback.
+- Document the known limitation that average delegated votes are compared with a spot-supply threshold. Supply changes near the end of the lookback can revalue the full average, and stake rotation can increase proposal throughput by approximately `1 / honestStakeShare` in the idealized worst case.
 - The shared `Versioned` mixin returns `1.1.0` instead of `1.0.0`.
 - Optimistic proposal state is calculated directly in the governor, avoiding the library round trip.
 - Optimizer runs set to 416 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 24,531 bytes; StakingVault runtime: 23,785 bytes (791 bytes below EIP-170). UnstakingManager creation runs through the linked upgrade library to preserve this headroom.

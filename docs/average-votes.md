@@ -102,6 +102,34 @@ remains twelve hours. For a constant balance of 100 votes, the recognized averag
 balances may satisfy the threshold sooner. A threshold-sized legacy holder
 waits twelve hours without needing another transaction.
 
+### Known limitation: spot-supply comparison
+
+The historical check compares absolute average delegated votes with the spot
+threshold at the proposal timestamp:
+
+```text
+averageVotes over [t - 12h, t] >= proposalThresholdRatio * totalSupply(t - 1)
+```
+
+It does not compare average delegated percentage with average supply. A deposit
+or withdrawal near the end of the window can therefore change the threshold
+applied to the entire preceding average. Withdrawals can make previously
+accumulated votes look sufficient; deposits can make them look insufficient.
+
+There is also a stake-rotation upper bound. If an attacker controls fraction
+`a < 50%`, splits the stake across multiple accounts, and rotates which account
+is deposited while the others are in the unstaking flow, the idealized proposal
+throughput multiplier is approximately:
+
+```text
+1 / honestStakeShare = 1 / (1 - a)
+```
+
+Thus 20% attacker control gives approximately a `1.25x` multiplier, while 49%
+control gives approximately `1.96x`—roughly double the throughput without a
+majority. This is a worst-case bound; per-account throttles, timing, gas, and
+unstaking-manager constraints can reduce the realized result.
+
 Transfers and delegation changes preserve only the time each account actually
 held its votes. For example, 100 votes moved from Alice to Bob six hours after
 activation give each a 50-vote average at hour twelve. Alice also fails the
