@@ -169,7 +169,7 @@ contract StakingVault is
     }
 
     /// @notice Activates average-vote accounting when upgrading a legacy vault.
-    function initializeAverageVotes() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function initializeAverageVotes() external reinitializer(2) onlyRole(DEFAULT_ADMIN_ROLE) {
         _initializeAverageVotes();
     }
 
