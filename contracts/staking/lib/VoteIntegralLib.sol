@@ -126,9 +126,9 @@ library VoteIntegralLib {
 
                 uint48 start = last._key > $.activation ? last._key : $.activation;
                 cumulative = cumulatives[index - 1] + uint256(last._value) * (timestamp - start);
+
+                cumulatives[index] = cumulative;
             }
         }
-
-        cumulatives[index] = cumulative;
     }
 }

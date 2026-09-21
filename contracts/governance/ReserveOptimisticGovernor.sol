@@ -193,12 +193,14 @@ contract ReserveOptimisticGovernor is
         bytes[] memory calldatas,
         string memory description
     ) public override returns (uint256 proposalId) {
-        ThrottleLib.consumeProposalCharge(proposalThrottle, msg.sender);
+        address proposer = msg.sender;
+
+        ThrottleLib.consumeProposalCharge(proposalThrottle, proposer);
 
         proposalId = getProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
         ProposalLib.proposePessimistic(
-            ProposalLib.ProposalData(proposalId, msg.sender, targets, values, calldatas, description),
+            ProposalLib.ProposalData(proposalId, proposer, targets, values, calldatas, description),
             _proposalCore(proposalId)
         );
     }
