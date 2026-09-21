@@ -127,6 +127,7 @@ contract StakingVault is
     /// @param _rewardPeriod {s} Half life of the reward handout rate
     /// @param _unstakingDelay {s} Delay after unstaking before user receives their deposit
     /// @param _tokenJar GenericTokenJar used to convert rewards into this vault's underlying token
+    /// @param _versionRegistry Version registry used to authorize vault upgrades
     function initialize(
         string memory _name,
         string memory _symbol,
@@ -134,7 +135,8 @@ contract StakingVault is
         address _initialAdmin,
         uint256 _rewardPeriod,
         uint256 _unstakingDelay,
-        address _tokenJar
+        address _tokenJar,
+        address _versionRegistry
     ) external initializer {
         require(_initialAdmin != address(0), Vault__InvalidAdmin(_initialAdmin));
 
@@ -156,7 +158,6 @@ contract StakingVault is
         emit RewardTokenRegistrySet(_rewardTokenRegistry);
         rewardTokenRegistry = IRewardTokenRegistry(_rewardTokenRegistry);
 
-        address _versionRegistry = deployer.versionRegistry();
         emit VersionRegistrySet(_versionRegistry);
         versionRegistry = ReserveOptimisticGovernanceVersionRegistry(_versionRegistry);
 

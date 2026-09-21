@@ -187,6 +187,7 @@ contract StakingVaultTest is Test {
         assertEq(vault.unstakingDelay(), UNSTAKING_DELAY);
         assertEq(vault.clock(), block.timestamp);
         assertEq(vault.CLOCK_MODE(), "mode=timestamp");
+        assertEq(address(vault.versionRegistry()), address(versionRegistry));
         assertEq(vault.totalSupply(), 0);
         assertEq(vault.balanceOf(ACTOR_ALICE), 0);
         assertEq(vault.balanceOf(ACTOR_BOB), 0);
@@ -1450,7 +1451,16 @@ contract StakingVaultTest is Test {
 
     function test_cannotInitializeTwice() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        vault.initialize("New Name", "NEW", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0, address(0));
+        vault.initialize(
+            "New Name",
+            "NEW",
+            IERC20(address(token)),
+            address(this),
+            REWARD_HALF_LIFE,
+            0,
+            address(0),
+            address(versionRegistry)
+        );
     }
 
     function test_initializeAverageVotes_requiresAdmin() public {
@@ -1478,7 +1488,14 @@ contract StakingVaultTest is Test {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
         StakingVault(vaultImpl)
             .initialize(
-                "Staked Test Token", "sTEST", IERC20(address(token)), address(this), REWARD_HALF_LIFE, 0, address(0)
+                "Staked Test Token",
+                "sTEST",
+                IERC20(address(token)),
+                address(this),
+                REWARD_HALF_LIFE,
+                0,
+                address(0),
+                address(versionRegistry)
             );
     }
 }
