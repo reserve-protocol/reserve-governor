@@ -495,43 +495,6 @@ The token returns average votes for the requested range, handling cumulative sub
 
 An unchanged legacy holder therefore accrues eligibility automatically: after six hours its recognized average is half its voting weight; after twelve hours it is the full weight. No transfer or delegation is needed. Higher vote power can compensate for shorter holding time, so larger holders may qualify earlier. Transfers and delegation changes preserve the vote-seconds each delegate actually earned; they cannot duplicate accrued credit or reset activation.
 
-#### Known spot-supply limitation
-
-The historical vote-power check compares an absolute 12-hour average with a
-threshold calculated from the spot total supply at proposal time:
-
-```text
-averageVotes over [t - 12h, t] >= proposalThresholdRatio * totalSupply(t - 1)
-```
-
-This is not a time-normalized percentage. A supply change near the end of the
-lookback can therefore revalue the entire historical average. A withdrawal can
-lower the threshold for votes accumulated while the supply was higher; a
-deposit can raise the threshold for votes accumulated while the supply was
-lower.
-
-The same discontinuity can be used to increase proposal throughput by rotating
-one stake position across multiple proposer accounts. In an idealized case, an
-attacker controls fraction `a < 50%` of the vault, splits that stake across
-multiple accounts, and keeps only one account deposited while the others are in
-the unstaking flow. If the active account can be changed without losing the
-attacker's total control, the worst-case throughput multiplier relative to the
-honest stake baseline is approximately:
-
-```text
-1 / honestStakeShare = 1 / (1 - a)
-```
-
-| Attacker share | Honest share | Approximate maximum multiplier |
-| ---: | ---: | ---: |
-| 20% | 80% | 1.25x |
-| 49% | 51% | 1.96x |
-
-The 49% case is therefore roughly double the proposal throughput, while a 20%
-attacker increases throughput by roughly 25%. This is a worst-case bound under
-the rotation assumptions; per-account throttles, timing, gas, and the
-unstaking-manager rules can reduce the realized multiplier.
-
 This is an average requirement, not continuous ownership of particular shares. Both fresh and upgraded vaults use the same accounting. See [Upgrading to 1.1.0](#upgrading-to-110) for activation and the one-time warm-up.
 
 ### StakingVault Parameters
