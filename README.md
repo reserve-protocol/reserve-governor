@@ -536,6 +536,8 @@ Three contracts are UUPS upgradeable, but they do not share a central onchain up
 
 `ReserveOptimisticGovernanceVersionRegistry` stores versions by deployer, not by a raw implementation tuple. Upgrades for all three UUPS components are tied to the registry. Governor and timelock store the registry address in their proxy storage.
 
+The version-registry checks performed by `ReserveOptimisticGovernor` and `TimelockControllerOptimistic` are consistency checks only. They require each proxy to use the matching governor or timelock implementation from the latest non-deprecated release, but they do not protect the governed Folio (or any other target) from an unsafe upgrade. Security for governed targets still depends on that target's own upgrade authorization and governance path.
+
 - `registerVersion(deployer)` can only be called by a `RoleRegistry` owner
 - `getLatestVersion()` returns the latest registered version metadata
 - `getImplementationsForVersion(versionHash)` resolves the staking vault, governor, and timelock implementations from the registered deployer
