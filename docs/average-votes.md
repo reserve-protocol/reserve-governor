@@ -108,7 +108,7 @@ The historical check compares absolute average delegated votes with the spot
 threshold at the proposal timestamp:
 
 ```text
-averageVotes over [t - 12h, t] >= proposalThresholdRatio * totalSupply(t - 1)
+averageVotes over [t - 12h, t) >= proposalThresholdRatio * totalSupply(t - 1)
 ```
 
 It does not compare average delegated percentage with average supply. A deposit
