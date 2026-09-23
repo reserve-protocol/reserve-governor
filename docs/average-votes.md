@@ -148,7 +148,7 @@ array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
 Solidity 0.8.33 is used with IR disabled and 416 optimizer runs. Runtime sizes
 are 24,319 bytes for the vault, 24,481 for the governor, 9,821 for ProposalLib,
-and 2,970 for VoteIntegralLib. The governor has 95 bytes of EIP-170 headroom at
+and 2,602 for VoteIntegralLib. The governor has 95 bytes of EIP-170 headroom at
 these settings. UnstakingManager creation runs through the linked upgrade library
 to preserve this headroom. Run `pnpm size` after any contract or compiler change.
 
