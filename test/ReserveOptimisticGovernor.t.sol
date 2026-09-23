@@ -14,6 +14,7 @@ import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { GenericTokenJar } from "@reserve-protocol/trusted-fillers/contracts/extras/GenericTokenJar.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
@@ -690,6 +691,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
         IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
         uint256 averageVotes = votes.getPastAverageVotes(recentVoter, periodStart, block.timestamp);
+        uint256 averageSupply = stakingVault.getPastAverageSupply(periodStart, block.timestamp);
+        uint256 normalizedAverageVotes =
+            Math.mulDiv(averageVotes, stakingVault.getPastTotalSupply(block.timestamp - 1), averageSupply);
 
         assertGe(governor.getVotes(recentVoter, block.timestamp - 1), threshold);
         assertEq(votes.getPastAverageVotes(recentVoter, 0, periodStart), 0);
@@ -697,7 +701,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(recentVoter);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, averageVotes, threshold
+                IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, normalizedAverageVotes, threshold
             )
         );
         governor.propose(targets, values, calldatas, "Recent delegated voter");

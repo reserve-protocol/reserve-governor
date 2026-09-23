@@ -112,7 +112,9 @@ library ProposalLib {
             uint256 supplyNormalizedVotes =
                 averageSupply == 0 ? 0 : Math.mulDiv(averageVotes, currentSupply, averageSupply);
             if (supplyNormalizedVotes < votesThreshold) {
-                revert IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold);
+                revert IGovernor.GovernorInsufficientProposerVotes(
+                    proposal.proposer, supplyNormalizedVotes, votesThreshold
+                );
             }
         }
 
