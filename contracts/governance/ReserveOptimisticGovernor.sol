@@ -330,11 +330,6 @@ contract ReserveOptimisticGovernor is
         return (thresholdRatio * supply + (1e18 - 1)) / 1e18;
     }
 
-    /// @return D18{1} The configured fraction required to propose.
-    function proposalThresholdRatio() public view returns (uint256) {
-        return super.proposalThreshold();
-    }
-
     function timelock()
         public
         view

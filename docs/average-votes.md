@@ -2,8 +2,9 @@
 
 The average-vote eligibility feature in [PR #48](https://github.com/reserve-protocol/reserve-governor/pull/48)
 uses existing OZ standard vote checkpoints and a linked `VoteIntegralLib`.
-Standard proposals require current voting power and a 12-hour supply-seconds
-share. Both proposal paths share the existing proposal throttle.
+Standard proposals require current voting power and a 12-hour average vote
+weight normalized by average total supply. Both proposal paths share the
+existing proposal throttle.
 
 ## Storage and activation
 
@@ -88,12 +89,10 @@ write: its old checkpoint supplies the balance, and elapsed time begins at
 activation. Current-timestamp queries work. Future timestamps extrapolate the
 latest checkpoint's votes; arithmetic overflow reverts rather than wrapping.
 
-`getPastVoteShare()` uses both histories and returns the D18 supply-seconds
-ratio:
-
-```text
-floor(1e18 * vote-seconds / total-supply-seconds)
-```
+`getPastAverageSupply(start, end)` reads the total-supply integral and returns
+average total supply over the full requested interval. It includes the supply
+captured at activation for pre-activation time, matching the denominator used
+for eligibility. Equal bounds return zero; reversed bounds revert.
 
 ## Proposal eligibility and upgrade behavior
 
@@ -101,22 +100,25 @@ The governor always calculates:
 
 ```text
 start = now - 12 hours
-averageShare = token.getPastVoteShare(account, start, now)
+averageVotes = token.getPastAverageVotes(account, start, now)
+averageSupply = token.getPastAverageSupply(start, now)
+normalizedAverageVotes = floor(averageVotes * totalSupplyAt(now - 1) / averageSupply)
 ```
 
-Both this share and votes at `now - 1` must meet the current proposal threshold.
-The governor assumes the chain timestamp exceeds the twelve-hour lookback.
+Both `normalizedAverageVotes` and votes at `now - 1` must meet the absolute
+`proposalThreshold()`. A zero average supply fails closed. The governor assumes
+the chain timestamp exceeds the twelve-hour lookback.
 There is no historical account-vote fallback. During the activation ramp,
 pre-activation account vote-seconds are zero while the denominator uses the
 supply captured at activation. This preserves the fail-closed warm-up behavior
 for upgraded vaults. Periods with larger total supply receive proportionally
-larger weight. Larger balances may satisfy the threshold sooner.
+larger denominator weight. Larger balances may satisfy the threshold sooner.
 
 Transfers and delegation changes preserve only the time each account actually
 held its votes. For example, 100 votes moved from Alice to Bob six hours after
-activation give each the corresponding supply-seconds share after activation.
+activation give each the corresponding average vote weight after activation.
 Alice also fails the separate current-votes check. Pre-activation stake hops earn
-no integral credit, and post-activation dips are included in the share. A dust
+no integral credit, and post-activation dips are included in the average. A dust
 movement cannot reset activation or erase already accrued area.
 
 Existing 1.0.0 standard and optimistic checkpoints and ordinary vault storage
@@ -145,9 +147,9 @@ Each new checkpoint uses at most one companion storage word, with no second
 array length or duplicate timestamp/value history. Activation adds one slot per
 vault. The linked library keeps accounting code outside the vault runtime.
 Solidity 0.8.33 is used with IR disabled and 416 optimizer runs. Runtime sizes
-are 24,328 bytes for the vault, 24,552 for the governor, 9,535 for ProposalLib,
-and 3,281 for VoteIntegralLib. At 417 runs the governor grows to 24,648 bytes and
-exceeds EIP-170. UnstakingManager creation runs through the linked upgrade library
+are 24,319 bytes for the vault, 24,481 for the governor, 9,821 for ProposalLib,
+and 2,970 for VoteIntegralLib. The governor has 95 bytes of EIP-170 headroom at
+these settings. UnstakingManager creation runs through the linked upgrade library
 to preserve this headroom. Run `pnpm size` after any contract or compiler change.
 
 Unit tests compare arbitrary histories to a segment-sum reference clipped at

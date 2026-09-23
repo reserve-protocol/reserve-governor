@@ -5,15 +5,15 @@
 ### Changed
 
 - Standard and optimistic proposals now consume the same existing per-account proposal throttle. Capacity, charge state, deployment input, and governance setter are shared. Veto-triggered confirmation proposals remain exempt from throttle and proposer eligibility checks.
-- Standard proposals require votes at the previous timestamp and a 12-hour supply-seconds share to meet the configured proposal threshold fraction. Both lookback and throttle refill use `PROPOSAL_THROTTLE_PERIOD` (12 hours).
+- Standard proposals require votes at the previous timestamp and a 12-hour average vote weight normalized by average total supply. Both lookback and throttle refill use `PROPOSAL_THROTTLE_PERIOD` (12 hours).
 - Integral accounting starts at one activation timestamp per vault. Pre-activation account vote-seconds count as zero while the denominator uses the supply captured at activation, preserving the fail-closed 12-hour ramp for threshold-sized legacy holders.
 - The shared `Versioned` mixin returns `1.1.0` instead of `1.0.0`.
 - Optimistic proposal state is calculated directly in the governor, avoiding the library round trip.
-- Optimizer runs set to 416 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 24,552 bytes; StakingVault runtime: 24,328 bytes. At 417 runs the governor exceeds EIP-170. UnstakingManager creation runs through the linked upgrade library to preserve this headroom.
+- Optimizer runs set to 416 with Solidity 0.8.33 and IR compilation disabled. Governor runtime: 24,481 bytes; StakingVault runtime: 24,319 bytes. UnstakingManager creation runs through the linked upgrade library to preserve this headroom.
 
 ### Added
 
-- `StakingVault.getPastVoteShare(account, start, end)` for the D18 ratio of delegated vote-seconds to total-supply-seconds. Existing OZ account and supply checkpoints are paired with companion cumulative mappings, preserving packed checkpoint storage and logarithmic lookups without walking account histories. `getPastAverageVotes()` remains available for compatibility and revert reporting.
+- `StakingVault.getPastAverageSupply(start, end)` for average total supply over a requested interval, alongside `getPastAverageVotes(account, start, end)`. Existing OZ account and supply checkpoints are paired with companion cumulative mappings, preserving packed checkpoint storage and logarithmic lookups without walking account histories.
 - Real BSC and Base vault upgrade forks cover preexisting checkpoint history and same-timestamp migration; unit tests cover integral arithmetic boundaries and compare fuzzed histories against a segment-sum reference.
 - Coverage for shared throttle consumption, the legacy activation ramp, pre-activation endpoint replay, the fresh-account anniversary bypass, vote-second conservation, zero-area windows, delayed initialization, and one-shot activation. The segment-sum fuzz reference clips arbitrary histories at activation.
 

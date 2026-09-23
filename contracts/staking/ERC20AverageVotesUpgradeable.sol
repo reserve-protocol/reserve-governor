@@ -10,7 +10,7 @@ import { VoteIntegralLib } from "@staking/lib/VoteIntegralLib.sol";
 
 /**
  * @title ERC20 Average Votes
- * @notice Provides historical average delegated votes and supply-seconds shares using standard OZ checkpoints.
+ * @notice Provides historical average delegated votes and total supply using standard OZ checkpoints.
  * @dev Requires a block-timestamp clock. Existing checkpoints retain their packed layout and are not backfilled.
  */
 abstract contract ERC20AverageVotesUpgradeable is ERC20VotesUpgradeable, IAverageVotes {
@@ -25,10 +25,15 @@ abstract contract ERC20AverageVotesUpgradeable is ERC20VotesUpgradeable, IAverag
         return (VoteIntegralLib.lookup(account, end) - VoteIntegralLib.lookup(account, start)) / (end - start);
     }
 
-    /// @notice Returns the account's supply-seconds share over `[start, end)` as D18.
-    function getPastVoteShare(address account, uint256 start, uint256 end) external view returns (uint256) {
+    /// @inheritdoc IAverageVotes
+    function getPastAverageSupply(uint256 start, uint256 end) external view returns (uint256) {
         require(start <= end, AverageVotes__InvalidTimeRange());
-        return VoteIntegralLib.lookupShare(account, start, end);
+
+        if (start == end) {
+            return 0;
+        }
+
+        return VoteIntegralLib.lookupAverageSupply(start, end);
     }
 
     function _initializeAverageVotes() internal {

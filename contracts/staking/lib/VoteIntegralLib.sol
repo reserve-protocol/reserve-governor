@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
 /**
@@ -133,13 +132,12 @@ library VoteIntegralLib {
         return $.supplyCumulative[low] + uint256(checkpoint._value) * timepoint;
     }
 
-    /// @notice Returns the supply-seconds voting share over `[start, end)` as D18.
-    function lookupShare(address account, uint256 start, uint256 end) external view returns (uint256) {
+    /// @notice Returns average total supply over `[start, end)`, including activation supply before activation.
+    function lookupAverageSupply(uint256 start, uint256 end) external view returns (uint256) {
         if (start == end) {
             return 0;
         }
 
-        uint256 voteSeconds = _lookup(account, end) - _lookup(account, start);
         uint256 supplySeconds = _supplyLookup(end) - _supplyLookup(start);
 
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
@@ -148,11 +146,7 @@ library VoteIntegralLib {
             supplySeconds += uint256($.activationSupply) * (preActivationEnd - start);
         }
 
-        if (supplySeconds == 0) {
-            return 0;
-        }
-
-        return Math.mulDiv(voteSeconds, 1e18, supplySeconds);
+        return supplySeconds / (end - start);
     }
 
     /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, passing clock().

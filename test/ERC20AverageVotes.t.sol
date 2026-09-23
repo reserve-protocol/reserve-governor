@@ -356,13 +356,21 @@ contract ERC20AverageVotesTest is Test {
         assertEq(token.getVotes(ALICE), values[11]);
     }
 
-    function test_supplySecondsShareWeightsSupplyChanges() public {
-        token.mint(ALICE, 100);
+    function test_averageSupplyWeightsSupplyChanges() public {
+        AverageVotesTokenHarness legacy = new AverageVotesTokenHarness();
+        legacy.mint(ALICE, 100);
+        legacy.initializeAverageVotes();
+
         vm.warp(1100);
-        token.mint(BOB, 900);
+        legacy.mint(BOB, 900);
         vm.warp(1200);
 
-        assertEq(token.getPastVoteShare(ALICE, 1000, 1200), uint256(2e18) / 11);
+        assertEq(legacy.getPastAverageSupply(900, 1200), 400);
+        assertEq(legacy.getPastAverageSupply(1100, 1200), 1000);
+        assertEq(legacy.getPastAverageSupply(1200, 1200), 0);
+
+        vm.expectRevert(IAverageVotes.AverageVotes__InvalidTimeRange.selector);
+        legacy.getPastAverageSupply(1201, 1200);
     }
 
     function _entry(address account, uint32 index) private pure returns (bytes32) {
