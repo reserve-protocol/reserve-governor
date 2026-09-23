@@ -150,7 +150,7 @@ library VoteIntegralLib {
     function updateSupply(address from, address to, uint256 amount, uint256 newSupply, uint48 timestamp) external {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
 
-        if ($.activation == 0 || (from != address(0) && to != address(0)) || amount == 0) {
+        if ($.activation == 0 || (from != address(0) && to != address(0))) {
             return;
         }
 

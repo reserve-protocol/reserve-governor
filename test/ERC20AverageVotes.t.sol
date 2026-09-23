@@ -373,6 +373,19 @@ contract ERC20AverageVotesTest is Test {
         legacy.getPastAverageSupply(1201, 1200);
     }
 
+    function test_zeroSupplyUpdatesPreserveCumulativeSupply() public {
+        token.mint(ALICE, 100);
+
+        vm.warp(1100);
+        token.mint(BOB, 0);
+        assertEq(token.getPastAverageSupply(1000, 1100), 100);
+
+        vm.warp(1200);
+        token.burn(ALICE, 0);
+        vm.warp(1300);
+        assertEq(token.getPastAverageSupply(1000, 1300), 100);
+    }
+
     function _entry(address account, uint32 index) private pure returns (bytes32) {
         return keccak256(abi.encode(index, keccak256(abi.encode(account, INTEGRAL_SLOT))));
     }
