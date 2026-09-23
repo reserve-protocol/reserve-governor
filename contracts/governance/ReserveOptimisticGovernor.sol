@@ -321,13 +321,13 @@ contract ReserveOptimisticGovernor is
         override(GovernorUpgradeable, GovernorSettingsUpgradeable)
         returns (uint256)
     {
-        uint256 thresholdRatio = super.proposalThreshold(); // D18{1}
+        uint256 proposalThresholdRatio = super.proposalThreshold(); // D18{1}
 
         // {tok}
         uint256 supply = Math.max(1, token().getPastTotalSupply(block.timestamp - 1));
 
         // CEIL to make sure thresholds near 0% don't get rounded down to 0 tokens
-        return (thresholdRatio * supply + (1e18 - 1)) / 1e18;
+        return (proposalThresholdRatio * supply + (1e18 - 1)) / 1e18;
     }
 
     function timelock()
