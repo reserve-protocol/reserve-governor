@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import { GovernorUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
@@ -101,13 +102,20 @@ library ProposalLib {
                 IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, proposerVotes, votesThreshold)
             );
 
-            uint256 averageVotes = IAverageVotes(address(governor.token()))
-                .getPastAverageVotes(proposal.proposer, block.timestamp - PROPOSAL_THROTTLE_PERIOD, block.timestamp);
+            IAverageVotes averageVotesToken = IAverageVotes(address(governor.token()));
+            uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
+            uint256 averageVotes =
+                averageVotesToken.getPastAverageVotes(proposal.proposer, periodStart, block.timestamp);
+            uint256 averageSupply = averageVotesToken.getPastAverageSupply(periodStart, block.timestamp);
+            uint256 currentSupply = Math.max(1, governor.token().getPastTotalSupply(block.timestamp - 1));
 
-            require(
-                averageVotes >= votesThreshold,
-                IGovernor.GovernorInsufficientProposerVotes(proposal.proposer, averageVotes, votesThreshold)
-            );
+            uint256 supplyNormalizedVotes =
+                averageSupply == 0 ? 0 : Math.mulDiv(averageVotes, currentSupply, averageSupply);
+            if (supplyNormalizedVotes < votesThreshold) {
+                revert IGovernor.GovernorInsufficientProposerVotes(
+                    proposal.proposer, supplyNormalizedVotes, votesThreshold
+                );
+            }
         }
 
         // validate calls

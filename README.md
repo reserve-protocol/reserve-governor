@@ -11,7 +11,7 @@ Reserve Governor provides two proposal paths through a single timelock:
 
 During a fast proposal's veto period, token holders can vote AGAINST. If enough AGAINST votes accumulate to reach the veto threshold, the proposal automatically spawns a full confirmation vote (the slow path) under a new proposal id. This lets routine governance operate efficiently while preserving the community's ability to challenge any proposal.
 
-Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and on average over the preceding 12 hours (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
+Proposals are protected by a shared per-account throttle. Both proposal paths consume the same refillable proposal-count bucket. Standard proposals also require sufficient delegated standard voting power now and a 12-hour average voting weight normalized by average total supply (see [Proposal Throttle Behavior](#proposal-throttle-behavior)).
 
 The shared `Versioned` mixin reports `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) for release changes and upgrade notes.
 
@@ -328,7 +328,7 @@ Versioned factory for full system deployments.
 
 - Stores immutable pointers to `versionRegistry`, `rewardTokenRegistry`, `guardian`, `stakingVaultImpl`, `governorImpl`, `timelockImpl`, and `selectorRegistryImpl`
 - `deployWithNewStakingVault(baseParams, newStakingVaultParams, deploymentNonce)` -- Deploy a new `StakingVault` proxy and the timelock/governor/selector-registry stack
-- `deployWithExistingStakingVault(baseParams, existingStakingVault, deploymentNonce)` -- Deploy the timelock/governor/selector-registry stack around an already deployed vault; its implementation must already support `getPastAverageVotes` for standard proposals to work
+- `deployWithExistingStakingVault(baseParams, existingStakingVault, deploymentNonce)` -- Deploy the timelock/governor/selector-registry stack around an already deployed vault; its implementation must already support both `getPastAverageVotes` and `getPastAverageSupply` for standard proposals to work
 - During deployment, grants `CANCELLER_ROLE` on each timelock to the governor contract, the shared `Guardian`, and every address in `baseParams.additionalGuardians`
 - `BaseDeploymentParams` includes optimistic proposers and optional direct per-instance cancellers; optimistic-only guardian management remains centralized in `Guardian`
 
@@ -377,7 +377,8 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - `optimisticDelegates(account)` -- Return the current optimistic delegate for an account
 - `getOptimisticVotes(account)` -- Return the latest optimistic delegated voting weight
 - `getPastOptimisticVotes(account, timepoint)` -- Return optimistic voting weight at a past timestamp snapshot
-- `getPastAverageVotes(account, start, end)` -- Return average standard delegated votes over `[start, end)`, rounded down, with activation clipping and division handled inside the token; equal bounds return zero and reversed bounds revert
+- `getPastAverageVotes(account, start, end)` -- Return average standard delegated votes over `[start, end)`, rounded down
+- `getPastAverageSupply(start, end)` -- Return average total supply over `[start, end)`, rounded down; equal bounds return zero and reversed bounds revert
 - `rewardTokenRegistry()` -- Reward token registry wired in during initialization
 - `versionRegistry()` -- Version registry wired in during initialization
 
@@ -389,9 +390,9 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - Standard and optimistic delegatees are tracked independently on the same share balance
 - `addRewardToken()` only accepts tokens that are currently registered in `RewardTokenRegistry`
 
-Standard delegated vote movements update cumulative vote-seconds through `ERC20AverageVotesUpgradeable` and the linked `VoteIntegralLib`. The token passes `clock()` for activation and vote movements. The library reads OZ standard voting checkpoints and stores a raw cumulative value for each post-activation checkpoint in a companion mapping; OZ continues to write the voting checkpoints. The token's `getPastAverageVotes()` validates the range, subtracts the library's cumulative endpoints, and divides by the full requested duration. Updates at the same timestamp coalesce; lookups binary-search the existing checkpoints. History is retained indefinitely. The vault-wide activation makes unchanged legacy balances accrue automatically. Zero-value movements and movements between accounts with the same standard delegate do not add checkpoints.
+Standard delegated vote movements update cumulative vote-seconds through `ERC20AverageVotesUpgradeable` and the linked `VoteIntegralLib`. Mint and burn operations also update cumulative total-supply-seconds alongside the existing OZ total-supply checkpoints. `getPastAverageVotes()` and `getPastAverageSupply()` query these histories separately, dividing each integral by the requested duration. Both use the same upper-bound checkpoint lookup without walking account histories. Updates at the same timestamp coalesce; history is retained indefinitely. Zero-value movements and movements between accounts with the same standard delegate do not add account checkpoints.
 
-OZ retains its existing one-slot checkpoints (`uint48` timestamp and `uint208` votes). The companion mapping adds one slot per post-activation checkpoint and stores the exact cumulative value without a sentinel offset. One namespace slot records the global activation timestamp; zero means inactive. This preserves existing vote history without duplicating timestamps or vote values. The supply cap and timestamp range bound the integral below `uint256.max`. The extension requires the block-timestamp clock used by StakingVault. See [the average-votes design and tradeoffs](docs/average-votes.md).
+OZ retains its existing one-slot checkpoints (`uint48` timestamp and `uint208` votes). Companion mappings add one cumulative slot per account vote checkpoint and one per total-supply checkpoint. One namespace slot records the global activation timestamp; zero means inactive. This preserves existing vote history without duplicating timestamps or vote values. The supply cap and timestamp range bound each integral below `uint256.max`. The extension requires the block-timestamp clock used by StakingVault. See [the supply-seconds design and tradeoffs](docs/average-votes.md).
 
 #### Token Support
 
@@ -489,13 +490,15 @@ For a standard proposal at time `t`, the governor evaluates `proposalThreshold()
 ```text
 start = t - PROPOSAL_THROTTLE_PERIOD
 averageVotes = token.getPastAverageVotes(account, start, t)
+averageSupply = token.getPastAverageSupply(start, t)
+normalizedAverageVotes = floor(averageVotes * totalSupplyAt(t - 1) / averageSupply)
 ```
 
-The token returns average votes for the requested range, handling cumulative subtraction, activation clipping, and division internally. The governor always requires this returned average to meet the threshold. Time before activation contributes zero but remains in the requested duration used as the denominator. The governor requests twelve hours directly; supported chain timestamps exceed that period. There is no historical-vote fallback.
+The governor compares `normalizedAverageVotes` with `proposalThreshold()`, which remains the absolute token amount calculated from the current configured fraction and supply at `t - 1`. A zero average supply fails closed. Periods with larger total supply receive proportionally larger denominator weight. The governor requests twelve hours directly; supported chain timestamps exceed that period. There is no historical-vote fallback.
 
-An unchanged legacy holder therefore accrues eligibility automatically: after six hours its recognized average is half its voting weight; after twelve hours it is the full weight. No transfer or delegation is needed. Higher vote power can compensate for shorter holding time, so larger holders may qualify earlier. Transfers and delegation changes preserve the vote-seconds each delegate actually earned; they cannot duplicate accrued credit or reset activation.
+Transfers and delegation changes preserve the vote-seconds each delegate actually earned; they cannot duplicate accrued credit or reset activation. Periods with larger supply contribute more denominator weight, which is the defining difference from an equal-time voting-percentage average.
 
-This is an average requirement, not continuous ownership of particular shares. Both fresh and upgraded vaults use the same accounting. See [Upgrading to 1.1.0](#upgrading-to-110) for activation and the one-time warm-up.
+This is a time-weighted share requirement, not continuous ownership of particular shares. Both fresh and upgraded vaults use the same accounting. See [Upgrading to 1.1.0](#upgrading-to-110) for activation behavior.
 
 ### StakingVault Parameters
 
@@ -565,7 +568,7 @@ Existing governor and timelock proxies must call their one-time `initializeVersi
 
 ### Upgrading to 1.1.0
 
-Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastAverageVotes` unconditionally for eligible standard proposers; a vault without that API makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate that API during deployment.
+Upgrade the `StakingVault` before its governor, following the registration and authorization steps above. The new governor calls `getPastAverageVotes` and `getPastAverageSupply` for eligible standard proposers; a vault without those APIs makes those proposals revert. The existing-vault deployer path also requires a compatible vault implementation, but does not validate those APIs during deployment.
 
 Activate the upgraded vault atomically by passing the new admin-only initializer to `upgradeToAndCall`:
 
@@ -573,15 +576,15 @@ Activate the upgraded vault atomically by passing the new admin-only initializer
 vault.upgradeToAndCall(newVaultImpl, abi.encodeCall(StakingVault.initializeAverageVotes, ()));
 ```
 
-Fresh vaults activate during ordinary initialization. Activation is one-shot under the supported-chain assumption of positive timestamps. Zero denotes inactive accounting. If an upgrade omits this call, average-vote lookups return zero and history updates remain disabled while ordinary vote checkpoints continue. An admin can initialize later, but accrual begins at that actual activation time; earlier activity earns no credit.
+Fresh vaults activate during ordinary initialization. Activation is one-shot under the supported-chain assumption of positive timestamps. Zero denotes inactive accounting. If an upgrade omits this call, average-vote lookups return zero and history updates remain disabled while ordinary vote checkpoints continue. An admin can initialize later, but accrual begins at that actual activation time; earlier account activity earns no credit. The activation timestamp and activation supply are packed together so pre-activation time can contribute supply-seconds while contributing zero account vote-seconds, preserving a fail-closed warm-up.
 
-The governor reuses the existing capacity and per-account charge state, with no additional throttle configuration or governor storage. The `reserve.storage.VotesIntegral` ERC-7201 namespace holds a raw cumulative mapping plus one slot for the activation timestamp. Existing standard and optimistic checkpoints, delegation mappings, and ordinary storage retain their layouts. This supports deployed 1.0.0 vaults; earlier unreleased PR prototypes require a separate migration of their integral state.
+The governor reuses the existing capacity and per-account charge state, with no additional throttle configuration or governor storage. The `reserve.storage.VotesIntegral` ERC-7201 namespace holds raw account and supply cumulative mappings plus one slot for the activation timestamp. Existing standard and optimistic checkpoints, delegation mappings, and ordinary storage retain their layouts. This supports deployed 1.0.0 vaults; earlier unreleased PR prototypes require a separate migration of their integral state.
 
-All vote-seconds before activation count as zero. A legacy holder with exactly the proposal threshold must wait twelve hours before proposing; larger holders can qualify sooner as their average grows. Unchanged holders accrue automatically. The first movement records all time held since activation before applying the new balance. Pre-upgrade transfers and delegations cannot be replayed for proposal credit, and intervening post-activation balance dips are included in the average.
+Vote-seconds before activation count as zero, while pre-activation denominator time uses the supply captured at activation. A legacy holder with exactly the proposal threshold therefore waits twelve hours before proposing; larger holders can qualify sooner. The first movement records all time held since activation before applying the new balance. Pre-upgrade transfers and delegations cannot be replayed for proposal credit, and intervening post-activation balance dips are included in the share.
 
 The shared `Versioned` mixin now returns `1.1.0` for the governor, vault, timelock, and deployer. Fresh governors initialize their EIP-712 domain with version `1.1.0`; upgrading an existing governor does not rewrite its stored domain version. Signature clients should read `eip712Domain()` rather than infer the signing domain from `version()`.
 
-The build uses Solidity 0.8.33, optimizer runs 416, and `via_ir = false`. The governor runtime is 24,531 bytes and the vault runtime is 23,785 bytes, leaving the governor 45 bytes below the 24,576-byte EIP-170 limit at 416 optimizer runs. UnstakingManager creation runs through the linked upgrade library to preserve this headroom. Run `pnpm size` after any contract or compiler change.
+The build uses Solidity 0.8.33, optimizer runs 416, and `via_ir = false`. The governor runtime is 24,481 bytes and the vault runtime is 24,319 bytes, leaving 95 and 257 bytes respectively below the 24,576-byte EIP-170 limit. UnstakingManager creation runs through the linked upgrade library to preserve this headroom. Run `pnpm size` after any contract or compiler change.
 
 
 ## Flow Summary

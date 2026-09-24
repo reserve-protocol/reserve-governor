@@ -14,6 +14,7 @@ import { IGovernor } from "@openzeppelin/contracts/governance/IGovernor.sol";
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { GenericTokenJar } from "@reserve-protocol/trusted-fillers/contracts/extras/GenericTokenJar.sol";
 
 import { OptimisticSelectorRegistry } from "@governance/OptimisticSelectorRegistry.sol";
@@ -110,6 +111,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
     bytes32 internal constant VOTE_INTEGRALS_MAPPING_SLOT =
         0x6c8ef2534ba8916a427dbfc162fbce2a165f7cccf4d86d45f25d2b245ed73b00;
     bytes32 internal constant VOTE_INTEGRAL_STATE_SLOT = bytes32(uint256(VOTE_INTEGRALS_MAPPING_SLOT) + 1);
+    bytes32 internal constant SUPPLY_INTEGRALS_MAPPING_SLOT = bytes32(uint256(VOTE_INTEGRALS_MAPPING_SLOT) + 2);
 
     uint256 internal constant TIMELOCK_DELAY = 2 days;
     string internal constant CONFIRMATION_PREFIX = "Confirmation For: ";
@@ -689,6 +691,9 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         uint256 periodStart = block.timestamp - PROPOSAL_THROTTLE_PERIOD;
         IOptimisticVotes votes = IOptimisticVotes(address(stakingVault));
         uint256 averageVotes = votes.getPastAverageVotes(recentVoter, periodStart, block.timestamp);
+        uint256 averageSupply = stakingVault.getPastAverageSupply(periodStart, block.timestamp);
+        uint256 normalizedAverageVotes =
+            Math.mulDiv(averageVotes, stakingVault.getPastTotalSupply(block.timestamp - 1), averageSupply);
 
         assertGe(governor.getVotes(recentVoter, block.timestamp - 1), threshold);
         assertEq(votes.getPastAverageVotes(recentVoter, 0, periodStart), 0);
@@ -696,7 +701,7 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         vm.prank(recentVoter);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, averageVotes, threshold
+                IGovernor.GovernorInsufficientProposerVotes.selector, recentVoter, normalizedAverageVotes, threshold
             )
         );
         governor.propose(targets, values, calldatas, "Recent delegated voter");
@@ -2367,7 +2372,11 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
 
     function _restartAverageVotes(address account) internal {
         _clearAverageVoteHistory(account);
-        vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(uint256(uint48(block.timestamp))));
+        for (uint32 i; i < 32; ++i) {
+            vm.store(address(stakingVault), keccak256(abi.encode(i, SUPPLY_INTEGRALS_MAPPING_SLOT)), bytes32(0));
+        }
+        uint256 activationState = (stakingVault.totalSupply() << 48) | uint48(block.timestamp);
+        vm.store(address(stakingVault), VOTE_INTEGRAL_STATE_SLOT, bytes32(activationState));
     }
 
     function _setupVoter(address voter, uint256 amount) internal {
