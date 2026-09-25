@@ -169,9 +169,7 @@ library VoteIntegralLib {
         uint256 index = checkpoints.length;
 
         if (index == 0) {
-            if (initialValue != 0) {
-                cumulatives[0] = initialValue * (timestamp - activation);
-            }
+            assert(initialValue == 0);
             return;
         }
 
