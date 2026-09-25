@@ -64,10 +64,6 @@ library VoteIntegralLib {
     /// @notice Returns cumulative delegated vote-seconds at a timestamp.
     /// @dev Time at or before activation contributes zero. Future extrapolation uses checked arithmetic.
     function lookup(address account, uint256 timepoint) external view returns (uint256) {
-        return _lookup(account, timepoint);
-    }
-
-    function _lookup(address account, uint256 timepoint) private view returns (uint256) {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
         return _lookupIntegral(_delegateHistory(account), $.cumulative[account], $.activation, timepoint);
     }
