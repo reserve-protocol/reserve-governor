@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
 /**
@@ -33,15 +34,15 @@ library VoteIntegralLib {
         }
     }
 
+    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.Votes")) - 1)) & ~bytes32(uint256(0xff))
+    // Matches OZ 5.4 VotesUpgradeable. Changes to that namespace or its checkpoint layout require review.
+    bytes32 private constant VotesStorageLocation = 0xe8b26c30fad74198956032a3533d903385d56dd795af560196f9c78d4af40d00;
+
     function _getVotesStorage() private pure returns (VotesUpgradeable.VotesStorage storage $) {
         assembly {
             $.slot := VotesStorageLocation
         }
     }
-
-    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.Votes")) - 1)) & ~bytes32(uint256(0xff))
-    // Matches OZ 5.4 VotesUpgradeable. Changes to that namespace or its checkpoint layout require review.
-    bytes32 private constant VotesStorageLocation = 0xe8b26c30fad74198956032a3533d903385d56dd795af560196f9c78d4af40d00;
 
     // Read-only access: OZ remains responsible for writing standard vote checkpoints.
     function _delegateHistory(address account) private view returns (Checkpoints.Checkpoint208[] storage) {
@@ -63,10 +64,6 @@ library VoteIntegralLib {
     /// @notice Returns cumulative delegated vote-seconds at a timestamp.
     /// @dev Time at or before activation contributes zero. Future extrapolation uses checked arithmetic.
     function lookup(address account, uint256 timepoint) external view returns (uint256) {
-        return _lookup(account, timepoint);
-    }
-
-    function _lookup(address account, uint256 timepoint) private view returns (uint256) {
         VotesIntegralStorage storage $ = _getVotesIntegralStorage();
         return _lookupIntegral(_delegateHistory(account), $.cumulative[account], $.activation, timepoint);
     }
@@ -126,7 +123,7 @@ library VoteIntegralLib {
             supplySeconds += uint256($.activationSupply) * (preActivationEnd - start);
         }
 
-        return supplySeconds / (end - start);
+        return Math.ceilDiv(supplySeconds, end - start);
     }
 
     /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, passing clock().
@@ -168,9 +165,7 @@ library VoteIntegralLib {
         uint256 index = checkpoints.length;
 
         if (index == 0) {
-            if (initialValue != 0) {
-                cumulatives[0] = initialValue * (timestamp - activation);
-            }
+            require(initialValue == 0, "VoteIntegralLib: nonzero initial value without checkpoints");
             return;
         }
 

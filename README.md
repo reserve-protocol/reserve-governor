@@ -378,7 +378,7 @@ ERC4626 vault with vote-locking, dual delegation, and multi-token rewards. Users
 - `getOptimisticVotes(account)` -- Return the latest optimistic delegated voting weight
 - `getPastOptimisticVotes(account, timepoint)` -- Return optimistic voting weight at a past timestamp snapshot
 - `getPastAverageVotes(account, start, end)` -- Return average standard delegated votes over `[start, end)`, rounded down
-- `getPastAverageSupply(start, end)` -- Return average total supply over `[start, end)`, rounded down; equal bounds return zero and reversed bounds revert
+- `getPastAverageSupply(start, end)` -- Return average total supply over `[start, end)`, rounded up; equal bounds return zero and reversed bounds revert
 - `rewardTokenRegistry()` -- Reward token registry wired in during initialization
 - `versionRegistry()` -- Version registry wired in during initialization
 

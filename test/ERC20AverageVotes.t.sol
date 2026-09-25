@@ -373,6 +373,18 @@ contract ERC20AverageVotesTest is Test {
         legacy.getPastAverageSupply(1201, 1200);
     }
 
+    function test_averageSupplyRoundsUpFractionalAverage() public {
+        AverageVotesTokenHarness fractional = new AverageVotesTokenHarness();
+        fractional.mint(ALICE, 3);
+        fractional.initializeAverageVotes();
+
+        vm.warp(1199);
+        fractional.burn(ALICE, 1);
+        vm.warp(1200);
+
+        assertEq(fractional.getPastAverageSupply(1000, 1200), 3);
+    }
+
     function test_zeroSupplyUpdatesPreserveCumulativeSupply() public {
         token.mint(ALICE, 100);
 
