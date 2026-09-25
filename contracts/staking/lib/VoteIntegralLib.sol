@@ -34,15 +34,15 @@ library VoteIntegralLib {
         }
     }
 
+    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.Votes")) - 1)) & ~bytes32(uint256(0xff))
+    // Matches OZ 5.4 VotesUpgradeable. Changes to that namespace or its checkpoint layout require review.
+    bytes32 private constant VotesStorageLocation = 0xe8b26c30fad74198956032a3533d903385d56dd795af560196f9c78d4af40d00;
+
     function _getVotesStorage() private pure returns (VotesUpgradeable.VotesStorage storage $) {
         assembly {
             $.slot := VotesStorageLocation
         }
     }
-
-    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.Votes")) - 1)) & ~bytes32(uint256(0xff))
-    // Matches OZ 5.4 VotesUpgradeable. Changes to that namespace or its checkpoint layout require review.
-    bytes32 private constant VotesStorageLocation = 0xe8b26c30fad74198956032a3533d903385d56dd795af560196f9c78d4af40d00;
 
     // Read-only access: OZ remains responsible for writing standard vote checkpoints.
     function _delegateHistory(address account) private view returns (Checkpoints.Checkpoint208[] storage) {
