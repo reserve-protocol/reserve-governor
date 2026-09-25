@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { VotesUpgradeable } from "@openzeppelin/contracts-upgradeable/governance/utils/VotesUpgradeable.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 
 /**
@@ -126,7 +127,7 @@ library VoteIntegralLib {
             supplySeconds += uint256($.activationSupply) * (preActivationEnd - start);
         }
 
-        return supplySeconds / (end - start);
+        return Math.ceilDiv(supplySeconds, end - start);
     }
 
     /// @dev Must run by delegatecall immediately before the corresponding OZ vote movement, passing clock().
