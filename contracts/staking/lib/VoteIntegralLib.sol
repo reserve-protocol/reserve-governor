@@ -165,7 +165,7 @@ library VoteIntegralLib {
         uint256 index = checkpoints.length;
 
         if (index == 0) {
-            assert(initialValue == 0);
+            require(initialValue == 0, "VoteIntegralLib: nonzero initial value without checkpoints");
             return;
         }
 
