@@ -714,6 +714,60 @@ abstract contract ReserveOptimisticGovernorTestBase is Test {
         assertEq(uint256(governor.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
     }
 
+    function test_standardProposal_fractionalAverageSupplyRoundsAgainstProposer() public {
+        (address[] memory settingsTargets, uint256[] memory settingsValues, bytes[] memory settingsCalldatas) =
+            _singleCall(address(governor), 0, abi.encodeCall(governor.setProposalThreshold, (0.5e18)));
+        (, bytes32 settingsDescriptionHash) =
+            _proposePassAndQueueStandard(settingsTargets, settingsValues, settingsCalldatas, "Set threshold to 50%");
+        vm.warp(block.timestamp + TIMELOCK_DELAY + 1);
+        governor.execute(settingsTargets, settingsValues, settingsCalldatas, settingsDescriptionHash);
+
+        vm.startPrank(alice);
+        stakingVault.redeem(stakingVault.balanceOf(alice), alice, alice);
+        vm.stopPrank();
+        vm.startPrank(bob);
+        stakingVault.redeem(stakingVault.balanceOf(bob), bob, bob);
+        vm.stopPrank();
+        vm.startPrank(carol);
+        stakingVault.redeem(stakingVault.balanceOf(carol), carol, carol);
+        vm.stopPrank();
+
+        address proposer = makeAddr("roundingProposer");
+        address otherHolder = makeAddr("roundingOtherHolder");
+        _setupVoter(proposer, 1);
+        _setupVoter(otherHolder, 2);
+
+        uint256 periodStart = block.timestamp;
+        vm.warp(periodStart + PROPOSAL_THROTTLE_PERIOD - 1);
+        vm.prank(otherHolder);
+        stakingVault.redeem(1, otherHolder, otherHolder);
+        vm.warp(periodStart + PROPOSAL_THROTTLE_PERIOD);
+
+        uint256 averageVotes = stakingVault.getPastAverageVotes(proposer, periodStart, block.timestamp);
+        uint256 averageSupply = stakingVault.getPastAverageSupply(periodStart, block.timestamp);
+        uint256 currentSupply = stakingVault.getPastTotalSupply(block.timestamp - 1);
+        uint256 threshold = governor.proposalThreshold();
+        uint256 normalizedVotes = Math.mulDiv(averageVotes, currentSupply, averageSupply);
+        uint256 supplySeconds = 3 * (PROPOSAL_THROTTLE_PERIOD - 1) + 2;
+
+        assertEq(averageVotes, 1);
+        assertEq(averageSupply, 3, "fractional average supply rounds up");
+        assertEq(currentSupply, 2);
+        assertEq(threshold, 1);
+        assertEq(normalizedVotes, 0);
+        assertGt(supplySeconds, 2 * PROPOSAL_THROTTLE_PERIOD, "average share is below 50%");
+
+        (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
+            _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1)));
+        vm.prank(proposer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IGovernor.GovernorInsufficientProposerVotes.selector, proposer, normalizedVotes, threshold
+            )
+        );
+        governor.propose(targets, values, calldatas, "Reject fractional-average below-threshold proposer");
+    }
+
     function test_standardProposal_rejectsConfirmationPrefixDescription() public {
         (address[] memory targets, uint256[] memory values, bytes[] memory calldatas) =
             _singleCall(address(underlying), 0, abi.encodeCall(IERC20.transfer, (alice, 1_000e18)));

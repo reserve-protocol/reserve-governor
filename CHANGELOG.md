@@ -13,7 +13,7 @@
 
 ### Added
 
-- `StakingVault.getPastAverageSupply(start, end)` for average total supply over a requested interval, alongside `getPastAverageVotes(account, start, end)`. Existing OZ account and supply checkpoints are paired with companion cumulative mappings, preserving packed checkpoint storage and logarithmic lookups without walking account histories.
+- `StakingVault.getPastAverageSupply(start, end)` for average total supply rounded up over a requested interval, alongside `getPastAverageVotes(account, start, end)`. Rounding up keeps proposer eligibility conservative when the average supply is fractional. Existing OZ account and supply checkpoints are paired with companion cumulative mappings, preserving packed checkpoint storage and logarithmic lookups without walking account histories.
 - Real BSC and Base vault upgrade forks cover preexisting checkpoint history and same-timestamp migration; unit tests cover integral arithmetic boundaries and compare fuzzed histories against a segment-sum reference.
 - Coverage for shared throttle consumption, the legacy activation ramp, pre-activation endpoint replay, the fresh-account anniversary bypass, vote-second conservation, zero-area windows, delayed initialization, and one-shot activation. The segment-sum fuzz reference clips arbitrary histories at activation.
 

@@ -90,9 +90,11 @@ activation. Current-timestamp queries work. Future timestamps extrapolate the
 latest checkpoint's votes; arithmetic overflow reverts rather than wrapping.
 
 `getPastAverageSupply(start, end)` reads the total-supply integral and returns
-average total supply over the full requested interval. It includes the supply
-captured at activation for pre-activation time, matching the denominator used
-for eligibility. Equal bounds return zero; reversed bounds revert.
+average total supply rounded up over the full requested interval. Rounding up
+keeps proposal eligibility conservative when the average is fractional. It
+includes the supply captured at activation for pre-activation time, matching
+the denominator used for eligibility. Equal bounds return zero; reversed
+bounds revert.
 
 ## Proposal eligibility and upgrade behavior
 
