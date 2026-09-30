@@ -105,18 +105,16 @@ contract DeployScript is Script {
     }
 
     function _getVersionRegistry() internal view returns (address) {
-        // TODO ReserveOptimisticGovernanceVersionRegistry deployments
-
         if (block.chainid == 1 || block.chainid == 31337) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0x0692eCddFe6ad18dBD4BBD7D1ea506e461Eb87aA;
         }
 
         if (block.chainid == 8453) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0x0692eCddFe6ad18dBD4BBD7D1ea506e461Eb87aA;
         }
 
         if (block.chainid == 56) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0x0692eCddFe6ad18dBD4BBD7D1ea506e461Eb87aA;
         }
 
         revert DeployScript__InvalidChainId();
