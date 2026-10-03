@@ -87,18 +87,16 @@ contract DeployScript is Script {
     }
 
     function _getGuardian() internal view returns (address) {
-        // TODO Guardian deployments
-
         if (block.chainid == 1 || block.chainid == 31337) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0xB432b0cf55df8D8F367D965A23198ccDaacc4b1f;
         }
 
         if (block.chainid == 8453) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0xB432b0cf55df8D8F367D965A23198ccDaacc4b1f;
         }
 
         if (block.chainid == 56) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0xB432b0cf55df8D8F367D965A23198ccDaacc4b1f;
         }
 
         revert DeployScript__InvalidChainId();
@@ -121,18 +119,16 @@ contract DeployScript is Script {
     }
 
     function _getRewardTokenRegistry() internal view returns (address) {
-        // TODO RewardTokenRegistry deployments
-
         if (block.chainid == 1 || block.chainid == 31337) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0x738FE2362478C3cE8FA511d7FdC6Cd6782383816;
         }
 
         if (block.chainid == 8453) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0x738FE2362478C3cE8FA511d7FdC6Cd6782383816;
         }
 
         if (block.chainid == 56) {
-            return 0x0000000000000000000000000000000000000000;
+            return 0x738FE2362478C3cE8FA511d7FdC6Cd6782383816;
         }
 
         revert DeployScript__InvalidChainId();
